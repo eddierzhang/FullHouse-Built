@@ -8,7 +8,7 @@ used about 100 MB of memory when measured locally, so a 512 MB free tier is plen
 
 ### Render — one click
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/eddierzhang/FullHouse-Updated)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/eddierzhang/FullHouse-Built)
 
 The button opens Render with this repository's [`render.yaml`](render.yaml) already read: sign in with GitHub, confirm,
 and the free `fullhouse-demo` service is created. Nothing to configure and no card required.
@@ -160,8 +160,8 @@ One free ARM VM runs the entire compose stack, model included.
    ```
 4. **Get the code.**
    ```bash
-   git clone https://github.com/eddierzhang/FullHouse-Updated.git
-   cd FullHouse-Updated
+   git clone https://github.com/eddierzhang/FullHouse-Built.git
+   cd FullHouse-Built
    ```
 5. **Configure and start.**
    ```bash

@@ -2,7 +2,7 @@
 
 **An operations platform for a restaurant, run by a team of AI agents that propose — and a manager who decides.**
 
-[![CI](https://github.com/eddierzhang/FullHouse-Updated/actions/workflows/ci.yml/badge.svg)](https://github.com/eddierzhang/FullHouse-Updated/actions/workflows/ci.yml)
+[![CI](https://github.com/eddierzhang/FullHouse-Built/actions/workflows/ci.yml/badge.svg)](https://github.com/eddierzhang/FullHouse-Built/actions/workflows/ci.yml)
 ![Python 3.11](https://img.shields.io/badge/python-3.11-3776AB)
 ![React 19](https://img.shields.io/badge/react-19-149ECA)
 [![License: MIT](https://img.shields.io/badge/license-MIT-0f766e)](LICENSE)
@@ -30,7 +30,7 @@ Without Docker: `python dev.py setup` once, then `python dev.py demo`.
 
 Or put your own copy online, free and without a card, on Render's free plan:
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/eddierzhang/FullHouse-Updated)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/eddierzhang/FullHouse-Built)
 
 It reads [`render.yaml`](render.yaml), builds the single-container image and serves the same demo. The free plan
 sleeps after 15 idle minutes and wakes in about a minute, starting from a fresh restaurant each time. Other hosts,
