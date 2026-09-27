@@ -6,6 +6,7 @@ import { ForecastCard } from '../components/ForecastCard'
 import { Icon } from '../components/Icon'
 import { RunStatusBadge } from '../components/RunStatusBadge'
 import { greeting, money, pct, relativeTime } from '../lib/format'
+import { openStatus } from '../restaurant/hours'
 
 export function OverviewPage({ app }: { app: AppContext }) {
   const [week, setWeek] = useState<ProfitSummary | null>(null)
@@ -18,14 +19,23 @@ export function OverviewPage({ app }: { app: AppContext }) {
 
   const lowStock = app.inventory.filter((i) => i.quantity_on_hand <= i.reorder_threshold)
   const recentRuns = runs.filter((r) => !r.parent_run_id).slice(0, 5)
-  const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+  const today = new Date().toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    timeZone: app.restaurant.timezone,
+  })
+  const status = openStatus(app.restaurant)
 
   return (
     <main className="page">
       <div className="page-header">
         <div>
-          <h1 className="page-title">{greeting()}</h1>
-          <p className="page-subtitle">{today} · Here’s how the restaurant is doing.</p>
+          <h1 className="page-title">{greeting(new Date(), app.restaurant.timezone)}</h1>
+          <p className="page-subtitle">
+            {today} · Here’s how {app.restaurant.name ?? 'the restaurant'} is doing.{' '}
+            <span className={`open-status${status.open ? ' is-open' : ''}`}>{status.label}</span>
+          </p>
         </div>
       </div>
 

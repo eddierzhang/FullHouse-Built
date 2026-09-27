@@ -1,6 +1,7 @@
 """Menu editing and the sales figures behind the marketing page."""
 
 from app.restaurant.models import MenuItem, Order, OrderItem
+from conftest import TEST_USER_EMAIL
 
 
 def _item(db, name="Margherita", price=14.0, cost=4.2, **kw):
@@ -77,13 +78,12 @@ def test_price_change_is_recorded_with_both_values(client, db, changes):
     client.patch(
         f"/api/v1/restaurant/menu-items/{item.id}",
         json={"price": 16.5},
-        headers={"X-Actor-Id": "eddie"},
     )
 
     update = changes(entity_type="menu_items", operation="update")[-1]
     assert update.before == {"price": 14.0}
     assert update.after == {"price": 16.5}
-    assert update.actor_id == "eddie"
+    assert update.actor_id == TEST_USER_EMAIL
 
 
 def test_negative_price_is_rejected(client, db):

@@ -12,6 +12,54 @@ function watchForErrors(page: Page): string[] {
   return errors
 }
 
+// Seeded by backend/scripts/seed_e2e.py.
+const E2E_EMAIL = 'e2e@example.com'
+const E2E_PASSWORD = 'e2e-password'
+
+test.describe('signing in', () => {
+  test('the dashboard stays behind the login page until you sign in, and again after signing out', async ({ page }) => {
+    const errors = watchForErrors(page)
+    await page.goto('/#inventory')
+    await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible()
+    await expect(page.getByRole('navigation')).toHaveCount(0)
+
+    await page.getByLabel('Email').fill(E2E_EMAIL)
+    await page.getByLabel('Password').fill('not-the-password')
+    await page.getByRole('button', { name: 'Sign in' }).click()
+    await expect(page.getByRole('alert')).toHaveText("That email and password don't match.")
+
+    await page.getByLabel('Password').fill(E2E_PASSWORD)
+    await page.getByRole('button', { name: 'Sign in' }).click()
+    await expect(page.getByRole('heading', { name: 'Inventory', level: 1 })).toBeVisible()
+
+    await page.getByRole('button', { name: 'Sign out' }).click()
+    await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible()
+    await page.reload()
+    await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible()
+    // The expected 401s from checking for a session aren't page errors.
+    expect(errors.filter((e) => !e.includes('401'))).toEqual([])
+  })
+
+  test('creating an account signs you straight in', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Create an account' }).click()
+    await page.getByLabel('Name').fill('New Manager')
+    await page.getByLabel('Email').fill(`new-${Date.now()}@example.com`)
+    await page.getByLabel('Password').fill('a-long-password')
+    await page.getByRole('button', { name: 'Create account' }).click()
+    await expect(page.getByText('New Manager')).toBeVisible()
+  })
+})
+
+test.describe('signed in', () => {
+  // Signs the whole browser context in: page.request shares its cookies.
+  test.beforeEach(async ({ page }) => {
+    const response = await page.request.post(`${API}/api/v1/auth/login`, {
+      data: { email: E2E_EMAIL, password: E2E_PASSWORD },
+    })
+    expect(response.ok()).toBeTruthy()
+  })
+
 async function stockOf(page: Page, item: string): Promise<number> {
   const items = await (await page.request.get(`${API}/api/v1/restaurant/inventory-items`)).json()
   return items.find((i: { name: string }) => i.name === item).quantity_on_hand
@@ -29,23 +77,25 @@ test.describe('navigation', () => {
       'Overview',
       'Approvals',
       'Runs',
-      'Agents & schedules',
+      'Maestro',
       'Inventory',
       'Suppliers',
       'Menu',
       'Staff',
       'Profit & forecast',
+      'Profile',
     ])
 
     const headings: Record<string, string> = {
       Approvals: 'Approvals',
       Runs: 'Runs',
-      'Agents & schedules': 'Agents & schedules',
+      Maestro: 'Maestro',
       Inventory: 'Inventory',
       Suppliers: 'Suppliers',
       Menu: 'Menu',
       Staff: 'Staff',
       'Profit & forecast': 'Profit & forecast',
+      Profile: 'Profile',
     }
     for (const [link, heading] of Object.entries(headings)) {
       await nav.getByRole('link', { name: new RegExp(`^${link}`) }).click()
@@ -61,6 +111,8 @@ test.describe('navigation', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'Menu' })).toBeVisible()
     await page.goto('/#employees')
     await expect(page.getByRole('heading', { level: 1, name: 'Staff' })).toBeVisible()
+    await page.goto('/#settings')
+    await expect(page.getByRole('heading', { level: 1, name: 'Profile' })).toBeVisible()
   })
 })
 
@@ -110,8 +162,9 @@ test('a new task streams live and finishes', async ({ page }) => {
   await page.goto('/#overview')
   await page.getByRole('button', { name: 'New task' }).click()
 
-  const dialog = page.getByRole('dialog', { name: 'New agent task' })
-  await dialog.getByLabel('Agent').selectOption({ label: 'Inventory Agent' })
+  // One agent, so there's no agent to choose.
+  const dialog = page.getByRole('dialog', { name: 'New task for Maestro' })
+  await expect(dialog.getByLabel('Agent', { exact: true })).toHaveCount(0)
   await dialog.getByLabel('What should it do?').fill('Check what is running low')
   await dialog.getByRole('button', { name: 'Start task' }).click()
 
@@ -120,19 +173,21 @@ test('a new task streams live and finishes', async ({ page }) => {
   await expect(log).toContainText('tool call')
   await expect(log).toContainText('list_low_stock_items')
   await expect(page.getByText('Summary', { exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: /Inventory Agent/ }).first()).toContainText('succeeded')
+  await expect(page.getByRole('button', { name: /Maestro/ }).first()).toContainText('succeeded')
 })
 
-test('scheduling an agent shows its next run and survives a reload', async ({ page }) => {
+test('scheduling the agent shows its next run and survives a reload', async ({ page }) => {
   await page.goto('/#agents')
-  const agent = page.getByRole('listitem').filter({ hasText: 'Profit Agent' })
+  await expect(page.getByRole('listitem').filter({ has: page.getByLabel('Schedule') })).toHaveCount(1)
+  await expect(page.getByText('Also checks stock every day at 08:00')).toBeVisible()
+  const agent = page.getByRole('listitem').filter({ hasText: 'Maestro' })
 
-  await agent.getByLabel('Schedule').selectOption({ label: 'Daily at 09:00 UTC' })
-  await expect(page.getByText(/Profit Agent: Daily at 09:00 UTC/)).toBeVisible()
+  await agent.getByLabel('Schedule').selectOption({ label: 'Daily at 09:00' })
+  await expect(page.getByText(/Maestro: Daily at 09:00/)).toBeVisible()
   await expect(agent).toContainText('Next run')
 
   await page.reload()
-  const reloaded = page.getByRole('listitem').filter({ hasText: 'Profit Agent' })
+  const reloaded = page.getByRole('listitem').filter({ hasText: 'Maestro' })
   await expect(reloaded.getByLabel('Schedule')).toHaveValue('0 9 * * *')
 
   await reloaded.getByLabel('Schedule').selectOption({ label: 'Not scheduled' })
@@ -161,7 +216,7 @@ test('adding a person and a shift, then removing them', async ({ page }) => {
 
   await page.getByRole('button', { name: 'Add person' }).click()
   await page.getByLabel('Name', { exact: true }).fill('Priya Test')
-  await page.getByLabel('Role', { exact: true }).fill('Server')
+  await page.getByLabel('Role', { exact: true }).selectOption('Server')
   await page.getByRole('button', { name: 'Save person' }).click()
   const person = page.getByRole('listitem').filter({ hasText: 'Priya Test' })
   await expect(person).toContainText('No shifts')
@@ -179,4 +234,5 @@ test('adding a person and a shift, then removing them', async ({ page }) => {
   page.once('dialog', (d) => d.accept())
   await person.getByRole('button', { name: 'Remove Priya Test' }).click()
   await expect(page.getByRole('listitem').filter({ hasText: 'Priya Test' })).toHaveCount(0)
+})
 })

@@ -1,4 +1,4 @@
-import type { AgentAction, AgentDefinition, InventoryItem, Runtime } from '../api/client'
+import type { AgentAction, AgentDefinition, InventoryItem, Restaurant, Runtime } from '../api/client'
 import type { Route } from '../lib/useHashRoute'
 
 /** What every page can read and do. Built once in AppShell. */
@@ -8,6 +8,9 @@ export type AppContext = {
   pendingActions: AgentAction[]
   inventory: InventoryItem[]
   runtime: Runtime | null
+  /** The set-up restaurant; the dashboard is only shown once setup is finished. */
+  restaurant: Restaurant
+  setRestaurant: (restaurant: Restaurant) => void
   apiStatus: 'checking' | 'ok' | 'error'
 
   navigate: (route: Route) => void

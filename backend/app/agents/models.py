@@ -23,7 +23,7 @@ class AgentDefinition(Base):
     key: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(String(512), nullable=False)
-    role: Mapped[str] = mapped_column(String(16), nullable=False)  # boss|subagent
+    role: Mapped[str] = mapped_column(String(16), nullable=False)  # main; boss|subagent in history from before the merge
     system_prompt: Mapped[str] = mapped_column(Text, nullable=False)
     model: Mapped[str] = mapped_column(String(64), default="claude-opus-5", nullable=False)
     tool_allowlist: Mapped[list] = mapped_column(JSON, default=list, nullable=False)

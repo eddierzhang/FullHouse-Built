@@ -15,7 +15,8 @@ class SupplierOut(BaseModel):
 class SupplierCreate(BaseModel):
     name: str
     contact_info: str | None = None
-    lead_time_days: int = 3
+    #: Unset takes the owner's default from Restaurant Settings.
+    lead_time_days: int | None = None
 
 
 class InventoryItemOut(BaseModel):

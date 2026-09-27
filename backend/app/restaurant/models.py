@@ -2,6 +2,7 @@ import uuid
 from datetime import date, datetime, time, timezone
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     Date,
     Float,
@@ -134,3 +135,46 @@ class RecipeItem(Base):
 
     menu_item: Mapped[MenuItem] = relationship()
     inventory_item: Mapped[InventoryItem] = relationship()
+
+
+class Restaurant(Base):
+    """Who the restaurant is and how it runs, from the owner's setup.
+
+    One per deployment. Created by the first setup step anyone saves, so
+    every column but the bookkeeping is nullable: a half-finished setup is
+    a real, resumable state. `completed_steps` records which sections have
+    been saved; `setup_completed_at` is set once the owner finishes.
+    """
+
+    __tablename__ = "restaurants"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+
+    name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    street: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    region: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    postal_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    country: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(254), nullable=True)
+    website: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    #: IANA name, e.g. "America/New_York". Agent schedules run on this clock.
+    timezone: Mapped[str] = mapped_column(String(64), default="UTC", nullable=False)
+    #: {"mon": {"closed": false, "open": "11:00", "close": "22:00"}, ...}
+    opening_hours: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    #: {"safety_days": 1, "default_lead_time_days": 2, "daily_stock_check": "08:00" | null}
+    inventory_settings: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    staff_roles: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    #: {"max_shift_hours": 10, "min_rest_hours": 10, "max_weekly_hours": 40, "min_staff_per_open_day": 2}
+    scheduling_rules: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    completed_steps: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    setup_completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now, nullable=False)
+    #: When anything in the profile was last saved, and by whom (a users.id).
+    #: No foreign key for `updated_by`: users already points here, and a
+    #: cycle between the two tables would complicate every create and drop.
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now, nullable=False)
+    updated_by: Mapped[str | None] = mapped_column(String(32), nullable=True)

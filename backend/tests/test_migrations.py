@@ -54,10 +54,12 @@ def test_downgrade_unwinds_the_whole_schema(tmp_path, monkeypatch):
 
 
 def test_head_migration_round_trips(tmp_path, monkeypatch):
-    """Down one step and back up must reproduce the head schema exactly.
+    """Down to the newest schema change and back up must reproduce the head schema exactly.
 
     Checks whichever migration is newest, instead of naming its table --
-    the version that did broke each time a migration was added.
+    the version that did broke each time a migration was added. Steps past
+    data-only migrations (like merging the agents), which leave the schema
+    as it was.
     """
     db_path = tmp_path / "round_trip.db"
     db_url = f"sqlite:///{db_path}"
@@ -74,8 +76,11 @@ def test_head_migration_round_trips(tmp_path, monkeypatch):
     command.upgrade(config, "head")
     at_head = schema()
 
-    command.downgrade(config, "-1")
-    assert schema() != at_head  # the step actually removed something
+    for _ in range(3):
+        command.downgrade(config, "-1")
+        if schema() != at_head:
+            break
+    assert schema() != at_head  # the steps actually removed something
 
     command.upgrade(config, "head")
     assert schema() == at_head

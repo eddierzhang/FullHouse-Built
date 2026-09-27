@@ -11,7 +11,7 @@ the single-process deployment the in-process event broker already requires.
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, tzinfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -23,6 +23,13 @@ logger = logging.getLogger(__name__)
 
 PROMOTION_SWEEP_JOB = "expire-promotions"
 DEMO_RESET_JOB = "demo-reset"
+STOCK_CHECK_JOB = "stock-check"
+
+#: What the agent is asked at the owner's daily stock-check time.
+STOCK_CHECK_TASK = (
+    "Daily stock check: review stock levels against reorder points and supplier lead times, "
+    "and propose reorders for anything running low."
+)
 _scheduler: BackgroundScheduler | None = None
 
 
@@ -30,31 +37,42 @@ class InvalidSchedule(ValueError):
     """A cron expression that cannot be parsed."""
 
 
-def parse_cron(expression: str) -> CronTrigger:
-    """Standard five-field crontab ("minute hour day month weekday"), in UTC."""
+def parse_cron(expression: str, tz: tzinfo = timezone.utc) -> CronTrigger:
+    """Standard five-field crontab ("minute hour day month weekday"), on `tz`'s clock."""
     try:
-        return CronTrigger.from_crontab(expression.strip(), timezone=timezone.utc)
+        return CronTrigger.from_crontab(expression.strip(), timezone=tz)
     except (ValueError, TypeError) as exc:
         raise InvalidSchedule(
             f"{expression!r} is not a valid cron schedule. Use five fields, "
-            f"e.g. '0 9 * * *' for 09:00 UTC daily."
+            f"e.g. '0 9 * * *' for 09:00 daily."
         ) from exc
 
 
-def next_fire_time(expression: str | None, now: datetime | None = None) -> datetime | None:
-    """When a schedule would next fire, whether or not the scheduler is running."""
+def next_fire_time(expression: str | None, now: datetime | None = None, tz: tzinfo = timezone.utc) -> datetime | None:
+    """When a schedule would next fire, whether or not the scheduler is running. Returned in UTC."""
     if not expression:
         return None
     now = now or datetime.now(timezone.utc)
-    return parse_cron(expression).get_next_fire_time(None, now)
+    fire = parse_cron(expression, tz).get_next_fire_time(None, now)
+    return fire.astimezone(timezone.utc) if fire else None
+
+
+def agent_timezone(db) -> tzinfo:
+    """Agent schedules run on the restaurant's clock once setup has set one."""
+    from app.restaurant.profile import restaurant_timezone
+
+    return restaurant_timezone(db)
 
 
 def _agent_job_id(key: str) -> str:
     return f"agent:{key}"
 
 
-def run_scheduled_agent(agent_key: str, db=None) -> str | None:
+def run_scheduled_agent(agent_key: str, db=None, task: str | None = None) -> str | None:
     """Queue one scheduled run. Returns the run id, or None if skipped.
+
+    `task` is what the run is asked to do; by default, a note of the schedule
+    that fired, which leaves the agent to its standing instructions.
 
     Skips when the agent already has a run queued or in flight: a slow model
     on a frequent schedule would otherwise pile up runs faster than it
@@ -82,7 +100,8 @@ def run_scheduled_agent(agent_key: str, db=None) -> str | None:
 
         with actor_context(SYSTEM_ACTOR):
             run = crud.create_run(
-                db, defn.id, trigger_type="scheduled", input=f"Scheduled run ({defn.schedule_cron} UTC)."
+                db, defn.id, trigger_type="scheduled",
+                input=task or f"Scheduled run ({defn.schedule_cron}, {getattr(agent_timezone(db), 'key', 'UTC')}).",
             )
         executor.submit(run.id)
         return run.id
@@ -144,6 +163,8 @@ def sync_agent_schedules() -> None:
 
     db = SessionLocal()
     try:
+        tz = agent_timezone(db)
+        stock_check = stock_check_cron(db)
         wanted = {
             _agent_job_id(d.key): d
             for d in db.query(AgentDefinition).all()
@@ -158,7 +179,7 @@ def sync_agent_schedules() -> None:
 
     for job_id, defn in wanted.items():
         try:
-            trigger = parse_cron(defn.schedule_cron)
+            trigger = parse_cron(defn.schedule_cron, tz)
         except InvalidSchedule:
             logger.warning("ignoring invalid schedule on %s: %r", defn.key, defn.schedule_cron)
             continue
@@ -172,6 +193,32 @@ def sync_agent_schedules() -> None:
             max_instances=1,
             misfire_grace_time=300,
         )
+
+    # The owner's daily stock check: the same agent, asked a set question.
+    if stock_check:
+        _scheduler.add_job(
+            run_stock_check, parse_cron(stock_check, tz), id=STOCK_CHECK_JOB, replace_existing=True,
+            coalesce=True, max_instances=1, misfire_grace_time=300,
+        )
+    elif _scheduler.get_job(STOCK_CHECK_JOB):
+        _scheduler.remove_job(STOCK_CHECK_JOB)
+
+
+def run_stock_check(db=None) -> str | None:
+    from app.agents.definitions import AGENT_KEY
+
+    return run_scheduled_agent(AGENT_KEY, db, task=STOCK_CHECK_TASK)
+
+
+def stock_check_cron(db) -> str | None:
+    """The daily stock check from Restaurant Settings, as cron; None when it's off."""
+    from app.restaurant.profile import inventory_settings
+
+    prefs = inventory_settings(db)
+    if prefs is None or not prefs.daily_stock_check:
+        return None
+    hour, minute = prefs.daily_stock_check.split(":")
+    return f"{int(minute)} {int(hour)} * * *"
 
 
 def _reset_demo() -> None:

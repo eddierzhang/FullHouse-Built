@@ -8,14 +8,21 @@ from app.audit import crud, schemas
 from app.audit.context import note_context
 from app.audit.models import ChangeLog
 from app.audit.revert import RevertConflict, RevertError, revert_change
+from app.auth.deps import current_user
+from app.auth.models import User
 from app.db.session import get_db
 
 router = APIRouter(prefix="/api/v1/changes", tags=["changes"])
 
 
+def _visibility(user: User):
+    return crud.visible_to(user.restaurant_id, user.is_manager)
+
+
 @router.get("", response_model=schemas.ChangePage)
 def list_changes(
     db: Session = Depends(get_db),
+    user: User = Depends(current_user),
     entity_type: str | None = None,
     entity_id: str | None = None,
     operation: str | None = Query(default=None, pattern="^(insert|update|delete)$"),
@@ -46,35 +53,47 @@ def list_changes(
         until=until,
         limit=limit,
         offset=offset,
+        visibility=_visibility(user),
     )
     return schemas.ChangePage(total=total, limit=limit, offset=offset, items=rows)
 
 
 @router.get("/entity/{entity_type}/{entity_id}", response_model=list[schemas.ChangeOut])
-def entity_history(entity_type: str, entity_id: str, db: Session = Depends(get_db)):
+def entity_history(
+    entity_type: str, entity_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)
+):
     """One entity's full timeline, oldest first."""
-    return crud.entity_history(db, entity_type, entity_id)
+    return crud.entity_history(db, entity_type, entity_id, visibility=_visibility(user))
 
 
 @router.get("/{change_id}", response_model=schemas.ChangeOut)
-def get_change(change_id: int, db: Session = Depends(get_db)):
-    change = crud.get_change(db, change_id)
+def get_change(change_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    change = crud.get_change(db, change_id, visibility=_visibility(user))
     if change is None:
         raise HTTPException(404, "Change not found")
     return change
 
 
 @router.post("/{change_id}/revert", response_model=schemas.RevertOut)
-def revert(change_id: int, payload: schemas.RevertRequest | None = None, db: Session = Depends(get_db)):
+def revert(
+    change_id: int,
+    payload: schemas.RevertRequest | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
     """Undo a recorded change.
 
     The undo is itself a change: it replays through the same listener and
     lands in the log alongside the original. History is never rewritten.
     """
     payload = payload or schemas.RevertRequest()
-    change = crud.get_change(db, change_id)
+    change = crud.get_change(db, change_id, visibility=_visibility(user))
     if change is None:
         raise HTTPException(404, "Change not found")
+    if change.entity_type == crud.RESTAURANTS:
+        # A revert would skip the owner/admin check, the profile's validation,
+        # the "updated by" stamp and the agents' schedule resync.
+        raise HTTPException(422, "Restaurant details can't be undone from history. Edit them on the Profile page.")
 
     note = payload.note or f"Revert of change {change_id}"
     high_water = db.query(ChangeLog.id).order_by(ChangeLog.id.desc()).limit(1).scalar() or 0

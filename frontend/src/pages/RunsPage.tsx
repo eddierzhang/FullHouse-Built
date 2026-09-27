@@ -54,7 +54,7 @@ export function RunsPage({ app }: { app: AppContext }) {
     setStreaming(true)
     getRun(selectedId).then(setSelected).catch(() => {})
 
-    const source = new EventSource(runStreamUrl(selectedId))
+    const source = new EventSource(runStreamUrl(selectedId), { withCredentials: true })
     source.onmessage = (message) => {
       const event: RunEvent = JSON.parse(message.data)
       if (event.type === TERMINAL) {

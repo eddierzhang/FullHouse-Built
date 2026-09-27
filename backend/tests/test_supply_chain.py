@@ -1,6 +1,7 @@
 """Supplier exposure, and editing the things it is computed from."""
 
 from app.restaurant.models import InventoryItem, Supplier
+from conftest import TEST_USER_EMAIL
 
 
 def _supplier(db, name="Sysco", lead=2):
@@ -167,13 +168,12 @@ def test_stock_adjustment_is_recorded_with_both_values(client, db, changes):
     client.patch(
         f"/api/v1/restaurant/inventory-items/{item.id}",
         json={"quantity_on_hand": 8.0},
-        headers={"X-Actor-Id": "eddie"},
     )
 
     update = changes(entity_type="inventory_items", operation="update")[-1]
     assert update.before == {"quantity_on_hand": 50.0}
     assert update.after == {"quantity_on_hand": 8.0}
-    assert update.actor_id == "eddie"
+    assert update.actor_id == TEST_USER_EMAIL
 
 
 def test_negative_stock_is_rejected(client, db):

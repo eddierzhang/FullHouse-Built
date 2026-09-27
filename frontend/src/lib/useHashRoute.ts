@@ -10,6 +10,7 @@ export const ROUTES = [
   'menu',
   'staff',
   'profit',
+  'profile',
 ] as const
 
 export type Route = (typeof ROUTES)[number]
@@ -20,6 +21,7 @@ const ALIASES: Record<string, Route> = {
   supply: 'suppliers',
   marketing: 'menu',
   employees: 'staff',
+  settings: 'profile',
 }
 
 function readRoute(): Route {

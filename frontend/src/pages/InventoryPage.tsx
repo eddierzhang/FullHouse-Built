@@ -79,7 +79,9 @@ export function InventoryPage({ app }: { app: AppContext }) {
           <div className={`card stat${chain?.at_risk_count ? ' attention' : ''}`}>
             <div className="stat-label">Runs out before resupply</div>
             <div className="stat-value">{chain ? chain.at_risk_count : '—'}</div>
-            <div className="stat-meta">cover shorter than lead time</div>
+            <div className="stat-meta">
+              cover shorter than lead time{chain?.safety_days ? ` + ${chain.safety_days}d safety stock` : ''}
+            </div>
           </div>
         </section>
 

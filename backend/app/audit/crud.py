@@ -1,13 +1,31 @@
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.audit.models import ChangeLog
 
 
-def get_change(db: Session, change_id: int) -> ChangeLog | None:
-    return db.get(ChangeLog, change_id)
+#: Changes to the restaurant profile: shown only to its owners and admins.
+RESTAURANTS = "restaurants"
+
+
+def visible_to(restaurant_id: str | None, is_manager: bool):
+    """Filter hiding restaurant-profile changes a user may not see.
+
+    Owners and admins see their own restaurant's; nobody sees another's,
+    and members see none -- the history names who made each edit.
+    """
+    if is_manager and restaurant_id:
+        return or_(ChangeLog.entity_type != RESTAURANTS, ChangeLog.entity_id == restaurant_id)
+    return ChangeLog.entity_type != RESTAURANTS
+
+
+def get_change(db: Session, change_id: int, visibility=None) -> ChangeLog | None:
+    query = select(ChangeLog).where(ChangeLog.id == change_id)
+    if visibility is not None:
+        query = query.where(visibility)
+    return db.scalars(query).first()
 
 
 def query_changes(
@@ -24,9 +42,10 @@ def query_changes(
     until: datetime | None = None,
     limit: int = 50,
     offset: int = 0,
+    visibility=None,
 ) -> tuple[int, list[ChangeLog]]:
     """Filtered page of changes, newest first, plus the unpaginated total."""
-    filters = []
+    filters = [] if visibility is None else [visibility]
     if entity_type:
         filters.append(ChangeLog.entity_type == entity_type)
     if entity_id:
@@ -61,12 +80,9 @@ def query_changes(
     return total, rows
 
 
-def entity_history(db: Session, entity_type: str, entity_id: str) -> list[ChangeLog]:
+def entity_history(db: Session, entity_type: str, entity_id: str, visibility=None) -> list[ChangeLog]:
     """Full timeline for one entity, oldest first."""
-    return list(
-        db.scalars(
-            select(ChangeLog)
-            .where(ChangeLog.entity_type == entity_type, ChangeLog.entity_id == entity_id)
-            .order_by(ChangeLog.id)
-        )
-    )
+    query = select(ChangeLog).where(ChangeLog.entity_type == entity_type, ChangeLog.entity_id == entity_id)
+    if visibility is not None:
+        query = query.where(visibility)
+    return list(db.scalars(query.order_by(ChangeLog.id)))

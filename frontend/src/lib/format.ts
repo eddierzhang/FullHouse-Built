@@ -41,8 +41,11 @@ export function duration(startIso: string | null, endIso: string | null): string
 
 export const timeHm = (value: string) => value.slice(0, 5)
 
-export function greeting(date = new Date()): string {
-  const hour = date.getHours()
+/** By the hour on `timeZone`'s clock (the restaurant's), or the browser's when unset. */
+export function greeting(date = new Date(), timeZone?: string): string {
+  const hour = timeZone
+    ? Number(new Intl.DateTimeFormat('en-US', { timeZone, hour: '2-digit', hourCycle: 'h23' }).format(date))
+    : date.getHours()
   return hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
 }
 
@@ -61,16 +64,28 @@ export const titleCase = (value: string) => value.replace(/_/g, ' ').replace(/\b
 /** Shared comparator, so every name-sorted list orders the same way. */
 export const byName = <T extends { name: string }>(a: T, b: T) => a.name.localeCompare(b.name)
 
-/** Common schedules, so most people never write cron by hand. Schedules run in UTC. */
+/** Common schedules, so most people never write cron by hand. Times are the restaurant's local time. */
 export const SCHEDULE_PRESETS: { label: string; cron: string | null }[] = [
   { label: 'Not scheduled', cron: null },
   { label: 'Every hour', cron: '0 * * * *' },
-  { label: 'Daily at 09:00 UTC', cron: '0 9 * * *' },
-  { label: 'Weekdays at 09:00 UTC', cron: '0 9 * * 1-5' },
-  { label: 'Mondays at 08:00 UTC', cron: '0 8 * * 1' },
+  { label: 'Daily at 09:00', cron: '0 9 * * *' },
+  { label: 'Weekdays at 09:00', cron: '0 9 * * 1-5' },
+  { label: 'Mondays at 08:00', cron: '0 8 * * 1' },
 ]
+
+const CRON_DAYS: Record<string, string> = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' }
 
 export function scheduleLabel(cron: string | null): string {
   if (!cron) return 'Not scheduled'
-  return SCHEDULE_PRESETS.find((p) => p.cron === cron)?.label ?? `Custom: ${cron} (UTC)`
+  const preset = SCHEDULE_PRESETS.find((p) => p.cron === cron)
+  if (preset) return preset.label
+  // "M H * * days" -- what setup writes -- reads as a sentence.
+  const simple = /^(\d{1,2}) (\d{1,2}) \* \* (\*|[a-z,]+)$/.exec(cron.trim())
+  if (simple) {
+    const at = `${simple[2].padStart(2, '0')}:${simple[1].padStart(2, '0')}`
+    const days = simple[3].split(',')
+    if (simple[3] === '*' || days.length === 7) return `Daily at ${at}`
+    if (days.every((d) => d in CRON_DAYS)) return `${days.map((d) => CRON_DAYS[d]).join(', ')} at ${at}`
+  }
+  return `Custom: ${cron}`
 }

@@ -3,17 +3,13 @@
 End-to-end tests need an agent run to stream real events -- tool calls,
 results, a summary -- but CI has no GPU, no Ollama, and should not spend
 API credits. This provider exercises the whole pipeline (tools really run,
-events really persist and stream) with a fixed, model-free script.
+events really persist and stream) with a fixed, model-free script:
 
-A specialist:
-
-1. logs what it is about to do;
-2. calls its first tool that needs no arguments, if it has one;
-3. finishes with a one-line summary of what the tool returned.
-
-Maestro, whose only tools are delegations, instead hands the task to the
-specialists whose domain the task mentions -- all of them if it mentions
-none -- in parallel, exactly as a real model's parallel tool calls would.
+1. log what it is about to do;
+2. pick the areas of the restaurant the task mentions -- all of them if
+   it mentions none -- and in each, call the first tool that needs no
+   arguments;
+3. finish with a one-line finding per area.
 
 It makes no decisions, so it never proposes anything -- the approval flow
 is exercised with seeded proposals instead. Selected with LLM_PROVIDER=scripted.
@@ -31,20 +27,16 @@ from app.agents.providers.base import (
     LLMProvider,
     ProviderResult,
     RunCancelledError,
-    is_parallel_safe,
-    run_tool_calls,
 )
 from app.config import settings
 
-DELEGATE_PREFIX = "delegate_to_"
-
-#: Words that route a task to a specialist, keyed by agent key.
+#: Words that route a task to an area of the restaurant (see registry.TOOL_AREAS).
 ROUTING = {
     "inventory": ("stock", "inventory", "ingredient", "low", "reorder"),
-    "supply_chain": ("supplier", "supply", "purchase", "delivery", "lead time"),
-    "employee_management": ("staff", "shift", "schedule", "rota", "employee", "team", "cover"),
+    "suppliers": ("supplier", "supply", "purchase", "delivery", "lead time"),
+    "staff": ("staff", "shift", "schedule", "rota", "employee", "team", "cover"),
+    "menu": ("menu", "promotion", "promo", "dish", "marketing", "seller", "price"),
     "profit": ("profit", "margin", "revenue", "sales", "money", "cost", "forecast"),
-    "marketing": ("menu", "promotion", "promo", "dish", "marketing", "seller", "price"),
 }
 
 
@@ -78,14 +70,10 @@ def _needs_no_arguments(tool: Any) -> bool:
     return not (tool.input_schema or {}).get("required")
 
 
-def _is_delegation(tool: Any) -> bool:
-    return tool.name.startswith(DELEGATE_PREFIX) and is_parallel_safe(tool)
-
-
 def route(task: str, available: Sequence[str]) -> list[str]:
-    """The agent keys a task is about, in the order they were offered."""
+    """The areas a task is about, in the order they were offered."""
     text = task.lower()
-    chosen = [key for key in available if any(word in text for word in ROUTING.get(key, ()))]
+    chosen = [area for area in available if any(word in text for word in ROUTING.get(area, ()))]
     return chosen or list(available)
 
 
@@ -116,34 +104,31 @@ class ScriptedProvider(LLMProvider):
     ) -> ProviderResult:
         emit("log", {"text": f"Scripted run: {user_message}"})
 
-        if tools and all(_is_delegation(t) for t in tools):
-            return self._delegate(tools, user_message, emit, should_cancel)
+        # One argument-free tool per area; untagged tools count as one area.
+        first_by_area: dict[str, Any] = {}
+        for tool in tools:
+            if _needs_no_arguments(tool):
+                first_by_area.setdefault(getattr(tool, "area", "general"), tool)
+        if not first_by_area:
+            return ProviderResult(text="Scripted run finished; there is no argument-free tool to call.")
 
-        tool = next((t for t in tools if _needs_no_arguments(t)), None)
-        if tool is None:
-            return ProviderResult(text="Scripted run finished; this agent has no argument-free tool.")
+        areas = route(user_message, list(first_by_area))
+        emit("log", {"text": f"Looking at {', '.join(areas)}."})
 
-        self._pause(should_cancel)
-        emit("tool_call", {"tool": tool.name, "input": {}})
-        result = tool.call({})
-        if inspect.isawaitable(result):  # defensive: all current tools are sync
-            raise TypeError(f"{tool.name} returned an awaitable")
-        result = str(result)
-        self._pause(should_cancel)
-        emit("tool_result", {"tool": tool.name, "result": result[:2000]})
-
-        return ProviderResult(text=f"Checked {tool.name.replace('_', ' ')}: {describe(result)}.", tokens_used=0)
-
-    def _delegate(self, tools, user_message, emit, should_cancel) -> ProviderResult:
-        tools_by_name = {t.name: t for t in tools}
-        keys = route(user_message, [t.name.removeprefix(DELEGATE_PREFIX) for t in tools])
-        emit("log", {"text": f"Handing this to {len(keys)} specialist(s) at once: {', '.join(keys)}."})
-        self._pause(should_cancel)
-
-        requested = [(DELEGATE_PREFIX + key, {"task": user_message}) for key in keys]
         findings = []
-        for name, result in run_tool_calls(requested, tools_by_name, emit, max_parallel=len(requested)):
-            emit("tool_result", {"tool": name, "result": result[:2000]})
-            findings.append(f"- {name.removeprefix(DELEGATE_PREFIX).replace('_', ' ')}: {describe(result, 240)}")
+        for area in areas:
+            tool = first_by_area[area]
+            self._pause(should_cancel)
+            emit("tool_call", {"tool": tool.name, "input": {}})
+            result = tool.call({})
+            if inspect.isawaitable(result):  # defensive: all current tools are sync
+                raise TypeError(f"{tool.name} returned an awaitable")
+            result = str(result)
+            emit("tool_result", {"tool": tool.name, "result": result[:2000]})
+            findings.append((area, tool.name, result))
 
-        return ProviderResult(text="Findings from the team:\n" + "\n".join(findings), tokens_used=0)
+        if len(findings) == 1:
+            _, name, result = findings[0]
+            return ProviderResult(text=f"Checked {name.replace('_', ' ')}: {describe(result)}.", tokens_used=0)
+        lines = [f"- {area}: {describe(result, 240)}" for area, _, result in findings]
+        return ProviderResult(text="What I found:\n" + "\n".join(lines), tokens_used=0)

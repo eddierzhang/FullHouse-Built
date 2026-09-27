@@ -44,6 +44,54 @@ Don't point a demo at data you care about.
 
 ---
 
+## A restaurant's own instance (free, real agents)
+
+This is one private FullHouse per restaurant, with no local model. Each gets its own Render service and its own
+database, so restaurants never see each other's data. The agents run on Google Gemini's free API tier through
+`LLM_PROVIDER=openai`. Everything below is free as of September 2026.
+
+| Piece | Free service | Free limits that matter |
+|---|---|---|
+| The app | Render free web service | 512 MB; sleeps after 15 idle minutes; 750 running hours a month per Render workspace, shared by all its services |
+| The database | [Neon](https://neon.com) Postgres | 100 projects, 0.5 GB each: one project per restaurant |
+| The model | [Gemini API](https://aistudio.google.com/apikey) | a few requests a minute and a daily cap, per Google account — check the [rate limit page](https://aistudio.google.com/rate-limit) |
+
+### Setting one up (about 10 minutes)
+
+1. **Database.** Sign in at [neon.com](https://neon.com), **New project**, name it after the restaurant. Copy the
+   connection string (`postgresql://...`). The app migrates it on first start.
+2. **Model key.** At [aistudio.google.com/apikey](https://aistudio.google.com/apikey), **Create API key**.
+3. **App.** At [render.com](https://render.com): **New → Blueprint**, pick this repository, and set **Blueprint
+   Path** to `render.customer.yaml`. Rename the service (e.g. `fullhouse-joes`). Paste the Neon string into
+   `DATABASE_URL` and the key into `LLM_API_KEY`. Apply. The first build takes a few minutes.
+4. **Hand-over.** Open the service URL and have the restaurant owner **sign up before anyone else**. Every account
+   created before setup is finished is an owner. The owner then goes through setup and invites the team.
+5. **Close signups.** Once the team is in, set `ALLOW_SIGNUP=false` in the service's **Environment** tab. Saving
+   it redeploys the service.
+
+Repeat for each restaurant. Every push to `main` redeploys all of them, and migrations run automatically.
+
+To use a different model, change `LLM_MODEL` (anything from Gemini's
+[model list](https://ai.google.dev/gemini-api/docs/models)). To use another provider, point `LLM_BASE_URL`,
+`LLM_API_KEY` and `LLM_MODEL` at any OpenAI-compatible API: Groq (`https://api.groq.com/openai/v1`, also free),
+OpenRouter, or a paid one.
+
+### What "free" costs you
+
+- **Sleep.** After 15 idle minutes the first visit takes about a minute to wake the service. A run in progress
+  when it sleeps is marked failed. **Scheduled agents only fire while it's awake.** Keeping it awake with an
+  uptime pinger (e.g. UptimeRobot on `/health` every 10 minutes) uses about 720 of the workspace's 750 hours, so
+  that works for **one** restaurant per Render workspace. For more, use Render's Starter plan (about $7/month
+  each), which never sleeps.
+- **Rate limits.** Free Gemini keys allow only a few requests a minute. The app waits out a 429 up to four
+  times before failing the run with a message saying so. Give each restaurant **its own key from its own
+  Google account**, so one busy restaurant can't use up another's quota, and so the usage is on their account,
+  not yours.
+- **Privacy.** On Gemini's free tier, Google may use prompts to improve its products; the paid tier doesn't.
+  Agents send stock, menu, staff and sales data. Tell the restaurant, or use a paid key for them.
+
+---
+
 
 ## Local, with Docker and a local model
 
@@ -128,17 +176,28 @@ One free ARM VM runs the entire compose stack, model included.
 
 ### Before you share the link: lock it down
 
-The app has no login. Anyone who finds the URL can approve proposals, delete staff, change
-prices and revert history. Pick one before sharing it:
+Every page and API route needs a signed-in account, but the login page lets anyone create
+one, and every account can approve proposals, delete staff, change prices and revert history.
+Once your team has signed up, close the door behind them by setting this in `backend/.env`
+(or the host's environment) and restarting:
+
+```
+ALLOW_SIGNUP=false
+```
+
+Sign-in cookies are marked secure automatically when the site is served over HTTPS. Serve it
+over HTTPS whenever it's reachable from the internet; on plain HTTP a password crosses the
+network readable. For a second layer, or to hide the login page itself:
 
 - **Cloudflare Tunnel + Cloudflare Access (free)** — the best fit. The tunnel gives you an
   HTTPS URL without opening port 80 at all, and Access puts an email login in front of it.
 - **nginx basic auth** — one password for everyone, a few lines in `frontend/nginx.conf`.
 - **Restrict port 80 to your own IP** in the Oracle security list, if only you need it.
 
-### Route 2: free platforms, on the scripted provider
+### Route 2: free platforms, on a hosted model
 
-Useful for showing the app, but agent runs won't reach a model for free:
+No free platform can run Ollama, but agents can still run on a real model for free through a hosted API. The
+full recipe is [A restaurant's own instance](#a-restaurants-own-instance-free-real-agents) above. The pieces:
 
 - **The whole thing, one container:** Render's free web service — 512 MB, spins down after 15
   idle minutes. Spinning down kills any run in flight; the backend marks those runs failed on
@@ -146,8 +205,8 @@ Useful for showing the app, but agent runs won't reach a model for free:
 - **Frontend alone:** Cloudflare Pages, Netlify or Vercel, all permanently free. Build with
   `VITE_API_BASE` set to the backend's URL, and set `FRONTEND_ORIGIN` on the backend to the
   frontend's URL for CORS.
-- **No model:** there is no free host for Ollama at this size. Agents would need
-  `LLM_PROVIDER=anthropic` and a paid API key.
+- **Model:** there is no free host for Ollama at this size. Use `LLM_PROVIDER=openai` with a free
+  Gemini (or Groq) key, or `LLM_PROVIDER=anthropic` with a paid key.
 - **Database:** Render's free disk is wiped on every deploy, so SQLite won't persist, and
   Render's free Postgres is deleted after 30 days. Neon's free tier (0.5 GB) is permanent, and
   Postgres is supported: point `DATABASE_URL` at it (CI runs the whole suite on Postgres 16).
@@ -155,7 +214,7 @@ Useful for showing the app, but agent runs won't reach a model for free:
 ### Route 3: a free VM on one of the big clouds
 
 Both of these run the compose stack the way the Oracle route does, and neither has the RAM for
-a local model — use `LLM_PROVIDER=scripted`, or `anthropic` with a key.
+a local model — use `LLM_PROVIDER=openai` with a free Gemini key, or `anthropic` with a paid one.
 
 **Google Compute Engine** keeps a genuinely permanent free e2-micro in `us-west1`, `us-central1`
 or `us-east1`, with 30 GB of disk. Its 1 GB of RAM holds the single-container image comfortably

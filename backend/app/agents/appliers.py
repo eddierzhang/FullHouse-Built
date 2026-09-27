@@ -91,12 +91,20 @@ def apply_shift_change(db: Session, payload: dict) -> str:
     if end_time <= start_time:
         raise ApplyError(f"Shift ends ({end_time}) at or before it starts ({start_time})")
 
+    from app.restaurant import profile
+
+    role = payload.get("role") or staff.role
+    if problem := profile.role_problem(db, role):
+        raise ApplyError(problem)
+    if problems := profile.shift_problems(db, staff_id, shift_date, start_time, end_time):
+        raise ApplyError(f"This shift breaks the restaurant's scheduling rules: {' '.join(problems)}")
+
     shift = Shift(
         staff_id=staff_id,
         date=shift_date,
         start_time=start_time,
         end_time=end_time,
-        role=payload.get("role") or staff.role,
+        role=role,
     )
     db.add(shift)
     return f"Shift scheduled: {staff.name} on {shift_date} {start_time}-{end_time} as {shift.role}"

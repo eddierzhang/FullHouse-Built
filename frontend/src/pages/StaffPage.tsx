@@ -5,6 +5,32 @@ import { Icon } from '../components/Icon'
 import { byName, initials, longDate, timeHm } from '../lib/format'
 
 const BLANK_PERSON = { name: '', role: '', email: '' }
+
+/**
+ * The roles set in Restaurant Settings, as a dropdown; free text only when
+ * none are set. A role no longer on the list stays selectable on the person
+ * who already has it, so editing their name doesn't force a role change.
+ */
+function RoleInput({ roles, value, onChange, small }: { roles: string[] | null; value: string; onChange: (role: string) => void; small?: boolean }) {
+  if (!roles?.length) {
+    return (
+      <input className={`input${small ? ' input-sm' : ''}`} aria-label="Role" placeholder="e.g. Server" value={value} onChange={(e) => onChange(e.target.value)} />
+    )
+  }
+  const options = value && !roles.includes(value) ? [value, ...roles] : roles
+  return (
+    <select className={`select${small ? ' input-sm' : ''}`} aria-label="Role" value={value} onChange={(e) => onChange(e.target.value)}>
+      <option value="" disabled>
+        Choose a role
+      </option>
+      {options.map((role) => (
+        <option key={role} value={role}>
+          {role}
+        </option>
+      ))}
+    </select>
+  )
+}
 const todayIso = () => new Date().toISOString().slice(0, 10)
 
 const hours = (s: Pick<Shift, 'start_time' | 'end_time'>) => {
@@ -124,7 +150,7 @@ export function StaffPage({ app }: { app: AppContext }) {
                   </label>
                   <label className="field">
                     <span className="field-label">Role</span>
-                    <input className="input" placeholder="e.g. Server" value={person.role} onChange={(e) => setPerson({ ...person, role: e.target.value })} />
+                    <RoleInput roles={app.restaurant.staff_roles} value={person.role} onChange={(role) => setPerson({ ...person, role })} />
                   </label>
                 </div>
                 <div className="form-row">
@@ -160,7 +186,9 @@ export function StaffPage({ app }: { app: AppContext }) {
                   return (
                     <li key={p.id} className="list-item" style={{ flexWrap: 'wrap' }}>
                       <input className="input input-sm" aria-label="Name" style={{ flex: '1 1 140px' }} value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} />
-                      <input className="input input-sm" aria-label="Role" style={{ flex: '1 1 100px' }} value={edit.role} onChange={(e) => setEdit({ ...edit, role: e.target.value })} />
+                      <span style={{ flex: '1 1 100px', display: 'flex' }}>
+                        <RoleInput small roles={app.restaurant.staff_roles} value={edit.role} onChange={(role) => setEdit({ ...edit, role })} />
+                      </span>
                       <input className="input input-sm" aria-label="Email" style={{ flex: '1 1 160px' }} value={edit.email} onChange={(e) => setEdit({ ...edit, email: e.target.value })} />
                       <button className="btn btn-ghost btn-sm" onClick={() => setEditingId(null)}>
                         Cancel

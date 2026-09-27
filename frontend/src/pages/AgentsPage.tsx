@@ -40,7 +40,6 @@ function AgentRow({ agent, app }: { agent: AgentDefinition; app: AppContext }) {
       <div className="list-item-main" style={{ minWidth: 220 }}>
         <div className="row wrap">
           <span className="strong">{agent.name}</span>
-          {agent.role === 'boss' && <span className="badge badge-brand">Orchestrator</span>}
           {!agent.enabled && <span className="badge badge-warning">Paused</span>}
           {pending > 0 && <span className="badge badge-danger">{pending} to review</span>}
         </div>
@@ -48,9 +47,8 @@ function AgentRow({ agent, app }: { agent: AgentDefinition; app: AppContext }) {
           {agent.description}
         </div>
         <div className="faint small" style={{ marginTop: 6 }}>
-          {agent.role === 'boss'
-            ? `Delegates to ${agent.tool_allowlist.length} specialists`
-            : `Model: ${app.runtime?.model ?? agent.model}`}
+          {agent.tool_allowlist.length ? `Covers ${agent.tool_allowlist.join(', ')}` : 'Covers inventory, suppliers, staff, the menu and profit'} ·
+          Model: {app.runtime?.model ?? agent.model}
         </div>
       </div>
 
@@ -86,6 +84,10 @@ function AgentRow({ agent, app }: { agent: AgentDefinition; app: AppContext }) {
           </div>
         )}
 
+        {mode === CUSTOM && agent.schedule_cron && !scheduleLabel(agent.schedule_cron).startsWith('Custom') && (
+          <div className="small">{scheduleLabel(agent.schedule_cron)}</div>
+        )}
+
         <div className="muted small">
           {!agent.enabled ? (
             'Paused — scheduled runs are skipped.'
@@ -116,16 +118,17 @@ function AgentRow({ agent, app }: { agent: AgentDefinition; app: AppContext }) {
 }
 
 export function AgentsPage({ app }: { app: AppContext }) {
-  const scheduled = app.agents.filter((a) => a.enabled && a.schedule_cron).length
+  const stockCheck = app.restaurant.inventory_settings?.daily_stock_check ?? null
 
   return (
     <main className="page">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Agents & schedules</h1>
+          <h1 className="page-title">Maestro</h1>
           <p className="page-subtitle">
-            {app.agents.length} agents · {scheduled} on a schedule. Schedules run in UTC, and a scheduled run is skipped if
-            the previous one is still going.
+            One agent runs the whole restaurant — stock, suppliers, staff, the menu and the numbers — and proposes changes
+            for you to approve. Schedules run on {(app.runtime?.schedule_timezone ?? 'UTC').replace(/_/g, ' ')} time, and a
+            scheduled run is skipped if the previous one is still going.
           </p>
         </div>
       </div>
@@ -148,6 +151,19 @@ export function AgentsPage({ app }: { app: AppContext }) {
             <AgentRow key={`${agent.id}-${agent.schedule_cron}-${agent.enabled}`} agent={agent} app={app} />
           ))}
         </ul>
+        <div className="card-footer stock-check-note">
+          <Icon name="clock" size={14} />
+          {stockCheck ? (
+            <span>
+              Also checks stock every day at <span className="strong">{stockCheck}</span>, as set in{' '}
+              <a href="#profile/rules">Profile → Operating rules</a>.
+            </span>
+          ) : (
+            <span>
+              No daily stock check. Set a time under <a href="#profile/rules">Profile → Operating rules</a> to add one.
+            </span>
+          )}
+        </div>
       </section>
     </main>
   )

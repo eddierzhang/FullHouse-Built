@@ -23,8 +23,10 @@ from datetime import date, datetime, time, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
-from app.agents.definitions import BOSS_DEF, SUBAGENT_DEFS
+from app.agents.definitions import AGENT_DEF
 from app.agents.models import AgentAction, AgentDefinition, AgentEvent, AgentRun
+from app.auth.models import User
+from app.auth.security import hash_password
 from app.db.session import Base
 from app.restaurant.models import (
     InventoryItem,
@@ -32,12 +34,44 @@ from app.restaurant.models import (
     Order,
     OrderItem,
     RecipeItem,
+    Restaurant,
     Shift,
     Staff,
     Supplier,
 )
 
 logger = logging.getLogger(__name__)
+
+#: The account the demo's login page offers. Public on purpose: the demo
+#: holds nothing but the sample restaurant, and resets daily.
+DEMO_EMAIL = "demo@fullhouse.app"
+DEMO_PASSWORD = "demo-bistro"
+DEMO_NAME = "Demo Manager"
+
+#: The demo restaurant's profile, as if its owner had finished setup.
+DEMO_PROFILE = dict(
+    name="Bistro Fiore",
+    street="214 Mulberry Street",
+    city="New York",
+    region="NY",
+    postal_code="10012",
+    country="United States",
+    phone="+1 212 555 0148",
+    email="hello@bistrofiore.example.com",
+    website="https://bistrofiore.example.com",
+    timezone="America/New_York",
+    opening_hours={
+        **{day: {"closed": False, "open": "11:30", "close": "22:00"} for day in ("mon", "tue", "wed", "thu")},
+        "fri": {"closed": False, "open": "11:30", "close": "23:00"},
+        "sat": {"closed": False, "open": "11:30", "close": "23:00"},
+        "sun": {"closed": False, "open": "12:00", "close": "21:00"},
+    },
+    inventory_settings={"safety_days": 1, "default_lead_time_days": 2, "daily_stock_check": "08:00"},
+    staff_roles=["Head Chef", "Line Cook", "Server", "Host", "Bartender"],
+    # The head chef works every night, so the weekly cap has room for her.
+    scheduling_rules={"max_shift_hours": 10, "min_rest_hours": 10, "max_weekly_hours": 60, "min_staff_per_open_day": 3},
+    completed_steps=["details", "hours", "inventory", "staff", "scheduling"],
+)
 
 HISTORY_DAYS = 42
 #: Same restaurant on every reset; only the dates move.
@@ -129,16 +163,15 @@ def reset_demo_data(db: Session, now: datetime | None = None) -> dict:
 
     wipe(db)
 
-    agents = {}
-    agent_rows = []
-    for d in SUBAGENT_DEFS:
-        agents[d["key"]] = _id()
-        agent_rows.append(dict(id=agents[d["key"]], role="subagent", model="claude-opus-5", enabled=True,
-                               created_at=now, schedule_cron=None, **d))
-    agents[BOSS_DEF["key"]] = _id()
-    agent_rows.append(dict(id=agents[BOSS_DEF["key"]], role="boss", model="claude-opus-5", enabled=True,
-                           created_at=now, schedule_cron="0 9 * * *", **BOSS_DEF))
-    _insert(db, AgentDefinition, agent_rows)
+    # Accounts go too -- anyone who signed up signs up again after a reset.
+    restaurant_id = _id()
+    _insert(db, Restaurant, [dict(id=restaurant_id, setup_completed_at=now, created_at=now, **DEMO_PROFILE)])
+    _insert(db, User, [dict(id=_id(), email=DEMO_EMAIL, name=DEMO_NAME, role="owner", restaurant_id=restaurant_id,
+                            password_hash=hash_password(DEMO_PASSWORD), created_at=now)])
+
+    agent_id = _id()
+    _insert(db, AgentDefinition, [dict(id=agent_id, role="main", model="claude-opus-5", enabled=True,
+                                       created_at=now, schedule_cron="0 9 * * *", **AGENT_DEF)])
 
     suppliers = {name: _id() for name, _, _ in SUPPLIERS}
     _insert(db, Supplier, [
@@ -177,7 +210,7 @@ def reset_demo_data(db: Session, now: datetime | None = None) -> dict:
     _insert(db, Order, orders)
     _insert(db, OrderItem, lines)
 
-    proposals = _proposals(db, now, today, agents, suppliers, inventory, menu, staff)
+    proposals = _proposals(db, now, today, agent_id, suppliers, inventory, menu, staff)
 
     db.commit()
     counts = {"orders": len(orders), "order_items": len(lines), "proposals": proposals}
@@ -239,7 +272,7 @@ def _orders(rng: random.Random, now: datetime, menu: dict) -> tuple[list[dict], 
     return orders, lines
 
 
-def _proposals(db, now, today, agents, suppliers, inventory, menu, staff) -> int:
+def _proposals(db, now, today, agent_id, suppliers, inventory, menu, staff) -> int:
     """Finished runs that each left a proposal waiting for a decision."""
     friday = today + timedelta(days=(4 - today.weekday()) % 7 or 7)
     planted = [
@@ -272,13 +305,14 @@ def _proposals(db, now, today, agents, suppliers, inventory, menu, staff) -> int
           "note": "Friday is the busiest night and has no host."}),
     ]
 
-    for minutes_ago, (agent_key, task, tool_calls, summary, action_type, payload) in zip(
+    # The first field of each is the area it's about; one agent covers them all.
+    for minutes_ago, (_area, task, tool_calls, summary, action_type, payload) in zip(
         (95, 70, 45, 20), planted
     ):
         started = now - timedelta(minutes=minutes_ago)
         run_id = _id()
         _insert(db, AgentRun, [dict(
-            id=run_id, agent_definition_id=agents[agent_key], status="succeeded", trigger_type="scheduled",
+            id=run_id, agent_definition_id=agent_id, status="succeeded", trigger_type="scheduled",
             input=task, output_summary=summary, tokens_used=None, depth=0,
             started_at=started, finished_at=started + timedelta(seconds=12), created_at=started,
         )])
@@ -291,7 +325,7 @@ def _proposals(db, now, today, agents, suppliers, inventory, menu, staff) -> int
             for seq, (kind, body) in enumerate(events, start=1)
         ])
         _insert(db, AgentAction, [dict(
-            id=_id(), run_id=run_id, agent_definition_id=agents[agent_key], action_type=action_type,
+            id=_id(), run_id=run_id, agent_definition_id=agent_id, action_type=action_type,
             payload=payload, status="pending", created_at=started + timedelta(seconds=10),
         )])
     return len(planted)

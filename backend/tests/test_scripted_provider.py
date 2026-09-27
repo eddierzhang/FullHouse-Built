@@ -37,7 +37,8 @@ def test_it_really_runs_the_first_argument_free_tool():
     )
 
     assert calls == ["list_things"]
-    assert [kind for kind, _ in seen] == ["log", "tool_call", "tool_result"]
+    # What it was asked, which areas it's looking at, then the call itself.
+    assert [kind for kind, _ in seen] == ["log", "log", "tool_call", "tool_result"]
     assert "[1, 2, 3]" in result.text
 
 

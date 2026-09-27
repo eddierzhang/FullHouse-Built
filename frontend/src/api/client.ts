@@ -4,14 +4,54 @@
 const configuredBase = import.meta.env.VITE_API_BASE
 const API_BASE = configuredBase === 'same-origin' ? '' : configuredBase || 'http://localhost:8000'
 
+/** Fired when a data request finds the session gone, so the app can show the login page. */
+export const SIGNED_OUT_EVENT = 'fullhouse:signed-out'
+
+const FIELD_LABELS: Record<string, string> = {
+  mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday',
+  staff_roles: 'Staff roles', region: 'State / region', postal_code: 'Postal code',
+}
+const fieldLabel = (field: string) =>
+  FIELD_LABELS[field] ?? field.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase())
+
+/** FastAPI sends a string, or for invalid input a list of per-field problems. */
+function errorMessage(detail: unknown, fallback: string): string {
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail) && detail.length > 0) {
+    // Name the field each problem is about: ["body", "phone"] -> "Phone: ...".
+    return detail
+      .map((d) => {
+        const message = String(d?.msg ?? d).replace(/^Value error, /, '')
+        const field = [...(Array.isArray(d?.loc) ? d.loc : [])].reverse().find((part) => typeof part === 'string' && part !== 'body')
+        return field ? `${fieldLabel(field)}: ${message}` : message
+      })
+      .join(' ')
+  }
+  return fallback
+}
+
+export class ApiError extends Error {
+  readonly status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.status = status
+  }
+}
+
 async function request(path: string, options: RequestInit = {}): Promise<Response> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
+    // The session cookie, which in local dev goes to a different port.
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json', ...options.headers },
   })
   if (!res.ok) {
+    if (res.status === 401 && !path.startsWith('/api/v1/auth/')) {
+      window.dispatchEvent(new Event(SIGNED_OUT_EVENT))
+    }
     const body = await res.json().catch(() => null)
-    throw new Error(body?.detail ?? `${path} failed: ${res.status}`)
+    throw new ApiError(errorMessage(body?.detail, `${path} failed: ${res.status}`), res.status)
   }
   return res
 }
@@ -31,7 +71,8 @@ export type AgentDefinition = {
   key: string
   name: string
   description: string
-  role: 'boss' | 'subagent'
+  /** 'main' for the one agent; 'boss' | 'subagent' only on definitions from before the merge. */
+  role: string
   model: string
   tool_allowlist: string[]
   schedule_cron: string | null
@@ -48,6 +89,8 @@ export type Runtime = {
   /** A public demo: the data is replaced on a schedule. */
   demo_mode?: boolean
   demo_resets_at?: string | null
+  /** IANA zone agent schedules run in: the restaurant's once set up, else UTC. */
+  schedule_timezone?: string
 }
 
 export type RunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
@@ -129,6 +172,8 @@ export type Supplier = { id: string; name: string; contact_info: string | null; 
 export type SupplierInput = { name: string; contact_info?: string | null; lead_time_days?: number }
 
 export type SupplyChain = {
+  /** Days of stock beyond lead time the owner wants held, from Restaurant Settings. */
+  safety_days?: number
   total_stock_value: number
   supplier_count: number
   item_count: number
@@ -291,3 +336,131 @@ export const fetchProfitSummary = (days = 30) =>
 export const fetchForecast = (days = 7) => get<Forecast>(`/api/v1/restaurant/forecast?days=${days}`)
 
 export const fetchHealth = () => get<{ status: string }>('/health')
+
+// --- auth ----------------------------------------------------------------------
+
+export type Role = 'owner' | 'admin' | 'member'
+
+export const canEditRestaurant = (user: User) => user.role === 'owner' || user.role === 'admin'
+
+export type User = {
+  id: string
+  email: string
+  name: string
+  /** Owners and admins may edit the restaurant; members can only see it. */
+  role: Role
+  /** Null until the owner saves the first setup step. */
+  restaurant_id: string | null
+  created_at: string
+}
+
+export type AuthOptions = {
+  signup_enabled: boolean
+  /** The public demo's shared account; null on real deployments. */
+  demo: { email: string; password: string } | null
+}
+
+export const fetchAuthOptions = () => get<AuthOptions>('/api/v1/auth/options')
+/** Resolves to null when nobody is signed in, rather than throwing. */
+export const fetchCurrentUser = () =>
+  get<User>('/api/v1/auth/me').catch((err: unknown) => {
+    if (err instanceof ApiError && err.status === 401) return null
+    throw err
+  })
+export const login = (email: string, password: string) => send<User>('POST', '/api/v1/auth/login', { email, password })
+export const signup = (name: string, email: string, password: string) =>
+  send<User>('POST', '/api/v1/auth/signup', { name, email, password })
+export const logout = () => sendVoid('POST', '/api/v1/auth/logout')
+
+/** Everyone who can sign in to this restaurant. Owners and admins only. */
+export const listTeam = () => get<User[]>('/api/v1/auth/team')
+/** Owners only; an owner's own role can't be changed. */
+export const setTeamRole = (userId: string, role: Exclude<Role, 'owner'>) =>
+  send<User>('PATCH', `/api/v1/auth/team/${userId}`, { role })
+
+// --- restaurant profile ------------------------------------------------------------
+
+export const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const
+export type Weekday = (typeof WEEKDAYS)[number]
+
+export type DayHours = { closed: boolean; open: string | null; close: string | null }
+
+export type RestaurantDetails = {
+  name: string
+  street: string
+  city: string
+  region: string | null
+  postal_code: string | null
+  country: string
+  phone: string
+  email: string | null
+  website: string | null
+}
+export type RestaurantHours = { timezone: string; opening_hours: Record<Weekday, DayHours> }
+export type InventorySettings = {
+  safety_days: number
+  default_lead_time_days: number
+  /** Local "HH:MM" for the Inventory Agent's daily check; null for none. */
+  daily_stock_check: string | null
+}
+export type StaffSettings = { staff_roles: string[] }
+export type SchedulingRules = {
+  max_shift_hours: number
+  min_rest_hours: number
+  max_weekly_hours: number
+  min_staff_per_open_day: number
+}
+
+/** Setup order: each is a wizard step and a Settings card. */
+export const SECTIONS = ['details', 'hours', 'inventory', 'staff', 'scheduling'] as const
+export type Section = (typeof SECTIONS)[number]
+
+export type SectionValues = {
+  details: RestaurantDetails
+  hours: RestaurantHours
+  inventory: InventorySettings
+  staff: StaffSettings
+  scheduling: SchedulingRules
+}
+
+export type Restaurant = {
+  id: string
+  name: string | null
+  street: string | null
+  city: string | null
+  region: string | null
+  postal_code: string | null
+  country: string | null
+  phone: string | null
+  email: string | null
+  website: string | null
+  timezone: string
+  opening_hours: Record<Weekday, DayHours> | null
+  inventory_settings: InventorySettings | null
+  staff_roles: string[] | null
+  scheduling_rules: SchedulingRules | null
+  completed_steps: Section[]
+  setup_completed_at: string | null
+  /** When anything in the profile was last saved. */
+  updated_at: string
+  /** Who saved last; only sent to owners and admins. */
+  updated_by: { id: string; name: string; email: string } | null
+  /** Whether the signed-in user may change it. */
+  can_edit: boolean
+}
+
+/** Null before the first setup step is saved. */
+export const fetchRestaurant = () => get<Restaurant | null>('/api/v1/restaurant-profile')
+export const saveSection = <S extends Section>(section: S, values: SectionValues[S]) =>
+  send<Restaurant>('PUT', `/api/v1/restaurant-profile/${section}`, values)
+export const completeSetup = () => send<Restaurant>('POST', '/api/v1/restaurant-profile/complete')
+/**
+ * The Profile page's Restaurant Details tab, saved all at once. Pass the
+ * `updated_at` the form loaded: if someone saved since, this fails with 409
+ * instead of overwriting their change.
+ */
+export const saveRestaurantDetails = (values: RestaurantDetails & RestaurantHours, expectedUpdatedAt: string) =>
+  send<Restaurant>('PUT', '/api/v1/restaurant-profile/restaurant-details', {
+    ...values,
+    expected_updated_at: expectedUpdatedAt,
+  })

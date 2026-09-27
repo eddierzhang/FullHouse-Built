@@ -3,7 +3,9 @@ import {
   type AgentAction,
   type AgentDefinition,
   type InventoryItem,
+  type Restaurant,
   type Runtime,
+  type User,
   approveAction,
   fetchHealth,
   fetchRuntime,
@@ -26,6 +28,7 @@ import { MenuPage } from '../pages/MenuPage'
 import { OverviewPage } from '../pages/OverviewPage'
 import { ProfitPage } from '../pages/ProfitPage'
 import { RunsPage } from '../pages/RunsPage'
+import { ProfilePage } from '../pages/ProfilePage'
 import { StaffPage } from '../pages/StaffPage'
 import { SuppliersPage } from '../pages/SuppliersPage'
 import type { AppContext } from './context'
@@ -38,11 +41,11 @@ type NavItem = { route: Route; label: string; icon: IconName }
 const NAV: { label: string | null; items: NavItem[] }[] = [
   { label: null, items: [{ route: 'overview', label: 'Overview', icon: 'overview' }] },
   {
-    label: 'Agents',
+    label: 'Agent',
     items: [
       { route: 'approvals', label: 'Approvals', icon: 'approvals' },
       { route: 'runs', label: 'Runs', icon: 'runs' },
-      { route: 'agents', label: 'Agents & schedules', icon: 'agents' },
+      { route: 'agents', label: 'Maestro', icon: 'agents' },
     ],
   },
   {
@@ -55,9 +58,17 @@ const NAV: { label: string | null; items: NavItem[] }[] = [
     ],
   },
   { label: 'Insights', items: [{ route: 'profit', label: 'Profit & forecast', icon: 'profit' }] },
+  { label: 'Restaurant', items: [{ route: 'profile', label: 'Profile', icon: 'store' }] },
 ]
 
-export function AppShell() {
+type Props = {
+  user: User
+  restaurant: Restaurant
+  setRestaurant: (restaurant: Restaurant) => void
+  onSignOut: () => void
+}
+
+export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) {
   const [route, navigate] = useHashRoute()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
@@ -108,6 +119,8 @@ export function AppShell() {
     pendingActions,
     inventory,
     runtime,
+    restaurant,
+    setRestaurant,
     apiStatus,
     navigate,
     refresh,
@@ -170,6 +183,8 @@ export function AppShell() {
         return <StaffPage app={app} />
       case 'profit':
         return <ProfitPage app={app} />
+      case 'profile':
+        return <ProfilePage app={app} user={user} />
       default:
         return <OverviewPage app={app} />
     }
@@ -180,7 +195,10 @@ export function AppShell() {
       <aside className={`sidebar${sidebarOpen ? ' open' : ''}`} aria-label="Main navigation">
         <a className="brand" href="#overview">
           <span className="brand-mark">F</span>
-          FullHouse
+          <span className="brand-text">
+            <span className="brand-name">{restaurant.name ?? 'FullHouse'}</span>
+            <span className="brand-sub">FullHouse</span>
+          </span>
         </a>
 
         {NAV.map((group) => (
@@ -207,6 +225,18 @@ export function AppShell() {
         ))}
 
         <div className="sidebar-footer">
+          <a className="sidebar-user" href="#profile" title="Your profile">
+            <span className="avatar" aria-hidden="true">
+              {user.name.trim().charAt(0).toUpperCase() || '?'}
+            </span>
+            <div className="sidebar-user-text">
+              <div className="sidebar-user-name">{user.name}</div>
+              <div className="faint sidebar-user-email">{user.email}</div>
+            </div>
+          </a>
+          <button className="btn btn-secondary btn-sm sign-out" onClick={onSignOut}>
+            Sign out
+          </button>
           <div className="row">
             <span
               className="dot"
@@ -234,7 +264,7 @@ export function AppShell() {
               <span className="demo-pill">Live demo</span>
               <span className="hide-mobile">
                 Change anything — it all resets{runtime.demo_resets_at ? ` ${relativeTime(runtime.demo_resets_at)}` : ' daily'}. Try{' '}
-                <button className="link-button" onClick={() => app.newTask('boss')}>
+                <button className="link-button" onClick={() => app.newTask('maestro')}>
                   a task for Maestro
                 </button>
                 .

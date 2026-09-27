@@ -12,9 +12,19 @@ class Settings:
     ]
     anthropic_api_key: str | None = os.getenv("ANTHROPIC_API_KEY")
 
-    # Which backend runs the agents: "anthropic" (hosted), "ollama" (local),
-    # or "scripted" (deterministic, model-free -- for tests, CI and demos).
+    # Which backend runs the agents: "anthropic" (hosted), "openai" (any
+    # hosted OpenAI-compatible API -- Gemini's free tier by default),
+    # "ollama" (local), or "scripted" (deterministic, model-free -- for
+    # tests, CI and demos).
     llm_provider: str = os.getenv("LLM_PROVIDER", "anthropic").strip().lower()
+
+    # OpenAI-compatible APIs. The defaults are Google Gemini's free tier;
+    # a key from https://aistudio.google.com/apikey is all it needs.
+    # `llm_model` replaces AgentDefinition.model for every run, as with Ollama.
+    llm_base_url: str = os.getenv("LLM_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai")
+    llm_api_key: str | None = os.getenv("LLM_API_KEY")
+    llm_model: str = os.getenv("LLM_MODEL", "gemini-3.5-flash")
+    llm_timeout_seconds: float = float(os.getenv("LLM_TIMEOUT_SECONDS", "120"))
 
     # Ollama. `ollama_model` replaces AgentDefinition.model for every run,
     # since definitions are seeded with Claude model ids. It must be a
@@ -50,6 +60,15 @@ class Settings:
     # again on this schedule (UTC), so visitors' changes never accumulate.
     demo_mode: bool = os.getenv("DEMO_MODE", "false").strip().lower() in ("1", "true", "yes")
     demo_reset_cron: str = os.getenv("DEMO_RESET_CRON", "0 4 * * *")
+
+    # Whether seed_data.py fills an empty database with a sample restaurant
+    # (suppliers, stock, menu, staff, orders). Off for a customer's own
+    # instance, which starts empty and is filled by the owner's setup.
+    seed_sample_data: bool = os.getenv("SEED_SAMPLE_DATA", "true").strip().lower() in ("1", "true", "yes")
+
+    # Whether the login page offers "Create account". Anyone who can reach
+    # the site can then sign up, so turn it off once your team is in.
+    allow_signup: bool = os.getenv("ALLOW_SIGNUP", "true").strip().lower() in ("1", "true", "yes")
 
     # The built frontend, when one process serves both it and the API (the
     # single-container image). Unset in development, where Vite serves it.

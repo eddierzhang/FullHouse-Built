@@ -7,8 +7,8 @@
 ![React 19](https://img.shields.io/badge/react-19-149ECA)
 [![License: MIT](https://img.shields.io/badge/license-MIT-0f766e)](LICENSE)
 
-Maestro, the lead agent, hands work to five specialists — inventory, suppliers, staff, menu and profit — and they run
-in parallel. Each reads the restaurant's real data and proposes changes: reorder stock, fill a shift, run a promotion.
+Maestro, a single agent, runs every part of the restaurant — inventory, suppliers, staff, the menu and profit. It reads
+the restaurant's real data and proposes changes: reorder stock, fill a shift, run a promotion.
 Nothing takes effect until a person approves it, every change is recorded with who made it and why, and anything can
 be undone.
 
@@ -34,7 +34,8 @@ Or put your own copy online, free and without a card, on Render's free plan:
 
 It reads [`render.yaml`](render.yaml), builds the single-container image and serves the same demo. The free plan
 sleeps after 15 idle minutes and wakes in about a minute, starting from a fresh restaurant each time. Other hosts,
-and running it for real rather than as a demo, are in [DEPLOY.md](DEPLOY.md).
+and running it for real rather than as a demo, are in [DEPLOY.md](DEPLOY.md). That includes a free private instance
+for each restaurant, with its agents on Gemini's free API tier ([`render.customer.yaml`](render.customer.yaml)).
 
 | Overview | Maestro's run, live | Menu costed from recipes |
 |---|---|---|
@@ -52,9 +53,15 @@ and running it for real rather than as a demo, are in [DEPLOY.md](DEPLOY.md).
 - **A complete, revertible history.** Every insert, update and delete is captured with before/after values, the person
   or agent responsible, and the agent run behind it. Any change can be undone; the undo is recorded too.
 - **Live agent runs.** Runs execute in the background and stream every tool call and result to the browser as it
-  happens, including Maestro's delegation tree. Runs can be cancelled mid-flight.
+  happens. Runs can be cancelled mid-flight.
+- **Set up around your restaurant.** A new owner walks through name, address, contact details, timezone, opening
+  hours, inventory preferences, staff roles and scheduling rules, saved step by step so setup can be resumed. Agents are
+  told these details, schedules run on local time, and shift rules are enforced on people and agents alike. All of it
+  stays editable on the Profile page — by the owner, or by anyone the owner makes an admin; everyone else who signs
+  up joins as a member who can see the details but not change them.
 - **Scheduled agents.** Cron schedules per agent, with a guard against overlapping runs. Promotions expire on their own.
-- **Local or hosted models.** Swap between Anthropic's API and a local Ollama model with one setting.
+- **Local or hosted models.** Swap between Anthropic's API, any OpenAI-compatible API (Gemini's free tier by
+  default) and a local Ollama model with one setting.
 - **Operations that add up.** Recipes link dishes to ingredients, so selling a dish draws down stock, food cost is
   computed rather than guessed, and "days of cover" compares real consumption against supplier lead times.
   Profit, margins and a seven-day revenue forecast come from actual sales, each labelled with how much data it rests on.
@@ -119,12 +126,10 @@ sees the whole run. ([broker.py](backend/app/agents/broker.py))
 **Cancellation is cooperative.** Providers check between tool rounds rather than killing a thread mid-write, and runs
 orphaned by a server restart are marked failed on startup instead of claiming to be in progress forever.
 
-**Maestro's subagents run in parallel.** When Maestro delegates to several specialists in one turn, they run
-concurrently, so the turn takes as long as the slowest one rather than the sum. Only tools that opt in with
-`parallel_safe` ever run concurrently: a SQLAlchemy session is not thread-safe, so each delegation opens its own, and a
-lock serialises the sequence numbers of the events Maestro's run gets from several threads at once. A three-agent
-review that files proposals takes about 74s against 134s of subagent time.
-([orchestrator.py](backend/app/agents/orchestrator.py))
+**One agent, every tool.** Maestro used to hand work to five specialists, each in its own run. Now it holds all their
+tools itself, grouped by area, and picks the ones a request needs: no delegation round-trips, one run to follow, and a
+proposal that spans stock, suppliers and shifts comes out of a single run. The owner's daily stock check is a scheduled
+job that asks the same agent a set question. ([registry.py](backend/app/agents/registry.py))
 
 **Slow local runs were model reloads, not inference.** Profiling showed ~140 tokens/s and sub-second calls, but 10–16s
 of load time on nearly every call: Ollama reloads a model whenever a request asks for a different context size than
@@ -166,7 +171,7 @@ Full report: [evals/results/latest.md](backend/evals/results/latest.md).
 **Backend** — Python 3.11, FastAPI, SQLAlchemy 2.0, Alembic, Pydantic v2, APScheduler, psycopg 3, Anthropic SDK, httpx
 **Frontend** — React 19, TypeScript, Vite, hand-built SVG charts, no UI framework
 **Data** — SQLite locally, Postgres supported and tested
-**Models** — Anthropic Claude, or local models through Ollama
+**Models** — Anthropic Claude, any OpenAI-compatible API (Gemini, Groq, OpenRouter), or local models through Ollama
 **Quality** — pytest (210 tests on SQLite and Postgres), Playwright end-to-end tests, agent evals, GitHub Actions
 **Delivery** — a single-container demo image, and Docker Compose with nginx and Ollama
 
@@ -184,11 +189,11 @@ Every task is one command through [`dev.py`](dev.py), which works the same on Wi
 | `python dev.py eval --targets ollama:qwen3.5:4b scripted` | Agent evaluation |
 
 `LLM_PROVIDER` in `backend/.env` picks what runs the agents: `ollama` (needs [Ollama](https://ollama.com) and a
-tool-capable model), `anthropic` (needs `ANTHROPIC_API_KEY`), or `scripted`, which `setup` chooses so the app works
+tool-capable model), `anthropic` (needs `ANTHROPIC_API_KEY`), `openai` (needs `LLM_API_KEY`; a free Gemini key
+from [AI Studio](https://aistudio.google.com/apikey) works as-is), or `scripted`, which `setup` chooses so the app works
 straight away.
 
-For Ollama, start the server with `OLLAMA_NUM_PARALLEL=4` so Maestro's parallel delegations aren't queued one at a
-time, and don't share that server with other heavy workloads — a competing request for the same model with different
+For Ollama, don't share the server with other heavy workloads — a competing request for the same model with different
 settings makes Ollama reload it.
 
 ### With Docker and a local model
@@ -227,8 +232,9 @@ dev.py              developer tasks
 
 ## Limitations
 
-- **No authentication.** Anyone who can reach the app can approve, edit or revert, and the recorded actor is
-  self-reported. Restrict access before exposing it (see [DEPLOY.md](DEPLOY.md)).
+- **Everyone signed in can do everything.** Accounts have no roles yet: any signed-in user can approve, edit or
+  revert, and sign-up is open by default. Set `ALLOW_SIGNUP=false` once your team has accounts (see
+  [DEPLOY.md](DEPLOY.md)).
 - **Single process.** The event broker and scheduler live in the API process, so it can't be scaled horizontally without
   moving them to something like Redis.
 - **Gross, not net.** Profit excludes labour and overheads.

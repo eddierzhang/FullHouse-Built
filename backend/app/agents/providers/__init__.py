@@ -34,9 +34,14 @@ def get_provider(key: str | None = None) -> LLMProvider:
 
         return OllamaProvider()
 
+    if key == "openai":
+        from app.agents.providers.openai_provider import OpenAICompatibleProvider
+
+        return OpenAICompatibleProvider()
+
     if key == "scripted":
         from app.agents.providers.scripted_provider import ScriptedProvider
 
         return ScriptedProvider()
 
-    raise ProviderError(f"Unknown LLM_PROVIDER {key!r}; expected 'anthropic', 'ollama' or 'scripted'")
+    raise ProviderError(f"Unknown LLM_PROVIDER {key!r}; expected 'anthropic', 'openai', 'ollama' or 'scripted'")

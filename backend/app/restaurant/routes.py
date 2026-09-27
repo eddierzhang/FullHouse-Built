@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.restaurant import crud, schemas
+from app.restaurant import crud, profile, schemas
 from app.restaurant.models import (
     InventoryItem,
     MenuItem,
@@ -53,6 +53,9 @@ def list_suppliers(db: Session = Depends(get_db)):
 @router.post("/suppliers", response_model=schemas.SupplierOut)
 def create_supplier(payload: schemas.SupplierCreate, db: Session = Depends(get_db)):
     supplier = Supplier(**payload.model_dump())
+    if payload.lead_time_days is None:
+        prefs = profile.inventory_settings(db)
+        supplier.lead_time_days = prefs.default_lead_time_days if prefs else 3
     db.add(supplier)
     db.commit()
     db.refresh(supplier)
@@ -66,6 +69,8 @@ def list_staff(db: Session = Depends(get_db)):
 
 @router.post("/staff", response_model=schemas.StaffOut)
 def create_staff(payload: schemas.StaffCreate, db: Session = Depends(get_db)):
+    if problem := profile.role_problem(db, payload.role):
+        raise HTTPException(422, problem)
     staff = Staff(**payload.model_dump())
     db.add(staff)
     db.commit()
@@ -82,6 +87,10 @@ def list_shifts(db: Session = Depends(get_db)):
 def create_shift(payload: schemas.ShiftCreate, db: Session = Depends(get_db)):
     if not db.get(Staff, payload.staff_id):
         raise HTTPException(404, "Staff member not found")
+    if payload.end_time <= payload.start_time:
+        raise HTTPException(422, "A shift must end after it starts")
+    if problems := profile.shift_problems(db, payload.staff_id, payload.date, payload.start_time, payload.end_time):
+        raise HTTPException(422, " ".join(problems))
     shift = Shift(**payload.model_dump())
     db.add(shift)
     db.commit()
@@ -201,7 +210,10 @@ def update_staff(staff_id: str, payload: schemas.StaffUpdate, db: Session = Depe
     staff = db.get(Staff, staff_id)
     if not staff:
         raise HTTPException(404, "Staff member not found")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    fields = payload.model_dump(exclude_unset=True)
+    if fields.get("role") and fields["role"] != staff.role and (problem := profile.role_problem(db, fields["role"])):
+        raise HTTPException(422, problem)
+    for field, value in fields.items():
         setattr(staff, field, value)
     db.add(staff)
     db.commit()
@@ -240,10 +252,17 @@ def update_shift(shift_id: int, payload: schemas.ShiftUpdate, db: Session = Depe
     if "staff_id" in fields and not db.get(Staff, fields["staff_id"]):
         raise HTTPException(404, "Staff member not found")
 
+    # Checked against the would-be shift before touching the row, so a
+    # refusal leaves nothing half-changed in the session.
+    after = {name: fields.get(name, getattr(shift, name)) for name in ("staff_id", "date", "start_time", "end_time")}
+    if after["end_time"] <= after["start_time"]:
+        raise HTTPException(422, "A shift must end after it starts")
+    if problems := profile.shift_problems(db, exclude_shift_id=shift.id, **{
+        "staff_id": after["staff_id"], "day": after["date"], "start": after["start_time"], "end": after["end_time"],
+    }):
+        raise HTTPException(422, " ".join(problems))
     for field, value in fields.items():
         setattr(shift, field, value)
-    if shift.end_time <= shift.start_time:
-        raise HTTPException(422, "A shift must end after it starts")
 
     db.add(shift)
     db.commit()

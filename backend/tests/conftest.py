@@ -27,6 +27,7 @@ from sqlalchemy.pool import StaticPool  # noqa: E402
 from app.agents import models as agent_models  # noqa: E402,F401
 from app.audit import listener as audit_listener  # noqa: E402
 from app.audit import models as audit_models  # noqa: E402,F401
+from app.auth import models as auth_models  # noqa: E402,F401
 from app.db import session as app_session  # noqa: E402
 from app.db.session import Base, get_db  # noqa: E402
 from app.restaurant import models as restaurant_models  # noqa: E402,F401
@@ -72,15 +73,33 @@ def db(engine):
         session.close()
 
 
+#: The account `client` is signed in as; changes it makes carry this email.
+TEST_USER_EMAIL = "eddie@example.com"
+TEST_USER_PASSWORD = "correct-horse"
+
+
 @pytest.fixture
-def client(db):
-    """TestClient sharing the test's session, so assertions see its writes."""
+def anon_client(db):
+    """TestClient sharing the test's session, so assertions see its writes. Not signed in."""
+    from app.auth.routes import failed_logins
     from app.main import app
 
+    failed_logins.clear()
     app.dependency_overrides[get_db] = lambda: db
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def client(anon_client):
+    """TestClient signed in as TEST_USER_EMAIL."""
+    response = anon_client.post(
+        "/api/v1/auth/signup",
+        json={"name": "Eddie", "email": TEST_USER_EMAIL, "password": TEST_USER_PASSWORD},
+    )
+    assert response.status_code == 201, response.text
+    return anon_client
 
 
 @pytest.fixture

@@ -19,8 +19,10 @@ def test_the_demo_gives_every_page_something_real_to_show(db):
     counts = reset_demo_data(db)
 
     assert counts["orders"] > 500
-    assert db.query(AgentDefinition).count() == 6
-    maestro = db.query(AgentDefinition).filter_by(key="boss").one()
+    # One agent runs everything, and every planted proposal is its.
+    maestro = db.query(AgentDefinition).one()
+    assert maestro.key == "maestro"
+    assert {a.agent_definition_id for a in db.query(AgentAction)} == {maestro.id}
     assert (maestro.name, maestro.schedule_cron) == ("Maestro", "0 9 * * *")
 
     # Six weeks of trading is enough for the weekday forecast.
@@ -75,30 +77,28 @@ def test_a_reset_undoes_whatever_visitors_did(db):
     assert db.query(ChangeLog).count() == 0
 
 
-def test_scripted_maestro_routes_a_task_to_the_specialists_it_mentions():
-    agents = ["inventory", "supply_chain", "employee_management", "profit", "marketing"]
+def test_scripted_maestro_looks_at_the_areas_a_task_mentions():
+    areas = ["inventory", "suppliers", "staff", "menu", "profit"]
 
-    assert route("How is stock looking, and any gaps in the staff schedule?", agents) == [
-        "inventory", "employee_management",
-    ]
-    assert route("Give me the morning briefing.", agents) == agents
+    assert route("How is stock looking, and any gaps in the staff schedule?", areas) == ["inventory", "staff"]
+    assert route("Give me the morning briefing.", areas) == areas
 
 
-def test_scripted_maestro_delegates_in_parallel_against_the_demo(threaded_db, monkeypatch):
-    reset_demo_data(threaded_db)
+def test_scripted_maestro_covers_several_areas_in_one_run(db, monkeypatch):
+    reset_demo_data(db)
     monkeypatch.setattr("app.agents.runner.get_provider", lambda: ScriptedProvider(step_delay=0))
-    maestro = threaded_db.query(AgentDefinition).filter_by(key="boss").one()
-    run = agent_crud.create_run(threaded_db, maestro.id, input="Check stock and margins.")
+    maestro = db.query(AgentDefinition).filter_by(key="maestro").one()
+    run = agent_crud.create_run(db, maestro.id, input="Check stock and margins.")
 
-    summary = execute_run(run.id, db=threaded_db)
+    summary = execute_run(run.id, db=db)
 
-    threaded_db.expire_all()
-    children = threaded_db.query(AgentRun).filter(AgentRun.parent_run_id == run.id).all()
-    assert sorted(c.status for c in children) == ["succeeded", "succeeded"]
+    # One run does it all: no child runs, no delegation.
+    assert db.query(AgentRun).filter(AgentRun.parent_run_id == run.id).count() == 0
     assert "inventory:" in summary and "profit:" in summary
     assert "{" not in summary  # read as sentences, not raw JSON
-    kinds = [e.type for e in agent_crud.list_events(threaded_db, run.id)]
-    assert kinds.count("delegation") == 2
+    events = agent_crud.list_events(db, run.id)
+    assert "delegation" not in {e.type for e in events}
+    assert [e.payload["tool"] for e in events if e.type == "tool_call"] == ["list_low_stock_items", "get_revenue_summary"]
 
 
 def test_runtime_reports_demo_mode(client, monkeypatch):
@@ -122,7 +122,7 @@ def test_one_process_can_serve_the_frontend_and_the_api(tmp_path: Path, monkeypa
         with TestClient(app) as client:
             assert 'id="root"' in client.get("/").text
             assert client.get("/health").json() == {"status": "ok"}  # API routes still win
-            assert client.get("/api/v1/agents/runtime").status_code == 200
+            assert client.get("/api/v1/auth/options").status_code == 200
     finally:
         app.router.routes[:] = routes_before
 

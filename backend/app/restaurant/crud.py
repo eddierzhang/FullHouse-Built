@@ -325,6 +325,12 @@ def supply_chain_summary(db: Session) -> dict:
 
     # Days of cover needs a consumption rate, which only exists where a
     # dish with a recipe actually sold. Null means unknowable, not zero.
+    # The owner's safety margin: stock that only just outlasts the lead time
+    # is still at risk if a delivery slips.
+    from app.restaurant.profile import inventory_settings
+
+    prefs = inventory_settings(db)
+    safety_days = prefs.safety_days if prefs else 0
     cover_rows = []
     for item in items:
         rate = burn.get(item.id, 0.0)
@@ -340,8 +346,8 @@ def supply_chain_summary(db: Session) -> dict:
                 "daily_use": round(rate, 3) if rate > 0 else None,
                 "days_of_cover": days_left,
                 "lead_time_days": lead,
-                # Running out before a replacement could arrive.
-                "at_risk": bool(days_left is not None and lead is not None and days_left <= lead),
+                # Running out before a replacement, plus the safety margin, could arrive.
+                "at_risk": bool(days_left is not None and lead is not None and days_left <= lead + safety_days),
             }
         )
     cover_rows.sort(key=lambda r: (r["days_of_cover"] is None, r["days_of_cover"] or 0))
@@ -356,6 +362,7 @@ def supply_chain_summary(db: Session) -> dict:
         "restock_cost": round(sum(r["restock_cost"] for r in low_rows), 2),
         "longest_lead_days": max(lead_times) if lead_times else 0,
         "at_risk_count": sum(1 for r in cover_rows if r["at_risk"]),
+        "safety_days": safety_days,
         "suppliers": supplier_rows,
         "low_stock": low_rows,
         "cover": cover_rows,

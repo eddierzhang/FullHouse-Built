@@ -5,6 +5,7 @@ create-only, so a name could be added but never corrected.
 """
 
 from app.restaurant.models import Shift, Staff
+from conftest import TEST_USER_EMAIL
 
 
 def _staff(db, name="Ana Diaz", role="server"):
@@ -47,13 +48,12 @@ def test_update_is_recorded_in_the_change_log(client, db, changes):
     client.patch(
         f"/api/v1/restaurant/staff/{staff.id}",
         json={"name": "Ana Diaz-Moreno"},
-        headers={"X-Actor-Id": "eddie"},
     )
 
     update = changes(entity_type="staff", operation="update")[-1]
     assert update.before == {"name": "Ana Diaz"}
     assert update.after == {"name": "Ana Diaz-Moreno"}
-    assert update.actor_id == "eddie"
+    assert update.actor_id == TEST_USER_EMAIL
 
 
 def test_updating_a_missing_staff_member_is_404(client, db):

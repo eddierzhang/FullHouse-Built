@@ -63,9 +63,12 @@ def execute_run(run_id: str, db: Session | None = None) -> str:
             # Cancelling a Boss also stops the subagents it is waiting on.
             watched = [run.id] + ([run.parent_run_id] if run.parent_run_id else [])
 
+            from app.restaurant.profile import agent_context
+
+            context = agent_context(db)
             result = provider.run_agent_loop(
                 model=model,
-                system=defn.system_prompt,
+                system=f"{defn.system_prompt}\n\n{context}" if context else defn.system_prompt,
                 tools=tools,
                 user_message=run.input or "Run now.",
                 emit=emit,

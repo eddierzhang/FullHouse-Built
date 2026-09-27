@@ -13,6 +13,7 @@ from pathlib import Path
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from app.agents.definitions import AGENT_KEY
 from app.agents import crud
 from app.agents.appliers import ApplyError, apply_action, missing_inputs
 from app.agents.models import AgentAction
@@ -83,7 +84,7 @@ def run_scenario(scenario: Scenario, provider: str, model: str | None = None) ->
     result = Result(scenario=scenario.id, provider=provider, model=model or provider, status="not started")
     try:
         facts = scenario.setup(db, build_world(db))
-        defn = crud.get_definition_by_key(db, scenario.agent_key)
+        defn = crud.get_definition_by_key(db, AGENT_KEY)
         run = crud.create_run(db, defn.id, trigger_type="manual", input=scenario.prompt)
 
         from app.agents.runner import execute_run

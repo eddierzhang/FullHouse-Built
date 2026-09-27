@@ -51,11 +51,13 @@ export function NewTaskModal({ open, agents, defaultAgentKey, onClose, onSubmit 
         <form className="modal" onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="new-task-title">
           <div className="modal-header">
             <h2 id="new-task-title" className="card-title">
-              New agent task
+              {agents.length === 1 ? `New task for ${agents[0].name}` : 'New agent task'}
             </h2>
             <p className="card-subtitle">The run starts straight away; you can watch it live.</p>
           </div>
           <div className="modal-body">
+            {/* Only worth asking when there's a choice; normally one agent runs everything. */}
+            {agents.length > 1 && (
             <label className="field">
               <span className="field-label">Agent</span>
               <select className="select" value={agentKey} onChange={(e) => setAgentKey(e.target.value)}>
@@ -66,13 +68,14 @@ export function NewTaskModal({ open, agents, defaultAgentKey, onClose, onSubmit 
                 ))}
               </select>
             </label>
+            )}
             <label className="field">
               <span className="field-label">What should it do?</span>
               <textarea
                 className="textarea"
                 required
                 autoFocus
-                placeholder="e.g. Check what is running low and propose reorders"
+                placeholder="e.g. Get us ready for Friday: stock, suppliers and who's on shift"
                 value={task}
                 onChange={(e) => setTask(e.target.value)}
               />

@@ -27,7 +27,6 @@ class ExpectedProposal:
 @dataclass
 class Scenario:
     id: str
-    agent_key: str
     prompt: str
     summary: str
     #: Tweaks the base world; returns facts (ids) the checks refer to.
@@ -41,11 +40,10 @@ class Scenario:
 
 def build_world(db: Session) -> dict:
     """The shared baseline: healthy stock, a sold menu, a staffed schedule."""
-    from app.agents.definitions import BOSS_DEF, SUBAGENT_DEFS
+    from app.agents.definitions import AGENT_DEF
 
-    for d in SUBAGENT_DEFS:
-        db.add(AgentDefinition(role="subagent", enabled=True, **d))
-    db.add(AgentDefinition(role="boss", enabled=True, **BOSS_DEF))
+    # The one agent, holding every tool: a scenario also tests that it picks the right ones.
+    db.add(AgentDefinition(role="main", enabled=True, **AGENT_DEF))
 
     sysco = Supplier(name="Sysco Foods", contact_info="orders@sysco.example", lead_time_days=2)
     farm = Supplier(name="Green Valley Farms", contact_info="hello@farm.example", lead_time_days=1)
@@ -116,7 +114,6 @@ def _unchanged(db: Session, facts: dict) -> dict:
 SCENARIOS: list[Scenario] = [
     Scenario(
         id="inventory-shortage",
-        agent_key="inventory",
         summary="Tomatoes are below their reorder point; everything else is fine.",
         prompt="Check our stock and propose reorders for anything that needs it.",
         setup=_set_stock("tomatoes", 3),
@@ -129,7 +126,6 @@ SCENARIOS: list[Scenario] = [
     ),
     Scenario(
         id="inventory-nothing-low",
-        agent_key="inventory",
         summary="Every item is comfortably above its reorder point.",
         prompt="Check our stock and propose reorders for anything that needs it.",
         setup=_unchanged,
@@ -138,7 +134,6 @@ SCENARIOS: list[Scenario] = [
     ),
     Scenario(
         id="marketing-slow-seller",
-        agent_key="marketing",
         summary="Garlic Bread has never sold while pizza and salad sell daily.",
         prompt="Find our weakest-selling dish and propose one change to improve it.",
         setup=_unchanged,
@@ -151,7 +146,6 @@ SCENARIOS: list[Scenario] = [
     ),
     Scenario(
         id="supply-purchase-order",
-        agent_key="supply_chain",
         summary="Flour is low, and Sysco Foods is its supplier.",
         prompt="Draft a purchase order for anything running low, from the supplier that stocks it.",
         setup=_set_stock("flour", 5),
@@ -167,7 +161,6 @@ SCENARIOS: list[Scenario] = [
     ),
     Scenario(
         id="employee-coverage-gap",
-        agent_key="employee_management",
         summary="No server is scheduled tomorrow; Ana Diaz is the only server.",
         prompt=(
             "We have no server scheduled for dinner tomorrow. Propose a shift to cover it, "
@@ -183,7 +176,6 @@ SCENARIOS: list[Scenario] = [
     ),
     Scenario(
         id="profit-report-read-only",
-        agent_key="profit",
         summary="A reporting request; the profit agent should inform, not act.",
         prompt="Summarise our revenue and margins over the last week.",
         setup=_unchanged,

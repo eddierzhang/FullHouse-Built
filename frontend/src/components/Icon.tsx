@@ -64,6 +64,13 @@ const PATHS: Record<string, ReactNode> = {
   stop: <rect x="6" y="6" width="12" height="12" rx="2" />,
   arrowRight: <path d="M5 12h14M13 5l7 7-7 7" />,
   edit: <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />,
+  store: (
+    <>
+      <path d="M4 4h16l1.5 5h-19z" />
+      <path d="M4.5 9v11h15V9" />
+      <path d="M10 20v-6h4v6" />
+    </>
+  ),
   trash: <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />,
 }
 

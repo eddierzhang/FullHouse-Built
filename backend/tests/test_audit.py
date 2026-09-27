@@ -4,6 +4,7 @@ from app.agents.models import AgentDefinition, AgentEvent, AgentRun
 from app.audit.context import AGENT, Actor, actor_context
 from app.audit.models import ChangeLog
 from app.restaurant.models import InventoryItem, MenuItem
+from conftest import TEST_USER_EMAIL
 
 
 def _item(db, **overrides) -> InventoryItem:
@@ -127,24 +128,24 @@ def test_http_mutation_is_attributed_to_the_caller(client, changes):
     response = client.post(
         "/api/v1/restaurant/menu-items",
         json={"name": "Margherita", "category": "pizza", "price": 12.0, "cost": 4.0},
-        headers={"X-Actor-Id": "eddie"},
     )
     assert response.status_code == 200
 
     (row,) = changes(entity_type="menu_items")
     assert row.operation == "insert"
     assert row.actor_type == "human"
-    assert row.actor_id == "eddie"
+    assert row.actor_id == TEST_USER_EMAIL
 
 
-def test_http_mutation_without_actor_header_is_anonymous(client, changes):
+def test_actor_header_cannot_impersonate_someone_else(client, changes):
     client.post(
         "/api/v1/restaurant/menu-items",
         json={"name": "Calzone", "category": "pizza", "price": 14.0, "cost": 5.0},
+        headers={"X-Actor-Id": "someone-else"},
     )
 
     (row,) = changes(entity_type="menu_items")
-    assert row.actor_id == "anonymous"
+    assert row.actor_id == TEST_USER_EMAIL
 
 
 def test_datetimes_are_serialised(db, changes):

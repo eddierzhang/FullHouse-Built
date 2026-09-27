@@ -18,7 +18,10 @@ const BLANK = { name: '', contact_info: '', lead_time_days: '2' }
 export function SuppliersPage({ app }: { app: AppContext }) {
   const [data, setData] = useState<SupplyChain | null>(null)
   const [adding, setAdding] = useState(false)
-  const [draft, setDraft] = useState(BLANK)
+  // New suppliers start from the owner's default lead time.
+  const defaultLead = String(app.restaurant.inventory_settings?.default_lead_time_days ?? BLANK.lead_time_days)
+  const blankDraft = { ...BLANK, lead_time_days: defaultLead }
+  const [draft, setDraft] = useState(blankDraft)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editDraft, setEditDraft] = useState(BLANK)
   const [busy, setBusy] = useState(false)
@@ -178,7 +181,7 @@ export function SuppliersPage({ app }: { app: AppContext }) {
                       'Supplier added',
                     )
                     if (ok) {
-                      setDraft(BLANK)
+                      setDraft(blankDraft)
                       setAdding(false)
                     }
                   }}

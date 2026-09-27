@@ -10,9 +10,10 @@ from datetime import date, datetime, time, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.agents.definitions import BOSS_DEF, SUBAGENT_DEFS  # noqa: E402
+from app.agents.definitions import AGENT_DEF  # noqa: E402
 from app.agents.models import AgentDefinition  # noqa: E402
 from app.bootstrap import setup  # noqa: E402
+from app.config import settings  # noqa: E402
 from app.db.session import SessionLocal  # noqa: E402
 from app.restaurant.models import (  # noqa: E402
     InventoryItem,
@@ -30,13 +31,17 @@ def seed():
     db = SessionLocal()
     try:
         if db.query(AgentDefinition).count() == 0:
-            for d in SUBAGENT_DEFS:
-                db.add(AgentDefinition(role="subagent", model="claude-opus-5", enabled=True, **d))
-            db.add(AgentDefinition(role="boss", model="claude-opus-5", enabled=True, **BOSS_DEF))
+            db.add(AgentDefinition(role="main", model="claude-opus-5", enabled=True, **AGENT_DEF))
             db.commit()
-            print("Seeded agent definitions: boss + 5 subagents")
+            print("Seeded the agent: Maestro")
         else:
             print("Agent definitions already present, skipping")
+
+        if not settings.seed_sample_data:
+            # A customer's own instance: its data comes from the owner's setup,
+            # and emptying a table must not bring the samples back on restart.
+            print("SEED_SAMPLE_DATA is off, skipping the sample restaurant")
+            return
 
         if db.query(Supplier).count() == 0:
             sysco = Supplier(name="Sysco Foods", contact_info="orders@sysco-demo.com", lead_time_days=2)

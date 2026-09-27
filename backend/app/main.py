@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -14,8 +14,11 @@ from app.agents.routes import router as agents_router
 from app.bootstrap import setup
 from app.audit.middleware import AuditActorMiddleware
 from app.audit.routes import router as changes_router
+from app.auth.deps import current_user
+from app.auth.routes import router as auth_router
 from app.config import settings
 from app.restaurant.routes import router as restaurant_router
+from app.restaurant.profile_routes import router as profile_router
 
 # Must happen before any session is used, so that no mutation escapes
 # unrecorded during startup.
@@ -85,9 +88,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(restaurant_router)
-app.include_router(agents_router)
-app.include_router(changes_router)
+# Everything but signing in needs a signed-in user.
+app.include_router(auth_router)
+signed_in = [Depends(current_user)]
+app.include_router(restaurant_router, dependencies=signed_in)
+app.include_router(agents_router, dependencies=signed_in)
+app.include_router(changes_router, dependencies=signed_in)
+app.include_router(profile_router, dependencies=signed_in)
 
 
 @app.get("/health")

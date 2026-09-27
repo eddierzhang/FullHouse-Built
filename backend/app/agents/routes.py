@@ -18,18 +18,18 @@ HEARTBEAT_SECONDS = 15
 router = APIRouter(prefix="/api/v1/agents", tags=["agents"])
 
 
-def _definition_out(defn) -> schemas.AgentDefinitionOut:
+def _definition_out(defn, tz) -> schemas.AgentDefinitionOut:
     out = schemas.AgentDefinitionOut.model_validate(defn)
     if defn.enabled and defn.schedule_cron:
         try:
-            out.next_run_at = scheduler.next_fire_time(defn.schedule_cron)
+            out.next_run_at = scheduler.next_fire_time(defn.schedule_cron, tz=tz)
         except scheduler.InvalidSchedule:
             out.next_run_at = None
     return out
 
 
 @router.get("/runtime")
-def runtime():
+def runtime(db: Session = Depends(get_db)):
     """What the agents are running on right now, for the UI's status line."""
     from app.agents.providers import get_provider
     from app.config import settings
@@ -42,13 +42,16 @@ def runtime():
         "max_concurrent_runs": executor.MAX_CONCURRENT_RUNS,
         "configured_provider": settings.llm_provider,
         "demo_mode": settings.demo_mode,
+        # The clock agent schedules run on: the restaurant's, once set up.
+        "schedule_timezone": getattr(scheduler.agent_timezone(db), "key", "UTC"),
         "demo_resets_at": scheduler.next_fire_time(settings.demo_reset_cron) if settings.demo_mode else None,
     }
 
 
 @router.get("/definitions", response_model=list[schemas.AgentDefinitionOut])
 def list_definitions(db: Session = Depends(get_db)):
-    return [_definition_out(d) for d in crud.list_definitions(db)]
+    tz = scheduler.agent_timezone(db)
+    return [_definition_out(d, tz) for d in crud.list_definitions(db)]
 
 
 @router.patch("/definitions/{agent_key}", response_model=schemas.AgentDefinitionOut)
@@ -76,7 +79,7 @@ def update_definition(
     db.commit()
     db.refresh(defn)
     scheduler.sync_agent_schedules()
-    return _definition_out(defn)
+    return _definition_out(defn, scheduler.agent_timezone(db))
 
 
 @router.post("/runs", response_model=schemas.AgentRunOut, status_code=202)
