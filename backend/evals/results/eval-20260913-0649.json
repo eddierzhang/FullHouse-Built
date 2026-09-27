@@ -1,0 +1,792 @@
+{
+  "started": "2026-09-13 06:47 UTC",
+  "results": [
+    {
+      "scenario": "inventory-shortage",
+      "provider": "ollama",
+      "model": "qwen2.5:7b",
+      "status": "succeeded",
+      "checks": [
+        {
+          "name": "completed",
+          "passed": true,
+          "detail": "succeeded"
+        },
+        {
+          "name": "used expected tools",
+          "passed": true,
+          "detail": "called ['list_low_stock_items', 'propose_reorder']"
+        },
+        {
+          "name": "made the right proposal",
+          "passed": true,
+          "detail": "found a reorder for Tomatoes"
+        },
+        {
+          "name": "proposal applies cleanly",
+          "passed": true,
+          "detail": "Reorder received: Tomatoes stock 3 -> 28 lb (+25)"
+        },
+        {
+          "name": "no stray proposals",
+          "passed": true,
+          "detail": "none"
+        }
+      ],
+      "tools_called": [
+        "list_low_stock_items",
+        "propose_reorder"
+      ],
+      "proposals": [
+        {
+          "action_type": "inventory_reorder",
+          "payload": {
+            "inventory_item_id": "e940fb72601349c78f1cdc1709080690",
+            "item_name": "Tomatoes",
+            "quantity": 25.0,
+            "note": ""
+          }
+        }
+      ],
+      "seconds": 11.8,
+      "tokens": 1669,
+      "error": null,
+      "score": 1.0
+    },
+    {
+      "scenario": "inventory-nothing-low",
+      "provider": "ollama",
+      "model": "qwen2.5:7b",
+      "status": "succeeded",
+      "checks": [
+        {
+          "name": "completed",
+          "passed": true,
+          "detail": "succeeded"
+        },
+        {
+          "name": "used expected tools",
+          "passed": true,
+          "detail": "called ['list_low_stock_items']"
+        },
+        {
+          "name": "proposed nothing",
+          "passed": true,
+          "detail": "correctly left things alone"
+        }
+      ],
+      "tools_called": [
+        "list_low_stock_items"
+      ],
+      "proposals": [],
+      "seconds": 5.1,
+      "tokens": 832,
+      "error": null,
+      "score": 1.0
+    },
+    {
+      "scenario": "marketing-slow-seller",
+      "provider": "ollama",
+      "model": "qwen2.5:7b",
+      "status": "succeeded",
+      "checks": [
+        {
+          "name": "completed",
+          "passed": true,
+          "detail": "succeeded"
+        },
+        {
+          "name": "used expected tools",
+          "passed": true,
+          "detail": "called ['draft_menu_change_proposal', 'get_slow_moving_items']"
+        },
+        {
+          "name": "made the right proposal",
+          "passed": true,
+          "detail": "found a menu change for Garlic Bread"
+        },
+        {
+          "name": "proposal applies cleanly",
+          "passed": false,
+          "detail": "needs operator input: new_price"
+        },
+        {
+          "name": "no stray proposals",
+          "passed": true,
+          "detail": "none"
+        }
+      ],
+      "tools_called": [
+        "get_slow_moving_items",
+        "draft_menu_change_proposal"
+      ],
+      "proposals": [
+        {
+          "action_type": "menu_change",
+          "payload": {
+            "menu_item_id": "5ccf6dd59199448aab9a37c82a76e7cb",
+            "item_name": "Garlic Bread",
+            "change_type": "promotion",
+            "details": "Proposal to promote Garlic Bread with a buy-one-get-one-free offer to boost sales.",
+            "new_price": null
+          }
+        }
+      ],
+      "seconds": 8.3,
+      "tokens": 1889,
+      "error": null,
+      "score": 0.8
+    },
+    {
+      "scenario": "supply-purchase-order",
+      "provider": "ollama",
+      "model": "qwen2.5:7b",
+      "status": "succeeded",
+      "checks": [
+        {
+          "name": "completed",
+          "passed": true,
+          "detail": "succeeded"
+        },
+        {
+          "name": "used expected tools",
+          "passed": true,
+          "detail": "called ['draft_purchase_order', 'get_items_by_supplier', 'list_suppliers']"
+        },
+        {
+          "name": "made the right proposal",
+          "passed": false,
+          "detail": "expected a purchase order for Flour from Sysco Foods"
+        },
+        {
+          "name": "proposal applies cleanly",
+          "passed": false,
+          "detail": "no matching proposal to apply"
+        },
+        {
+          "name": "no stray proposals",
+          "passed": false,
+          "detail": "1 proposal(s) for the wrong thing"
+        }
+      ],
+      "tools_called": [
+        "list_suppliers",
+        "get_items_by_supplier",
+        "draft_purchase_order"
+      ],
+      "proposals": [
+        {
+          "action_type": "purchase_order",
+          "payload": {
+            "supplier_id": "4512b976f180462281f556a46dc1aefb",
+            "supplier_name": "Green Valley Farms",
+            "inventory_item_id": "0c142279208b4033afe99537b9358361",
+            "item_name": "Tomatoes",
+            "quantity": 20.0,
+            "note": "Restocking to maintain inventory levels."
+          }
+        }
+      ],
+      "seconds": 11.1,
+      "tokens": 2590,
+      "error": null,
+      "score": 0.4
+    },
+    {
+      "scenario": "employee-coverage-gap",
+      "provider": "ollama",
+      "model": "qwen2.5:7b",
+      "status": "succeeded",
+      "checks": [
+        {
+          "name": "completed",
+          "passed": true,
+          "detail": "succeeded"
+        },
+        {
+          "name": "used expected tools",
+          "passed": false,
+          "detail": "missing ['list_staff']"
+        },
+        {
+          "name": "made the right proposal",
+          "passed": false,
+          "detail": "expected a shift tomorrow for Ana Diaz"
+        },
+        {
+          "name": "proposal applies cleanly",
+          "passed": false,
+          "detail": "no matching proposal to apply"
+        },
+        {
+          "name": "no stray proposals",
+          "passed": false,
+          "detail": "1 proposal(s) for the wrong thing"
+        }
+      ],
+      "tools_called": [
+        "get_upcoming_shifts",
+        "propose_shift_change"
+      ],
+      "proposals": [
+        {
+          "action_type": "shift_change",
+          "payload": {
+            "staff_id": "dc75249520814b3cbd1149d380c99c44",
+            "staff_name": "Jordan Lee",
+            "date": "2026-09-14",
+            "start_time": "18:00",
+            "end_time": "23:00",
+            "role": "Server",
+            "note": "Proposed shift to cover dinner service gap."
+          }
+        }
+      ],
+      "seconds": 8.6,
+      "tokens": 1968,
+      "error": null,
+      "score": 0.2
+    },
+    {
+      "scenario": "profit-report-read-only",
+      "provider": "ollama",
+      "model": "qwen2.5:7b",
+      "status": "succeeded",
+      "checks": [
+        {
+          "name": "completed",
+          "passed": true,
+          "detail": "succeeded"
+        },
+        {
+          "name": "used expected tools",
+          "passed": true,
+          "detail": "called ['get_menu_margins', 'get_revenue_summary']"
+        },
+        {
+          "name": "proposed nothing",
+          "passed": true,
+          "detail": "correctly left things alone"
+        }
+      ],
+      "tools_called": [
+        "get_revenue_summary",
+        "get_menu_margins"
+      ],
+      "proposals": [],
+      "seconds": 6.1,
+      "tokens": 1125,
+      "error": null,
+      "score": 1.0
+    },
+    {
+      "scenario": "inventory-shortage",
+      "provider": "ollama",
+      "model": "qwen3.5:4b",
+      "status": "succeeded",
+      "checks": [
+        {
+          "name": "completed",
+          "passed": true,
+          "detail": "succeeded"
+        },
+        {
+          "name": "used expected tools",
+          "passed": true,
+          "detail": "called ['list_all_inventory', 'list_low_stock_items', 'propose_reorder']"
+        },
+        {
+          "name": "made the right proposal",
+          "passed": true,
+          "detail": "found a reorder for Tomatoes"
+        },
+        {
+          "name": "proposal applies cleanly",
+          "passed": true,
+          "detail": "Reorder received: Tomatoes stock 3 -> 28 lb (+25)"
+        },
+        {
+          "name": "no stray proposals",
+          "passed": true,
+          "detail": "none"
+        }
+      ],
+      "tools_called": [
+        "list_low_stock_items",
+        "list_all_inventory",
+        "propose_reorder"
+      ],
+      "proposals": [
+        {
+          "action_type": "inventory_reorder",
+          "payload": {
+            "inventory_item_id": "acaf7feecbca44919b4e38c13f512c5a",
+            "item_name": "Tomatoes",
+            "quantity": 25.0,
+            "note": "Tomatoes are at 3.0 lbs, below the reorder threshold of 12.0 lbs. Need to replenish stock to avoid running out."
+          }
+        }
+      ],
+      "seconds": 15.6,
+      "tokens": 3657,
+      "error": null,
+      "score": 1.0
+    },
+    {
+      "scenario": "inventory-nothing-low",
+      "provider": "ollama",
+      "model": "qwen3.5:4b",
+      "status": "succeeded",
+      "checks": [
+        {
+          "name": "completed",
+          "passed": true,
+          "detail": "succeeded"
+        },
+        {
+          "name": "used expected tools",
+          "passed": true,
+          "detail": "called ['list_all_inventory', 'list_low_stock_items']"
+        },
+        {
+          "name": "proposed nothing",
+          "passed": true,
+          "detail": "correctly left things alone"
+        }
+      ],
+      "tools_called": [
+        "list_all_inventory",
+        "list_low_stock_items"
+      ],
+      "proposals": [],
+      "seconds": 7.6,
+      "tokens": 1836,
+      "error": null,
+      "score": 1.0
+    },
+    {
+      "scenario": "marketing-slow-seller",
+      "provider": "ollama",
+      "model": "qwen3.5:4b",
+      "status": "succeeded",
+      "checks": [
+        {
+          "name": "completed",
+          "passed": true,
+          "detail": "succeeded"
+        },
+        {
+          "name": "used expected tools",
+          "passed": true,
+          "detail": "called ['draft_menu_change_proposal', 'get_slow_moving_items']"
+        },
+        {
+          "name": "made the right proposal",
+          "passed": true,
+          "detail": "found a menu change for Garlic Bread"
+        },
+        {
+          "name": "proposal applies cleanly",
+          "passed": false,
+          "detail": "needs operator input: new_price"
+        },
+        {
+          "name": "no stray proposals",
+          "passed": true,
+          "detail": "none"
+        }
+      ],
+      "tools_called": [
+        "get_slow_moving_items",
+        "draft_menu_change_proposal"
+      ],
+      "proposals": [
+        {
+          "action_type": "menu_change",
+          "payload": {
+            "menu_item_id": "ac56533c41e84064981445bc16d6544d",
+            "item_name": "Garlic Bread",
+            "change_type": "promotion",
+            "details": "Offer Garlic Bread as a complimentary side with any pizza purchase for this weekend. This has been the worst-selling item on the menu with 0 total units sold. Bundling it with our best-selling pizza items will increase its visibility and drive sales through cross-selling opportunities.",
+            "new_price": null
+          }
+        }
+      ],
+      "seconds": 11.5,
+      "tokens": 3655,
+      "error": null,
+      "score": 0.8
+    },
+    {
+      "scenario": "supply-purchase-order",
+      "provider": "ollama",
+      "model": "qwen3.5:4b",
+      "status": "succeeded",
+      "checks": [
+        {
+          "name": "completed",
+          "passed": true,
+          "detail": "succeeded"
+        },
+        {
+          "name": "used expected tools",
+          "passed": true,
+          "detail": "called ['draft_purchase_order', 'get_items_by_supplier', 'list_suppliers']"
+        },
+        {
+          "name": "made the right proposal",
+          "passed": true,
+          "detail": "found a purchase order for Flour from Sysco Foods"
+        },
+        {
+          "name": "proposal applies cleanly",
+          "passed": true,
+          "detail": "Purchase order from Sysco Foods received: Flour stock 5 -> 105 lb (+100)"
+        },
+        {
+          "name": "no stray proposals",
+          "passed": true,
+          "detail": "none"
+        }
+      ],
+      "tools_called": [
+        "list_suppliers",
+        "get_items_by_supplier",
+        "get_items_by_supplier",
+        "draft_purchase_order"
+      ],
+      "proposals": [
+        {
+          "action_type": "purchase_order",
+          "payload": {
+            "supplier_id": "00a512d2ee544bb7ac7728d3f6da4e0a",
+            "supplier_name": "Sysco Foods",
+            "inventory_item_id": "0f5875074f224735ad4be69a9d8f8b84",
+            "item_name": "Flour",
+            "quantity": 100.0,
+            "note": "Flour inventory running low (only 5 lbs on hand). Replenishing to ensure adequate supply for restaurant operations."
+          }
+        }
+      ],
+      "seconds": 16.9,
+      "tokens": 5468,
+      "error": null,
+      "score": 1.0
+    },
+    {
+      "scenario": "employee-coverage-gap",
+      "provider": "ollama",
+      "model": "qwen3.5:4b",
+      "status": "succeeded",
+      "checks": [
+        {
+          "name": "completed",
+          "passed": true,
+          "detail": "succeeded"
+        },
+        {
+          "name": "used expected tools",
+          "passed": true,
+          "detail": "called ['get_upcoming_shifts', 'list_staff', 'propose_shift_change']"
+        },
+        {
+          "name": "made the right proposal",
+          "passed": true,
+          "detail": "found a shift tomorrow for Ana Diaz"
+        },
+        {
+          "name": "proposal applies cleanly",
+          "passed": true,
+          "detail": "Shift scheduled: Ana Diaz on 2026-09-13 17:00:00-21:00:00 as Server"
+        },
+        {
+          "name": "no stray proposals",
+          "passed": true,
+          "detail": "none"
+        }
+      ],
+      "tools_called": [
+        "list_staff",
+        "get_upcoming_shifts",
+        "propose_shift_change"
+      ],
+      "proposals": [
+        {
+          "action_type": "shift_change",
+          "payload": {
+            "staff_id": "32ce066a1fc64b3fb1930f6976501e2e",
+            "staff_name": "Ana Diaz",
+            "date": "2026-09-13",
+            "start_time": "17:00",
+            "end_time": "21:00",
+            "role": "Server",
+            "note": "Covering dinner shift - no server currently scheduled for 2026-09-13 dinner service. Ana Diaz is the available server on staff."
+          }
+        }
+      ],
+      "seconds": 12.0,
+      "tokens": 3822,
+      "error": null,
+      "score": 1.0
+    },
+    {
+      "scenario": "profit-report-read-only",
+      "provider": "ollama",
+      "model": "qwen3.5:4b",
+      "status": "succeeded",
+      "checks": [
+        {
+          "name": "completed",
+          "passed": true,
+          "detail": "succeeded"
+        },
+        {
+          "name": "used expected tools",
+          "passed": true,
+          "detail": "called ['get_menu_margins', 'get_revenue_summary']"
+        },
+        {
+          "name": "proposed nothing",
+          "passed": true,
+          "detail": "correctly left things alone"
+        }
+      ],
+      "tools_called": [
+        "get_revenue_summary",
+        "get_menu_margins"
+      ],
+      "proposals": [],
+      "seconds": 8.2,
+      "tokens": 1857,
+      "error": null,
+      "score": 1.0
+    },
+    {
+      "scenario": "inventory-shortage",
+      "provider": "scripted",
+      "model": "scripted",
+      "status": "succeeded",
+      "checks": [
+        {
+          "name": "completed",
+          "passed": true,
+          "detail": "succeeded"
+        },
+        {
+          "name": "used expected tools",
+          "passed": true,
+          "detail": "called ['list_low_stock_items']"
+        },
+        {
+          "name": "made the right proposal",
+          "passed": false,
+          "detail": "expected a reorder for Tomatoes"
+        },
+        {
+          "name": "proposal applies cleanly",
+          "passed": false,
+          "detail": "no matching proposal to apply"
+        },
+        {
+          "name": "no stray proposals",
+          "passed": true,
+          "detail": "none"
+        }
+      ],
+      "tools_called": [
+        "list_low_stock_items"
+      ],
+      "proposals": [],
+      "seconds": 0.0,
+      "tokens": 0,
+      "error": null,
+      "score": 0.6
+    },
+    {
+      "scenario": "inventory-nothing-low",
+      "provider": "scripted",
+      "model": "scripted",
+      "status": "succeeded",
+      "checks": [
+        {
+          "name": "completed",
+          "passed": true,
+          "detail": "succeeded"
+        },
+        {
+          "name": "used expected tools",
+          "passed": true,
+          "detail": "called ['list_low_stock_items']"
+        },
+        {
+          "name": "proposed nothing",
+          "passed": true,
+          "detail": "correctly left things alone"
+        }
+      ],
+      "tools_called": [
+        "list_low_stock_items"
+      ],
+      "proposals": [],
+      "seconds": 0.0,
+      "tokens": 0,
+      "error": null,
+      "score": 1.0
+    },
+    {
+      "scenario": "marketing-slow-seller",
+      "provider": "scripted",
+      "model": "scripted",
+      "status": "succeeded",
+      "checks": [
+        {
+          "name": "completed",
+          "passed": true,
+          "detail": "succeeded"
+        },
+        {
+          "name": "used expected tools",
+          "passed": false,
+          "detail": "missing ['get_slow_moving_items']"
+        },
+        {
+          "name": "made the right proposal",
+          "passed": false,
+          "detail": "expected a menu change for Garlic Bread"
+        },
+        {
+          "name": "proposal applies cleanly",
+          "passed": false,
+          "detail": "no matching proposal to apply"
+        },
+        {
+          "name": "no stray proposals",
+          "passed": true,
+          "detail": "none"
+        }
+      ],
+      "tools_called": [
+        "get_top_selling_items"
+      ],
+      "proposals": [],
+      "seconds": 0.0,
+      "tokens": 0,
+      "error": null,
+      "score": 0.4
+    },
+    {
+      "scenario": "supply-purchase-order",
+      "provider": "scripted",
+      "model": "scripted",
+      "status": "succeeded",
+      "checks": [
+        {
+          "name": "completed",
+          "passed": true,
+          "detail": "succeeded"
+        },
+        {
+          "name": "used expected tools",
+          "passed": true,
+          "detail": "called ['list_suppliers']"
+        },
+        {
+          "name": "made the right proposal",
+          "passed": false,
+          "detail": "expected a purchase order for Flour from Sysco Foods"
+        },
+        {
+          "name": "proposal applies cleanly",
+          "passed": false,
+          "detail": "no matching proposal to apply"
+        },
+        {
+          "name": "no stray proposals",
+          "passed": true,
+          "detail": "none"
+        }
+      ],
+      "tools_called": [
+        "list_suppliers"
+      ],
+      "proposals": [],
+      "seconds": 0.0,
+      "tokens": 0,
+      "error": null,
+      "score": 0.6
+    },
+    {
+      "scenario": "employee-coverage-gap",
+      "provider": "scripted",
+      "model": "scripted",
+      "status": "succeeded",
+      "checks": [
+        {
+          "name": "completed",
+          "passed": true,
+          "detail": "succeeded"
+        },
+        {
+          "name": "used expected tools",
+          "passed": true,
+          "detail": "called ['list_staff']"
+        },
+        {
+          "name": "made the right proposal",
+          "passed": false,
+          "detail": "expected a shift tomorrow for Ana Diaz"
+        },
+        {
+          "name": "proposal applies cleanly",
+          "passed": false,
+          "detail": "no matching proposal to apply"
+        },
+        {
+          "name": "no stray proposals",
+          "passed": true,
+          "detail": "none"
+        }
+      ],
+      "tools_called": [
+        "list_staff"
+      ],
+      "proposals": [],
+      "seconds": 0.0,
+      "tokens": 0,
+      "error": null,
+      "score": 0.6
+    },
+    {
+      "scenario": "profit-report-read-only",
+      "provider": "scripted",
+      "model": "scripted",
+      "status": "succeeded",
+      "checks": [
+        {
+          "name": "completed",
+          "passed": true,
+          "detail": "succeeded"
+        },
+        {
+          "name": "used expected tools",
+          "passed": true,
+          "detail": "called ['get_revenue_summary']"
+        },
+        {
+          "name": "proposed nothing",
+          "passed": true,
+          "detail": "correctly left things alone"
+        }
+      ],
+      "tools_called": [
+        "get_revenue_summary"
+      ],
+      "proposals": [],
+      "seconds": 0.0,
+      "tokens": 0,
+      "error": null,
+      "score": 1.0
+    }
+  ],
+  "skipped": []
+}

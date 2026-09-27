@@ -1,0 +1,18 @@
+# Build context for the single-container Dockerfile at the repo root.
+.git
+.github
+.claude
+docs
+**/node_modules
+**/.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/*.db
+**/.env
+**/.env.*
+frontend/dist
+frontend/test-results
+frontend/playwright-report
+backend/tests
+backend/evals/results

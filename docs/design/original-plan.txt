@@ -1,0 +1,292 @@
+RESTAURANT MANAGEMENT DASHBOARD + AGENT CONTROL PLANE
+=======================================================
+
+CONTEXT
+-------
+restaurantmanagement/ is a brand-new, empty project directory. The goal is a
+restaurant management dashboard built around a HIERARCHICAL AGENT TEAM: one
+BOSS agent that the operator releases, which in turn delegates to five
+specialized SUBAGENTS, each owning one restaurant-operations domain:
+
+  1. Inventory            -- stock levels, reorder flagging
+  2. Supply Chain          -- suppliers, purchase orders, delivery tracking
+  3. Employee Management    -- staff, shifts, scheduling gaps
+  4. Profit                -- revenue, cost, margin, P&L reporting
+  5. Marketing / Product     -- top/slow sellers, promotions, menu proposals
+
+The operator "releases" the Boss with a high-level objective (e.g. "give me
+this morning's ops briefing" or "prep for the weekend rush"); the Boss
+decides which of the five subagents to delegate to, each subagent runs its
+own scoped tool-calling loop against the restaurant's data, and the Boss
+synthesizes their results into one summary -- all visible live in the
+dashboard as a run tree (Boss run -> child subagent runs). Subagents can
+also be released individually for direct testing/debugging, bypassing the
+Boss.
+
+Key assumption (flag if wrong): "agents" here means LLM-driven automations
+(via the Anthropic SDK), not human staff/shift scheduling.
+
+Other working assumptions for the MVP: single-operator dashboard (no
+multi-tenant chains, no public customer ordering UI); no real supplier/POS
+integrations yet -- an agent that would take a real-world action (like
+ordering more stock) instead writes a proposed action to the DB behind a
+human-approval gate; single-process deployment (no Kubernetes/Celery/Redis)
+with an explicit upgrade path noted, not built now.
+
+STACK
+-----
+- Backend: Python 3.12, FastAPI, async SQLAlchemy 2.0 + Alembic, SQLite
+  (dev, swappable to Postgres later), anthropic Python SDK. This mirrors the
+  proven house convention in chineseappdemo/backend (anthropic==0.121.0,
+  fastapi==0.141.1, SQLAlchemy==2.0.51, alembic==1.19.0), so there's no new
+  pattern to invent for CRUD.
+- Agent execution: no new infra for MVP -- an in-process asyncio.Task per
+  run (AgentRunner), APScheduler with SQLAlchemyJobStore for cron-scheduled
+  agents (persists across restarts), and a FastAPI WebSocket route per run
+  backed by a tiny in-process pub/sub for live log streaming. Each agent
+  type is a system prompt + a scoped list of @beta_tool-decorated Python
+  functions, driven via client.beta.messages.tool_runner(...) -- no
+  hand-rolled agent loop. Upgrade path (not built now): swap the in-process
+  queue for Redis/Celery and pub/sub for Redis/Postgres LISTEN/NOTIFY if
+  this needs to survive process restarts mid-run or scale beyond one
+  machine.
+- Frontend: React + TypeScript + Vite (matches chineseappdemo/frontend),
+  TanStack Query for data fetching, Tailwind CSS, a useAgentRunStream(runId)
+  WebSocket hook for live agent logs.
+
+DATA MODEL
+----------
+Restaurant domain (minimal, extensible, not the initial focus):
+  menu_items, orders, order_items, inventory_items, staff, plus two tables
+  the new subagents need:
+    suppliers(id, name, contact_info, lead_time_days)
+      -- inventory_items gets a supplier_id FK
+    shifts(id, staff_id, date, start_time, end_time, role)
+
+Agent platform:
+  agent_definitions(id, key, name, description, role[boss|subagent],
+    system_prompt, model, tool_allowlist JSON, schedule_cron NULLABLE,
+    enabled, created_at)
+    -- role distinguishes the one Boss from the five subagents;
+    tool_allowlist scopes exactly which tools that definition may call (a
+    subagent only gets its own domain's tools; the Boss only gets its five
+    delegate_to_* tools).
+
+  agent_runs(id, agent_definition_id, parent_run_id NULLABLE, depth,
+    status[queued|running|waiting_approval|succeeded|failed|cancelled],
+    trigger_type[manual|scheduled|delegated], input JSON, output_summary,
+    error, tokens_used, started_at, finished_at, created_at)
+    -- parent_run_id links a subagent run to the Boss run that delegated to
+    it (NULL for a top-level Boss run or a standalone manually-triggered
+    subagent run), so the UI can render a run tree.
+
+  agent_events(id, run_id, seq, ts,
+    type[log|tool_call|tool_result|status_change|delegation], payload JSON)
+    -- a delegation event on the Boss's run records which subagent was
+    invoked and links to the child run_id, so the Boss's live log shows
+    "-> delegated to Supply Chain Agent" inline.
+
+  agent_actions(id, run_id, agent_definition_id, action_type, payload JSON,
+    status[pending|approved|rejected], created_at, decided_at)
+    -- the single human-in-the-loop approval queue used by every subagent
+    that can propose a real-world action (Inventory's reorder proposals,
+    Supply Chain's draft purchase orders, Employee Management's
+    shift-change proposals, Marketing's menu-change proposals). The Profit
+    agent is read-only and never writes here.
+
+Cron schedules live in APScheduler's own jobstore table, keyed by
+agent_definitions.id -- either the Boss (e.g. "run a full briefing every
+morning at 7am") or an individual subagent can be scheduled.
+
+PHASED BUILD PLAN
+------------------
+Phase 0 -- Scaffolding
+  Repo init, backend/app skeleton (config, db session, Alembic init,
+  /health), frontend Vite+TS+React skeleton, .env.example,
+  PLAN.md/progress.md following the chineseappdemo documentation
+  convention.
+
+Phase 1 -- Agent control plane MVP (ship first)
+  Agent data models (including parent_run_id/agent_actions); seed the Boss
+  and all five subagents (Inventory, Supply Chain, Employee Management,
+  Profit, Marketing/Product) with real tools over real seed data -- Profit
+  and Marketing/Product are pure read-only reporting agents (safe to demo
+  with zero real-world side effects), the other three can propose actions
+  that land in the agent_actions approval queue rather than acting
+  directly. REST endpoints to list/create/trigger/cancel runs and
+  approve/reject pending actions; WebSocket live log streaming for both
+  Boss and subagent runs; a dashboard UI centered on one "Release Boss"
+  action, a run-tree view (Boss run with its delegated subagent runs
+  nested underneath), an Approvals inbox, and individual subagent cards for
+  standalone testing/triggering; seed script for sample restaurant data
+  (including suppliers and shifts).
+
+Phase 2 -- Restaurant domain features
+  Full CRUD for menu/orders/inventory/staff, dashboard KPI tiles, real auth
+  (JWT, matching chineseappdemo/backend/app/auth), more agent types wired to
+  real data.
+
+Phase 3 -- Polish
+  Scheduling UI for cron agents, approval-workflow UI, run history
+  search/filtering, per-run token/cost tracking, retries, deployment docs,
+  expanded tests.
+
+FILE STRUCTURE
+---------------
+restaurantmanagement/
+  PLAN.md  progress.md  .gitignore
+  backend/
+    requirements.txt  alembic.ini
+    alembic/{env.py, versions/}
+    app/
+      main.py  config.py
+      db/{session.py, base.py, models.py}
+      restaurant/{models.py, schemas.py, crud.py, routes.py}
+      agents/
+        models.py         # AgentDefinition, AgentRun, AgentEvent, AgentAction
+        schemas.py
+        routes.py          # REST + /ws/agent-runs/{id} + approvals endpoints
+        registry.py        # agent key -> system prompt + tool set (incl. Boss's delegate_to_* tools)
+        runner.py          # execute_run(): drives tool_runner, persists events; called recursively for delegated subagent runs
+        orchestrator.py     # builds the Boss's delegate_to_* tools; each one calls runner.execute_run() for a subagent and returns its output_summary
+        scheduler.py        # APScheduler wiring (SQLAlchemyJobStore)
+        broadcast.py         # in-process pub/sub for WS fanout
+        tools/
+          inventory_tools.py       # @beta_tool functions over restaurant CRUD
+          supply_chain_tools.py
+          employee_tools.py
+          profit_tools.py
+          marketing_tools.py
+    scripts/seed_data.py    # seeds Boss + 5 subagent definitions, sample menu/orders/inventory/suppliers/staff/shifts
+    tests/{test_agents.py, test_orchestrator.py, test_restaurant.py}
+  frontend/
+    package.json  vite.config.ts  tsconfig.json
+    src/
+      main.tsx  App.tsx
+      api/{client.ts, agents.ts, restaurant.ts}
+      pages/{DashboardHome.tsx, AgentsList.tsx, AgentRunDetail.tsx, ApprovalsInbox.tsx, MenuPage.tsx, OrdersPage.tsx, InventoryPage.tsx}
+      components/{AgentCard.tsx, RunTree.tsx, RunStatusBadge.tsx, LiveLogPanel.tsx, ApprovalCard.tsx}
+      state/{useAgentRunStream.ts, queries.ts}
+
+HOW AGENTS DO WORK
+-------------------
+Each AgentDefinition maps (via registry.py) to a system prompt + a list of
+plain @beta_tool async functions that call the SAME SQLAlchemy CRUD layer
+the REST API uses -- no duplicate data access:
+
+  # app/agents/tools/inventory_tools.py
+  from anthropic import beta_tool
+
+  @beta_tool
+  async def list_low_stock_items() -> str:
+      """Return inventory items at or below their reorder threshold."""
+      items = await inventory_crud.get_below_threshold(db)
+      return json.dumps([...])
+
+runner.py drives execution -- "release" inserts an agent_runs row and does
+asyncio.create_task(execute_run(run_id)); "manage" covers listing/filtering
+runs (as a tree via parent_run_id), subscribing to /ws/agent-runs/{id} for
+live logs, POST /agent-runs/{id}/cancel, approving/rejecting agent_actions,
+and editing an AgentDefinition's config/schedule:
+
+  async def execute_run(run_id: UUID) -> str:
+      run = await get_run(run_id)
+      defn = await get_definition(run.agent_definition_id)
+      tools = registry.resolve_tools(defn)   # Boss -> its 5 delegate_to_* tools; subagent -> its domain tools
+      runner = client.beta.messages.tool_runner(
+          model=defn.model,   # per-agent override; cheap agents can use a lighter model
+          max_tokens=16000,
+          system=defn.system_prompt,
+          tools=tools,
+          messages=[{"role": "user", "content": run.input or "Run now."}],
+      )
+      for message in runner:
+          await persist_and_broadcast(run_id, message)  # writes agent_events, pushes to WS
+          if await is_cancel_requested(run_id):
+              break
+      return await finalize_run(run_id, runner)   # returns output_summary
+
+DELEGATION (the Boss -> subagent link) lives in orchestrator.py, which
+builds one @beta_tool per subagent and hands them to the Boss's
+tool_runner call as its tools:
+
+  # app/agents/orchestrator.py
+  def make_delegate_tool(subagent_key: str, boss_run_id: UUID):
+      @beta_tool(name=f"delegate_to_{subagent_key}")
+      async def delegate(task: str) -> str:
+          """Delegate a task to the <subagent_key> subagent and return its result."""
+          subagent_defn = await get_definition_by_key(subagent_key)
+          child_run = await create_run(
+              subagent_defn.id, parent_run_id=boss_run_id,
+              trigger_type="delegated", input=task,
+          )
+          await emit_event(boss_run_id, type="delegation", payload={"child_run_id": child_run.id, "agent": subagent_key})
+          return await execute_run(child_run.id)   # recursive call; awaited synchronously so the Boss sees the result
+      return delegate
+
+Because execute_run is awaited (not fired-and-forgotten) inside the
+delegate tool, the Boss's own tool_runner loop naturally blocks until the
+subagent finishes and gets its output_summary back as the tool result --
+while the subagent's own events still stream live over its own run_id
+WebSocket channel, so the UI can show both the Boss's high-level narration
+and each subagent's detailed log simultaneously.
+
+Human-in-the-loop approval (Inventory, Supply Chain, Employee Management,
+Marketing) is a tool that writes a "pending" row to agent_actions and
+returns a tool_result telling Claude the action is queued for operator
+approval; that subagent's run then sits in waiting_approval until the
+operator approves/rejects in the Approvals Inbox. A waiting_approval child
+run bubbles up as a visible flag on the Boss's run too, so the operator
+doesn't have to dig into the tree to find it.
+
+CRITICAL FILES
+---------------
+- backend/app/agents/runner.py           -- drives agent execution via tool_runner, recursively for delegated runs
+- backend/app/agents/orchestrator.py      -- builds the Boss's 5 delegate_to_* tools
+- backend/app/agents/models.py            -- AgentDefinition/AgentRun(+parent_run_id)/AgentEvent/AgentAction
+- backend/app/agents/routes.py            -- REST + WebSocket endpoints, approvals
+- backend/app/agents/tools/*.py            -- one file per subagent domain
+- frontend/src/components/RunTree.tsx      -- Boss run with nested subagent runs
+- frontend/src/pages/AgentRunDetail.tsx     -- live run view with log streaming
+- frontend/src/pages/ApprovalsInbox.tsx      -- approve/reject pending agent_actions
+
+VERIFICATION (PHASE 1 "DONE")
+-------------------------------
+Operator opens the dashboard, sees the Boss agent and its 5 subagents,
+clicks Release Boss with an objective like "give me this morning's ops
+briefing," and watches: the Boss run go queued -> running, live-streamed
+delegation events as it calls into 2-3 subagents (e.g. Profit for
+yesterday's numbers, Inventory for stock issues, Marketing for a promo
+idea), each shown as a nested child run in the run tree with its own live
+log (including real tool calls reading orders/inventory_items/etc from the
+DB), the Boss's run finishing succeeded with a synthesized summary
+referencing the subagents' findings. Triggering Supply Chain or Employee
+Management directly proposes an action that lands in the Approvals Inbox
+and blocks in waiting_approval until approved/rejected. A scheduled Boss
+run fires on its own via APScheduler without manual triggering.
+
+- pytest unit tests for each subagent's @beta_tool functions against a temp
+  SQLite DB.
+- orchestrator.py/runner.py tests using a stubbed tool_runner to verify
+  delegation creates correctly-linked child runs, agent_runs status
+  transitions (including waiting_approval), and agent_events ordering --
+  without spending API credits.
+- FastAPI TestClient tests for the agent REST + approvals endpoints.
+- A WebSocket test confirming a connected client receives broadcast events
+  for both a Boss run and its delegated child run.
+- Manual e2e: uvicorn + vite dev locally, run seed_data.py, release the
+  Boss, confirm the run tree and live logs, approve a pending action from
+  one of the action-taking subagents, then one real end-to-end run against
+  the live Anthropic API to confirm the full delegation + tool-calling
+  path works, not just the mocked path.
+
+AFTER APPROVAL
+---------------
+Immediate next step (once this plan is approved): push it to
+https://github.com/eddierzhang/FullHouse -- confirmed write access and git
+already configured locally (SSH key/credential helper). Concretely: git
+init in restaurantmanagement/ (no repo exists there yet), git remote add
+origin git@github.com:eddierzhang/FullHouse.git, stage and commit
+PLAN.txt, then git push -u origin <default branch> -- using whatever
+branch the remote already expects (checking the remote first in case
+FullHouse isn't empty, to avoid clobbering existing history).

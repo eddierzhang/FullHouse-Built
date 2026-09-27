@@ -1,0 +1,10 @@
+fastapi==0.141.1
+uvicorn==0.52.1
+SQLAlchemy==2.0.51
+alembic==1.20.0
+pydantic==2.13.4
+python-dotenv==1.2.2
+anthropic==0.121.0
+httpx==0.28.1
+psycopg[binary]==3.3.5
+apscheduler==3.11.3

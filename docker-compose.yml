@@ -1,0 +1,63 @@
+# The whole stack: `docker compose up -d --build`, then open http://localhost:8080
+#
+# Settings come from a `.env` file next to this one -- copy `.env.docker.example`.
+
+services:
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: sqlite:////data/app.db
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
+      # Same-origin through nginx, so this only matters for direct API calls.
+      FRONTEND_ORIGIN: ${PUBLIC_URL:-http://localhost:8080}
+    volumes:
+      - app-data:/data
+    # Not published: only nginx talks to it. Uncomment to hit the API directly.
+    # ports:
+    #   - "8000:8000"
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    environment:
+      # Room for the Boss's parallel delegations, one model kept warm.
+      OLLAMA_NUM_PARALLEL: 4
+      OLLAMA_MAX_LOADED_MODELS: 1
+      OLLAMA_KEEP_ALIVE: 30m
+    volumes:
+      # A named volume by default. Set OLLAMA_MODELS_DIR to an existing model
+      # folder on this machine to reuse it instead of downloading again.
+      - ${OLLAMA_MODELS_DIR:-ollama-models}:/root/.ollama/models
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # One-shot: downloads the model if it isn't there yet, then exits.
+  ollama-pull:
+    image: ollama/ollama:latest
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["ollama", "pull", "${OLLAMA_MODEL:-qwen2.5:7b}"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+
+volumes:
+  app-data:
+  ollama-models:

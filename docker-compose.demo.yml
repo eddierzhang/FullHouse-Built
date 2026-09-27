@@ -1,0 +1,12 @@
+# The public demo, locally, in one command -- no .env, no model download:
+#
+#   docker compose -f docker-compose.demo.yml up --build
+#
+# then open http://localhost:8080. Agents run on the scripted provider and
+# the demo restaurant is reloaded every time the container starts.
+
+services:
+  fullhouse:
+    build: .
+    ports:
+      - "8080:8000"

@@ -1,0 +1,23 @@
+# Render Blueprint for the public demo: Dashboard -> New -> Blueprint, pick
+# this repository, apply. Free plan, one container, no database add-on.
+#
+# The free plan sleeps after 15 idle minutes and has no persistent disk.
+# Both suit the demo: SQLite lives in the container, and every wake-up
+# starts from a fresh demo restaurant.
+
+services:
+  - type: web
+    name: fullhouse-demo
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: DEMO_MODE
+        value: "true"
+      - key: LLM_PROVIDER
+        value: scripted
+      - key: DATABASE_URL
+        value: sqlite:////tmp/fullhouse.db

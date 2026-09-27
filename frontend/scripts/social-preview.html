@@ -1,0 +1,36 @@
+<!doctype html>
+<!-- The GitHub social preview (1280x640). Rendered by capture-social-preview.mjs. -->
+<html>
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  body { width: 1280px; height: 640px; font-family: Inter, system-ui, sans-serif; background: #0b3d38; color: #fff; overflow: hidden; position: relative; }
+  .glow { position: absolute; inset: 0; background: radial-gradient(900px 500px at 85% 110%, #13877c 0%, transparent 60%), radial-gradient(700px 400px at -10% -20%, #145a53 0%, transparent 60%); }
+  .copy { position: absolute; left: 80px; top: 76px; width: 620px; }
+  .brand { display: flex; align-items: center; gap: 16px; font-size: 30px; font-weight: 700; letter-spacing: -0.01em; }
+  .mark { width: 54px; height: 54px; border-radius: 14px; background: #fff; color: #0f766e; display: grid; place-items: center; font-weight: 800; font-size: 30px; }
+  h1 { margin-top: 44px; font-size: 50px; line-height: 1.06; font-weight: 800; letter-spacing: -0.03em; }
+  h1 span { color: #7fe0d4; }
+  p { margin-top: 22px; width: 540px; font-size: 21px; line-height: 1.5; color: #c9e7e3; }
+  .chips { margin-top: 34px; display: flex; gap: 10px; flex-wrap: wrap; width: 560px; }
+  .chip { padding: 8px 14px; border-radius: 999px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.16); font-size: 16px; font-weight: 500; color: #e3f4f1; }
+  .shot { position: absolute; right: -90px; top: 110px; width: 600px; border-radius: 16px; overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,0.45); border: 1px solid rgba(255,255,255,0.18); transform: rotate(-3deg); }
+  .shot img { display: block; width: 100%; }
+</style>
+</head>
+<body>
+  <div class="glow"></div>
+  <div class="copy">
+    <div class="brand"><div class="mark">F</div>FullHouse</div>
+    <h1>AI agents propose.<br><span>The manager decides.</span></h1>
+    <p>Restaurant operations run by a team of agents that work in parallel — with every change approved, recorded and reversible.</p>
+    <div class="chips">
+      <span class="chip">FastAPI</span><span class="chip">SQLAlchemy</span><span class="chip">React 19</span>
+      <span class="chip">TypeScript</span><span class="chip">Live SSE</span><span class="chip">Ollama · Claude</span>
+    </div>
+  </div>
+  <div class="shot"><img src="../../docs/screenshots/runs.png" alt=""></div>
+</body>
+</html>
