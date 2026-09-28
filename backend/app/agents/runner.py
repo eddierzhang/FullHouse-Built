@@ -38,7 +38,7 @@ def execute_run(run_id: str, db: Session | None = None) -> str:
         # Everything this run touches is attributed to the agent. Nesting is
         # correct for delegation: a subagent's context unwinds back to the
         # Boss's when its run returns.
-        run_actor = Actor(type=AGENT, id=defn.key, agent_run_id=run.id)
+        run_actor = Actor(type=AGENT, id=defn.key, agent_run_id=run.id, restaurant_id=run.restaurant_id)
         with actor_context(run_actor):
             agent_crud.set_run_status(db, run, "running", started_at=_now())
             agent_crud.add_event(db, run.id, "status_change", {"status": "running"})

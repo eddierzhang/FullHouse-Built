@@ -37,8 +37,9 @@ async def current_user(request: Request, db: Session = Depends(get_db)) -> User:
     user = await run_in_threadpool(_user_for_token, db, token) if token else None
     if user is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Sign in to continue.")
-    # Change history records who did it by email: unique, and readable.
-    set_actor(Actor(type=HUMAN, id=user.email[:64]))
+    # Change history records who did it by email: unique, and readable --
+    # and for which restaurant, so nobody else's history ever shows it.
+    set_actor(Actor(type=HUMAN, id=user.email[:64], restaurant_id=user.restaurant_id))
     return user
 
 

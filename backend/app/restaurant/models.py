@@ -31,6 +31,9 @@ class Supplier(Base):
     __tablename__ = "suppliers"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    restaurant_id: Mapped[str | None] = mapped_column(
+        ForeignKey("restaurants.id", name="fk_suppliers_restaurant_id_restaurants"), nullable=True, index=True
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     contact_info: Mapped[str | None] = mapped_column(String(255), nullable=True)
     lead_time_days: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
@@ -99,6 +102,9 @@ class MenuItem(Base):
     __tablename__ = "menu_items"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    restaurant_id: Mapped[str | None] = mapped_column(
+        ForeignKey("restaurants.id", name="fk_menu_items_restaurant_id_restaurants"), nullable=True, index=True
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     category: Mapped[str] = mapped_column(String(64), nullable=False)
     price: Mapped[float] = mapped_column(Float, nullable=False)
@@ -114,6 +120,9 @@ class Order(Base):
     __tablename__ = "orders"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    restaurant_id: Mapped[str | None] = mapped_column(
+        ForeignKey("restaurants.id", name="fk_orders_restaurant_id_restaurants"), nullable=True, index=True
+    )
     status: Mapped[str] = mapped_column(String(32), default="open", nullable=False)  # open|completed|cancelled
     channel: Mapped[str] = mapped_column(String(32), default="dine_in", nullable=False)  # dine_in|takeout|delivery
     table_number: Mapped[int | None] = mapped_column(Integer, nullable=True)

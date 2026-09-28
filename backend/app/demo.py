@@ -223,6 +223,12 @@ def reset_demo_data(db: Session, now: datetime | None = None) -> dict:
 
     proposals = _proposals(db, now, today, agent_id, suppliers, inventory, menu, staff)
 
+    # Suppliers, dishes, orders and the agent's work are the demo restaurant's
+    # too -- everything was wiped above, so nothing else is unclaimed.
+    from app.restaurant.crud import claim_unassigned
+
+    claim_unassigned(db, db.get(Restaurant, restaurant_id))
+
     db.commit()
     counts = {"orders": len(orders), "order_items": len(lines), "proposals": proposals}
     logger.info("demo data reset: %s", counts)

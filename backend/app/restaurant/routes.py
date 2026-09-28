@@ -44,13 +44,28 @@ def _staff_fields(db: Session, restaurant_id: str | None, fields: dict, exclude_
 
 
 @router.get("/menu-items", response_model=list[schemas.MenuItemOut])
-def list_menu_items(db: Session = Depends(get_db)):
-    return crud.list_menu_items(db)
+def list_menu_items(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    return crud.list_menu_items(db, inventory.scope_for(db, user))
+
+
+def _dish_or_404(db: Session, user: User, menu_item_id: str) -> MenuItem:
+    """A dish on the user's own restaurant's menu; another's reads as missing."""
+    item = crud.get_menu_item(db, menu_item_id, inventory.scope_for(db, user))
+    if not item:
+        raise HTTPException(404, "Menu item not found")
+    return item
+
+
+def _supplier_or_404(db: Session, user: User, supplier_id: str) -> Supplier:
+    supplier = crud.get_supplier(db, supplier_id, inventory.scope_for(db, user))
+    if not supplier:
+        raise HTTPException(404, "Supplier not found")
+    return supplier
 
 
 @router.post("/menu-items", response_model=schemas.MenuItemOut)
-def create_menu_item(payload: schemas.MenuItemCreate, _: User = Depends(manager), db: Session = Depends(get_db)):
-    item = MenuItem(**payload.model_dump())
+def create_menu_item(payload: schemas.MenuItemCreate, user: User = Depends(manager), db: Session = Depends(get_db)):
+    item = MenuItem(restaurant_id=inventory.scope_for(db, user), **payload.model_dump())
     db.add(item)
     db.commit()
     db.refresh(item)
@@ -120,7 +135,7 @@ def create_inventory_item(
     restaurant_id = inventory.scope_for(db, user)
     if _name_taken(db, restaurant_id, payload.name):
         raise HTTPException(409, f"{payload.name} is already tracked. Record a stock change on it instead.")
-    if payload.supplier_id and not db.get(Supplier, payload.supplier_id):
+    if payload.supplier_id and not crud.get_supplier(db, payload.supplier_id, inventory.scope_for(db, user)):
         raise HTTPException(404, "Supplier not found")
     item = InventoryItem(**payload.model_dump(), restaurant_id=restaurant_id)
     with inventory.stock_change("initial"):
@@ -194,13 +209,13 @@ def list_stock_changes(
 
 
 @router.get("/suppliers", response_model=list[schemas.SupplierOut])
-def list_suppliers(db: Session = Depends(get_db)):
-    return crud.list_suppliers(db)
+def list_suppliers(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    return crud.list_suppliers(db, inventory.scope_for(db, user))
 
 
 @router.post("/suppliers", response_model=schemas.SupplierOut)
-def create_supplier(payload: schemas.SupplierCreate, _: User = Depends(manager), db: Session = Depends(get_db)):
-    supplier = Supplier(**payload.model_dump())
+def create_supplier(payload: schemas.SupplierCreate, user: User = Depends(manager), db: Session = Depends(get_db)):
+    supplier = Supplier(restaurant_id=inventory.scope_for(db, user), **payload.model_dump())
     if payload.lead_time_days is None:
         prefs = profile.inventory_settings(db)
         supplier.lead_time_days = prefs.default_lead_time_days if prefs else 3
@@ -267,21 +282,25 @@ def publish_shifts(user: User = Depends(hr_manager), db: Session = Depends(get_d
 
 
 @router.get("/orders", response_model=list[schemas.OrderOut])
-def list_orders(db: Session = Depends(get_db)):
-    return list(db.query(Order).order_by(Order.created_at.desc()))
+def list_orders(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    restaurant_id = inventory.scope_for(db, user)
+    return list(db.query(Order).filter(Order.restaurant_id == restaurant_id).order_by(Order.created_at.desc()))
 
 
 @router.post("/orders", response_model=schemas.OrderOut)
-def create_order(payload: schemas.OrderCreate, db: Session = Depends(get_db)):
+def create_order(payload: schemas.OrderCreate, user: User = Depends(current_user), db: Session = Depends(get_db)):
     """Record a sale and draw its ingredients out of stock.
 
     Dishes without a recipe consume nothing, so an order of those still
     goes through -- the link is opt-in per dish.
     """
-    order = Order(channel=payload.channel, table_number=payload.table_number, status="completed")
+    restaurant_id = inventory.scope_for(db, user)
+    order = Order(
+        restaurant_id=restaurant_id, channel=payload.channel, table_number=payload.table_number, status="completed"
+    )
     total = 0.0
     for line in payload.items:
-        menu_item = db.get(MenuItem, line.menu_item_id)
+        menu_item = crud.get_menu_item(db, line.menu_item_id, restaurant_id)
         if not menu_item:
             raise HTTPException(404, f"Menu item {line.menu_item_id} not found")
         unit_price = menu_item.price
@@ -304,10 +323,8 @@ def create_order(payload: schemas.OrderCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/menu-items/{menu_item_id}/recipe", response_model=schemas.RecipeOut)
-def get_recipe(menu_item_id: str, db: Session = Depends(get_db)):
-    item = db.get(MenuItem, menu_item_id)
-    if not item:
-        raise HTTPException(404, "Menu item not found")
+def get_recipe(menu_item_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    item = _dish_or_404(db, user, menu_item_id)
 
     lines = []
     ingredient_cost = 0.0
@@ -346,9 +363,7 @@ def set_recipe(
     A replace rather than per-line edits: the UI edits the whole recipe
     at once, and this keeps it from drifting out of sync.
     """
-    item = db.get(MenuItem, menu_item_id)
-    if not item:
-        raise HTTPException(404, "Menu item not found")
+    _dish_or_404(db, user, menu_item_id)
 
     # Only this restaurant's own stock can go into its dishes.
     restaurant_id = inventory.scope_for(db, user)
@@ -374,7 +389,7 @@ def set_recipe(
             )
         )
     db.commit()
-    return get_recipe(menu_item_id, db)
+    return get_recipe(menu_item_id, user, db)
 
 
 @router.patch("/staff/{staff_id}", response_model=schemas.StaffOut)
@@ -467,18 +482,16 @@ def delete_shift(shift_id: int, user: User = Depends(hr_manager), db: Session = 
 
 
 @router.get("/menu-performance", response_model=list[schemas.MenuPerformanceOut])
-def menu_performance(db: Session = Depends(get_db)):
+def menu_performance(user: User = Depends(current_user), db: Session = Depends(get_db)):
     """Every menu item with what it has actually sold and earned."""
-    return crud.menu_performance(db)
+    return crud.menu_performance(db, inventory.scope_for(db, user))
 
 
 @router.patch("/menu-items/{menu_item_id}", response_model=schemas.MenuItemOut)
 def update_menu_item(
-    menu_item_id: str, payload: schemas.MenuItemUpdate, _: User = Depends(manager), db: Session = Depends(get_db)
+    menu_item_id: str, payload: schemas.MenuItemUpdate, user: User = Depends(manager), db: Session = Depends(get_db)
 ):
-    item = db.get(MenuItem, menu_item_id)
-    if not item:
-        raise HTTPException(404, "Menu item not found")
+    item = _dish_or_404(db, user, menu_item_id)
 
     fields = payload.model_dump(exclude_unset=True)
     if fields.get("price") is not None and fields["price"] < 0:
@@ -500,16 +513,14 @@ def update_menu_item(
 
 
 @router.delete("/menu-items/{menu_item_id}", status_code=204)
-def delete_menu_item(menu_item_id: str, _: User = Depends(manager), db: Session = Depends(get_db)):
+def delete_menu_item(menu_item_id: str, user: User = Depends(manager), db: Session = Depends(get_db)):
     """Hard-delete, allowed only for an item that has never sold.
 
     Once a dish appears on an order its row is part of the sales history
     the profit and marketing agents read, so taking it off the menu means
     setting `is_available` to false, not deleting it.
     """
-    item = db.get(MenuItem, menu_item_id)
-    if not item:
-        raise HTTPException(404, "Menu item not found")
+    item = _dish_or_404(db, user, menu_item_id)
 
     sold = db.query(OrderItem).filter(OrderItem.menu_item_id == menu_item_id).count()
     if sold:
@@ -542,11 +553,9 @@ def supply_chain(user: User = Depends(current_user), db: Session = Depends(get_d
 
 @router.patch("/suppliers/{supplier_id}", response_model=schemas.SupplierOut)
 def update_supplier(
-    supplier_id: str, payload: schemas.SupplierUpdate, _: User = Depends(manager), db: Session = Depends(get_db)
+    supplier_id: str, payload: schemas.SupplierUpdate, user: User = Depends(manager), db: Session = Depends(get_db)
 ):
-    supplier = db.get(Supplier, supplier_id)
-    if not supplier:
-        raise HTTPException(404, "Supplier not found")
+    supplier = _supplier_or_404(db, user, supplier_id)
 
     fields = payload.model_dump(exclude_unset=True)
     if fields.get("lead_time_days") is not None and fields["lead_time_days"] < 0:
@@ -561,10 +570,8 @@ def update_supplier(
 
 
 @router.delete("/suppliers/{supplier_id}", status_code=204)
-def delete_supplier(supplier_id: str, _: User = Depends(manager), db: Session = Depends(get_db)):
-    supplier = db.get(Supplier, supplier_id)
-    if not supplier:
-        raise HTTPException(404, "Supplier not found")
+def delete_supplier(supplier_id: str, user: User = Depends(manager), db: Session = Depends(get_db)):
+    supplier = _supplier_or_404(db, user, supplier_id)
 
     supplied = db.query(InventoryItem).filter(InventoryItem.supplier_id == supplier_id).count()
     if supplied:
@@ -597,7 +604,7 @@ def update_inventory_item(
             raise HTTPException(422, f"{required.replace('_', ' ').capitalize()} can't be empty.")
     if fields.get("name") and _name_taken(db, item.restaurant_id, fields["name"], except_id=item.id):
         raise HTTPException(409, f"Another item is already called {fields['name']}.")
-    if fields.get("supplier_id") and not db.get(Supplier, fields["supplier_id"]):
+    if fields.get("supplier_id") and not crud.get_supplier(db, fields["supplier_id"], item.restaurant_id):
         raise HTTPException(404, "Supplier not found")
 
     for field, value in fields.items():
@@ -612,7 +619,8 @@ def update_inventory_item(
 def forecast(
     days: int = Query(default=7, ge=1, le=28),
     history: int = Query(default=28, ge=7, le=180),
+    user: User = Depends(manager),
     db: Session = Depends(get_db),
 ):
-    """Projected revenue and gross profit, built from completed trading days."""
-    return crud.forecast(db, days_ahead=days, history_days=history)
+    """Projected revenue and gross profit, built from completed trading days. Owners and admins."""
+    return crud.forecast(db, days_ahead=days, history_days=history, restaurant_id=inventory.scope_for(db, user))

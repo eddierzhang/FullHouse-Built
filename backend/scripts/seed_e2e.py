@@ -24,12 +24,16 @@ from app.restaurant.models import InventoryItem, MenuItem, Restaurant  # noqa: E
 
 
 def _proposal(db, agent_key: str, action_type: str, payload: dict) -> None:
+    """A finished run with one pending proposal, for the site's restaurant."""
     agent = db.query(AgentDefinition).filter(AgentDefinition.key == agent_key).one()
-    run = AgentRun(agent_definition_id=agent.id, status="succeeded", trigger_type="manual",
-                   input="Seeded for end-to-end tests", output_summary="Seeded proposal.")
+    restaurant = db.query(Restaurant).first()
+    restaurant_id = restaurant.id if restaurant else None
+    run = AgentRun(restaurant_id=restaurant_id, agent_definition_id=agent.id, status="succeeded",
+                   trigger_type="manual", input="Seeded for end-to-end tests", output_summary="Seeded proposal.")
     db.add(run)
     db.flush()
-    db.add(AgentAction(run_id=run.id, agent_definition_id=agent.id, action_type=action_type, payload=payload))
+    db.add(AgentAction(restaurant_id=restaurant_id, run_id=run.id, agent_definition_id=agent.id,
+                       action_type=action_type, payload=payload))
 
 
 #: The account every browser test signs in as. Matches e2e/app.spec.ts.
@@ -48,12 +52,10 @@ def seed() -> None:
             restaurant = Restaurant(**DEMO_PROFILE, setup_completed_at=datetime.now(timezone.utc))
             db.add(restaurant)
             db.flush()
-            # The sample stock and team seed_data.py loaded are this restaurant's, as setup would make them.
-            from app.hr import staff as hr
-            from app.restaurant.inventory import claim_unassigned
+            # The sample data seed_data.py loaded is this restaurant's, as setup would make it.
+            from app.restaurant.crud import claim_unassigned
 
             claim_unassigned(db, restaurant)
-            hr.claim_unassigned(db, restaurant)
         if not db.query(User).filter(User.email == E2E_EMAIL).first():
             db.add(User(email=E2E_EMAIL, name="E2E Manager", password_hash=hash_password(E2E_PASSWORD),
                         restaurant_id=restaurant.id if restaurant else None))

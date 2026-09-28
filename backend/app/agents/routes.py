@@ -9,15 +9,32 @@ from app.agents import crud, executor, scheduler, schemas
 from app.agents.appliers import ApplyError, apply_action, is_appliable, missing_inputs
 from app.agents.broker import TERMINAL, broker
 from app.audit.context import Actor, actor_context, get_actor
-from app.auth.deps import manager
+from app.auth.deps import current_user, manager
 from app.auth.models import User
 from app.db.session import get_db
+from app.restaurant.inventory import scope_for
 
 #: How long an idle stream waits before sending a comment to keep the
 #: connection open through proxies that time out quiet responses.
 HEARTBEAT_SECONDS = 15
 
 router = APIRouter(prefix="/api/v1/agents", tags=["agents"])
+
+
+def _run_for(db: Session, user: User, run_id: str):
+    """A run of the user's own restaurant; another's reads as missing."""
+    run = crud.get_run(db, run_id)
+    if run is None or run.restaurant_id != scope_for(db, user):
+        raise HTTPException(404, "Run not found")
+    return run
+
+
+def _action_for(db: Session, user: User, action_id: str):
+    """A proposal of the user's own restaurant; another's reads as missing."""
+    action = crud.get_action(db, action_id)
+    if action is None or action.restaurant_id != scope_for(db, user):
+        raise HTTPException(404, "Action not found")
+    return action
 
 
 def _definition_out(defn, tz) -> schemas.AgentDefinitionOut:
@@ -85,7 +102,7 @@ def update_definition(
 
 
 @router.post("/runs", response_model=schemas.AgentRunOut, status_code=202)
-def trigger_run(payload: schemas.TriggerRunRequest, _: User = Depends(manager), db: Session = Depends(get_db)):
+def trigger_run(payload: schemas.TriggerRunRequest, user: User = Depends(manager), db: Session = Depends(get_db)):
     """Queue an agent run and return straight away.
 
     The run executes on a worker thread; follow it on
@@ -99,21 +116,21 @@ def trigger_run(payload: schemas.TriggerRunRequest, _: User = Depends(manager), 
     if not defn.enabled:
         raise HTTPException(400, f"Agent '{defn.key}' is disabled")
 
-    run = crud.create_run(db, defn.id, trigger_type="manual", input=payload.input)
+    run = crud.create_run(
+        db, defn.id, trigger_type="manual", input=payload.input, restaurant_id=scope_for(db, user)
+    )
     executor.submit(run.id)
     return run
 
 
 @router.post("/runs/{run_id}/cancel", response_model=schemas.AgentRunOut)
-def cancel_run(run_id: str, _: User = Depends(manager), db: Session = Depends(get_db)):
+def cancel_run(run_id: str, user: User = Depends(manager), db: Session = Depends(get_db)):
     """Ask a run to stop at its next checkpoint.
 
     Cooperative: the provider checks between tool rounds, so a model call
     already in flight finishes first rather than being torn off mid-write.
     """
-    run = crud.get_run(db, run_id)
-    if run is None:
-        raise HTTPException(404, "Run not found")
+    run = _run_for(db, user, run_id)
     if run.status not in ("queued", "running"):
         raise HTTPException(400, f"Run is already {run.status}")
 
@@ -123,15 +140,15 @@ def cancel_run(run_id: str, _: User = Depends(manager), db: Session = Depends(ge
 
 
 @router.get("/runs/{run_id}/stream")
-async def stream_run(run_id: str, request: Request, db: Session = Depends(get_db)):
+async def stream_run(
+    run_id: str, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
+):
     """Server-sent events for one run.
 
     Replays what has already been recorded before switching to live, so a
     listener that connects late still sees the whole run.
     """
-    run = crud.get_run(db, run_id)
-    if run is None:
-        raise HTTPException(404, "Run not found")
+    run = _run_for(db, user, run_id)
 
     queue = broker.subscribe(run_id)
     replay = [
@@ -171,21 +188,19 @@ async def stream_run(run_id: str, request: Request, db: Session = Depends(get_db
 
 
 @router.get("/runs", response_model=list[schemas.AgentRunOut])
-def list_runs(agent_key: str | None = None, db: Session = Depends(get_db)):
+def list_runs(agent_key: str | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)):
     agent_definition_id = None
     if agent_key:
         defn = crud.get_definition_by_key(db, agent_key)
         if defn is None:
             raise HTTPException(404, f"No agent with key '{agent_key}'")
         agent_definition_id = defn.id
-    return crud.list_runs(db, agent_definition_id=agent_definition_id)
+    return crud.list_runs(db, scope_for(db, user), agent_definition_id=agent_definition_id)
 
 
 @router.get("/runs/{run_id}", response_model=schemas.AgentRunDetailOut)
-def get_run(run_id: str, db: Session = Depends(get_db)):
-    run = crud.get_run(db, run_id)
-    if run is None:
-        raise HTTPException(404, "Run not found")
+def get_run(run_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    run = _run_for(db, user, run_id)
     events = crud.list_events(db, run_id)
     child_run_ids = [r.id for r in run.child_runs]
     return schemas.AgentRunDetailOut(
@@ -203,15 +218,15 @@ def _as_out(action) -> schemas.AgentActionOut:
 
 
 @router.get("/actions", response_model=list[schemas.AgentActionOut])
-def list_actions(status: str | None = None, db: Session = Depends(get_db)):
-    return [_as_out(a) for a in crud.list_actions(db, status=status)]
+def list_actions(status: str | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    return [_as_out(a) for a in crud.list_actions(db, scope_for(db, user), status=status)]
 
 
 @router.post("/actions/{action_id}/approve", response_model=schemas.AgentActionOut)
 def approve_action(
     action_id: str,
     payload: schemas.ApproveRequest | None = None,
-    _: User = Depends(manager),
+    user: User = Depends(manager),
     db: Session = Depends(get_db),
 ):
     """Approve a proposal and carry out its effect.
@@ -221,9 +236,7 @@ def approve_action(
     action stays pending, so it can be re-approved once the underlying
     problem is fixed.
     """
-    action = crud.get_action(db, action_id)
-    if action is None:
-        raise HTTPException(404, "Action not found")
+    action = _action_for(db, user, action_id)
     if action.status != "pending":
         raise HTTPException(400, f"Action already {action.status}")
 
@@ -241,6 +254,8 @@ def approve_action(
         id=approver.id,
         agent_run_id=action.run_id,
         agent_action_id=action.id,
+        # The applier looks records up in this restaurant and no other.
+        restaurant_id=action.restaurant_id,
     )
 
     try:
@@ -260,10 +275,8 @@ def approve_action(
 
 
 @router.post("/actions/{action_id}/reject", response_model=schemas.AgentActionOut)
-def reject_action(action_id: str, _: User = Depends(manager), db: Session = Depends(get_db)):
-    action = crud.get_action(db, action_id)
-    if action is None:
-        raise HTTPException(404, "Action not found")
+def reject_action(action_id: str, user: User = Depends(manager), db: Session = Depends(get_db)):
+    action = _action_for(db, user, action_id)
     if action.status != "pending":
         raise HTTPException(400, f"Action already {action.status}")
     crud.mark_action_decided(db, action, "rejected")

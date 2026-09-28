@@ -42,6 +42,9 @@ class ChangeLog(Base):
     actor_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     agent_run_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     agent_action_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    #: Whose restaurant the change belongs to. A plain value, like the ids
+    #: above, so the row outlives a deleted restaurant.
+    restaurant_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
 
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
 

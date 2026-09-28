@@ -72,6 +72,7 @@ MANAGER_ONLY = [
     ("PATCH", "/api/v1/restaurant/suppliers/x"),
     ("DELETE", "/api/v1/restaurant/suppliers/x"),
     ("GET", "/api/v1/restaurant/profit-summary"),
+    ("GET", "/api/v1/restaurant/forecast"),
     ("PATCH", "/api/v1/agents/definitions/maestro"),
     ("POST", "/api/v1/agents/runs"),
     ("POST", "/api/v1/agents/runs/x/cancel"),
@@ -95,7 +96,7 @@ def test_staff_can_still_read_what_they_work_with(client, db):
     _set_up(client, db)
     member = _member(client, db)
 
-    for path in ("/menu-items", "/menu-performance", "/suppliers", "/orders", "/forecast", "/supply-chain",
+    for path in ("/menu-items", "/menu-performance", "/suppliers", "/orders", "/supply-chain",
                  "/inventory-items", "/staff", "/shifts"):
         assert member.get(f"/api/v1/restaurant{path}").status_code == 200, path
     for path in ("/agents/definitions", "/agents/runs", "/agents/actions", "/changes"):

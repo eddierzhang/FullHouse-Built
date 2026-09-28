@@ -143,12 +143,21 @@ def _enable_active_history(mapper: Mapper) -> None:
             impl.active_history = True
 
 
+def _restaurant_of(obj, table: str, actor) -> str | None:
+    """Whose restaurant a change belongs to: the record's own, or else the
+    one the actor is working for (order and recipe lines, say)."""
+    if table == "restaurants":
+        return obj.id
+    return getattr(obj, "restaurant_id", None) or actor.restaurant_id
+
+
 def _row(obj, operation: str, before: dict | None, after: dict | None, changed: list[str]) -> dict:
     actor = get_actor()
     state = inspect(obj)
+    table = state.mapper.local_table.name
     return {
         "ts": datetime.now(timezone.utc),
-        "entity_type": state.mapper.local_table.name,
+        "entity_type": table,
         "entity_id": _entity_id(state, obj),
         "operation": operation,
         "before": before,
@@ -158,6 +167,7 @@ def _row(obj, operation: str, before: dict | None, after: dict | None, changed: 
         "actor_id": actor.id,
         "agent_run_id": actor.agent_run_id,
         "agent_action_id": actor.agent_action_id,
+        "restaurant_id": _restaurant_of(obj, table, actor),
         "note": get_note(),
     }
 

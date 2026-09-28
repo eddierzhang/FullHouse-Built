@@ -30,8 +30,14 @@ def create_run(
     depth: int = 0,
     trigger_type: str = "manual",
     input: str | None = None,
+    restaurant_id: str | None = None,
 ) -> AgentRun:
+    """Queue a run for `restaurant_id` -- by default whichever restaurant the
+    current work is for (app.restaurant.inventory.site_scope)."""
+    from app.restaurant.inventory import site_scope
+
     run = AgentRun(
+        restaurant_id=restaurant_id or site_scope(db),
         agent_definition_id=agent_definition_id,
         parent_run_id=parent_run_id,
         depth=depth,
@@ -49,8 +55,8 @@ def get_run(db: Session, run_id: str) -> AgentRun | None:
     return db.get(AgentRun, run_id)
 
 
-def list_runs(db: Session, agent_definition_id: str | None = None) -> list[AgentRun]:
-    stmt = select(AgentRun).order_by(AgentRun.created_at.desc())
+def list_runs(db: Session, restaurant_id: str | None, agent_definition_id: str | None = None) -> list[AgentRun]:
+    stmt = select(AgentRun).where(AgentRun.restaurant_id == restaurant_id).order_by(AgentRun.created_at.desc())
     if agent_definition_id:
         stmt = stmt.where(AgentRun.agent_definition_id == agent_definition_id)
     return list(db.scalars(stmt))
@@ -88,8 +94,12 @@ def list_events(db: Session, run_id: str) -> list[AgentEvent]:
 def create_action(
     db: Session, run_id: str, agent_definition_id: str, action_type: str, payload: dict
 ) -> AgentAction:
+    # A proposal belongs to its run's restaurant: only that restaurant's
+    # owners and admins may decide it, and approving it acts only there.
+    run = db.get(AgentRun, run_id)
     action = AgentAction(
-        run_id=run_id, agent_definition_id=agent_definition_id, action_type=action_type, payload=payload
+        restaurant_id=run.restaurant_id if run else None,
+        run_id=run_id, agent_definition_id=agent_definition_id, action_type=action_type, payload=payload,
     )
     db.add(action)
     db.commit()
@@ -97,8 +107,8 @@ def create_action(
     return action
 
 
-def list_actions(db: Session, status: str | None = None) -> list[AgentAction]:
-    stmt = select(AgentAction).order_by(AgentAction.created_at.desc())
+def list_actions(db: Session, restaurant_id: str | None, status: str | None = None) -> list[AgentAction]:
+    stmt = select(AgentAction).where(AgentAction.restaurant_id == restaurant_id).order_by(AgentAction.created_at.desc())
     if status:
         stmt = stmt.where(AgentAction.status == status)
     return list(db.scalars(stmt))

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from app.audit.models import ChangeLog
@@ -11,14 +11,13 @@ RESTAURANTS = "restaurants"
 
 
 def visible_to(restaurant_id: str | None, is_manager: bool):
-    """Filter hiding restaurant-profile changes a user may not see.
-
-    Owners and admins see their own restaurant's; nobody sees another's,
-    and members see none -- the history names who made each edit.
-    """
-    if is_manager and restaurant_id:
-        return or_(ChangeLog.entity_type != RESTAURANTS, ChangeLog.entity_id == restaurant_id)
-    return ChangeLog.entity_type != RESTAURANTS
+    """Filter to the changes a user may see: their own restaurant's, never
+    another's. Of those, restaurant-profile edits are for owners and admins
+    -- the history names who made each edit."""
+    own = ChangeLog.restaurant_id == restaurant_id
+    if is_manager:
+        return own
+    return and_(own, ChangeLog.entity_type != RESTAURANTS)
 
 
 def get_change(db: Session, change_id: int, visibility=None) -> ChangeLog | None:

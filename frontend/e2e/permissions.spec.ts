@@ -12,6 +12,7 @@ test('staff see the restaurant but not the controls that are for owners and admi
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
   await expect(page.getByRole('button', { name: 'New task' })).toHaveCount(0)
   await expect(page.getByText('Revenue, last 7 days')).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: /forecast/i })).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Profit & forecast' })).toHaveCount(0)
 
   // A typed-in link to the profit page lands on the overview instead.

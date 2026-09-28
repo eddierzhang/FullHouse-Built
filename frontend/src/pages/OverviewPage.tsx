@@ -119,7 +119,7 @@ export function OverviewPage({ app }: { app: AppContext }) {
           </div>
 
           <div className="stack">
-            <ForecastCard />
+            {app.canManage && <ForecastCard />}
 
             <section className="card">
               <div className="card-header">

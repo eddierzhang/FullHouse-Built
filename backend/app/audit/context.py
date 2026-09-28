@@ -29,6 +29,10 @@ class Actor:
     id: str | None = None
     agent_run_id: str | None = None
     agent_action_id: str | None = None
+    #: The restaurant they're acting for: a person's own, or the one an agent
+    #: run or approved proposal belongs to. Work done without a signed-in
+    #: person reads it as "the site's restaurant" (app.restaurant.inventory.site_scope).
+    restaurant_id: str | None = None
 
 
 SYSTEM_ACTOR = Actor(type=SYSTEM, id="system")

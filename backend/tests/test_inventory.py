@@ -272,11 +272,11 @@ def test_sales_approvals_and_reverts_are_in_the_history(client, db):
     from app.agents.appliers import apply_action
     from app.agents.models import AgentAction
 
-    _set_up(client, db)
+    restaurant = _set_up(client, db)
     item = _add(client, quantity_on_hand=10)
 
     # A sale draws the recipe's ingredients down.
-    dish = MenuItem(name="Bread", category="Bakery", price=5)
+    dish = MenuItem(name="Bread", category="Bakery", price=5, restaurant_id=restaurant["id"])
     db.add(dish)
     db.flush()
     db.add(RecipeItem(menu_item_id=dish.id, inventory_item_id=item["id"], quantity=0.5))

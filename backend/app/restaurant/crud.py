@@ -13,13 +13,10 @@ from app.restaurant.models import (
 )
 
 
-def list_menu_items(db: Session) -> list[MenuItem]:
-    return list(db.scalars(select(MenuItem).order_by(MenuItem.category, MenuItem.name)))
-
-
-#: "The site's restaurant" -- the default scope for the agent and scheduled
-#: jobs, which work for the site rather than for a signed-in person. Routes
-#: pass the signed-in user's restaurant instead (app.restaurant.inventory).
+#: "Whichever restaurant the current work is for" -- the default scope for
+#: the agent, approved proposals and scheduled jobs, which have no signed-in
+#: person (app.restaurant.inventory.site_scope). Routes pass the signed-in
+#: user's restaurant instead.
 SITE = object()
 
 
@@ -27,6 +24,23 @@ def _scope(db: Session, restaurant_id) -> str | None:
     from app.restaurant.inventory import site_scope
 
     return site_scope(db) if restaurant_id is SITE else restaurant_id
+
+
+def list_menu_items(db: Session, restaurant_id=SITE) -> list[MenuItem]:
+    return list(
+        db.scalars(
+            select(MenuItem)
+            .where(MenuItem.restaurant_id == _scope(db, restaurant_id))
+            .order_by(MenuItem.category, MenuItem.name)
+        )
+    )
+
+
+def get_menu_item(db: Session, menu_item_id: str, restaurant_id=SITE) -> MenuItem | None:
+    """One dish, only if it's this restaurant's -- another's reads as missing."""
+    return db.scalar(
+        select(MenuItem).where(MenuItem.id == menu_item_id, MenuItem.restaurant_id == _scope(db, restaurant_id))
+    )
 
 
 def list_inventory_items(db: Session, restaurant_id=SITE) -> list[InventoryItem]:
@@ -40,12 +54,17 @@ def get_low_stock_items(db: Session, restaurant_id=SITE) -> list[InventoryItem]:
     return [i for i in items if i.quantity_on_hand <= i.reorder_threshold]
 
 
-def list_suppliers(db: Session) -> list[Supplier]:
-    return list(db.scalars(select(Supplier).order_by(Supplier.name)))
+def list_suppliers(db: Session, restaurant_id=SITE) -> list[Supplier]:
+    return list(
+        db.scalars(select(Supplier).where(Supplier.restaurant_id == _scope(db, restaurant_id)).order_by(Supplier.name))
+    )
 
 
-def get_supplier(db: Session, supplier_id: str) -> Supplier | None:
-    return db.get(Supplier, supplier_id)
+def get_supplier(db: Session, supplier_id: str, restaurant_id=SITE) -> Supplier | None:
+    """One supplier, only if it's this restaurant's -- another's reads as missing."""
+    return db.scalar(
+        select(Supplier).where(Supplier.id == supplier_id, Supplier.restaurant_id == _scope(db, restaurant_id))
+    )
 
 
 def get_inventory_item(db: Session, inventory_item_id: str, restaurant_id=SITE) -> InventoryItem | None:
@@ -54,49 +73,45 @@ def get_inventory_item(db: Session, inventory_item_id: str, restaurant_id=SITE) 
     return item_in(db, _scope(db, restaurant_id), inventory_item_id)
 
 
-def list_orders_between(db: Session, start_dt, end_dt) -> list[Order]:
+def list_orders_between(db: Session, start_dt, end_dt, restaurant_id=SITE) -> list[Order]:
     return list(
         db.scalars(
             select(Order)
-            .where(Order.created_at >= start_dt, Order.created_at < end_dt, Order.status == "completed")
+            .where(
+                Order.restaurant_id == _scope(db, restaurant_id),
+                Order.created_at >= start_dt, Order.created_at < end_dt, Order.status == "completed",
+            )
             .order_by(Order.created_at)
         )
     )
 
 
-def list_recent_orders(db: Session, days: int = 7) -> list[Order]:
-    cutoff = date.today() - timedelta(days=days)
-    return list(
-        db.scalars(
-            select(Order)
-            .where(Order.status == "completed")
-            .order_by(Order.created_at.desc())
-        )
+def _units_sold(db: Session, restaurant_id) -> dict[str, int]:
+    """menu_item_id -> units on this restaurant's orders."""
+    rows = db.execute(
+        select(OrderItem.menu_item_id, OrderItem.qty)
+        .join(Order, Order.id == OrderItem.order_id)
+        .where(Order.restaurant_id == _scope(db, restaurant_id))
     )
-
-
-def top_selling_items(db: Session, limit: int = 5) -> list[tuple[MenuItem, int]]:
     counts: dict[str, int] = {}
-    for oi in db.scalars(select(OrderItem)):
-        counts[oi.menu_item_id] = counts.get(oi.menu_item_id, 0) + oi.qty
-    ranked = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[:limit]
-    result = []
-    for menu_item_id, qty in ranked:
-        item = db.get(MenuItem, menu_item_id)
-        if item:
-            result.append((item, qty))
-    return result
+    for menu_item_id, qty in rows:
+        counts[menu_item_id] = counts.get(menu_item_id, 0) + qty
+    return counts
 
-def slow_moving_items(db: Session, limit: int = 5) -> list[tuple[MenuItem, int]]:
-    counts: dict[str, int] = {oi.menu_item_id: 0 for oi in db.scalars(select(OrderItem))}
-    for oi in db.scalars(select(OrderItem)):
-        counts[oi.menu_item_id] = counts.get(oi.menu_item_id, 0) + oi.qty
-    all_items = list_menu_items(db)
-    ranked = sorted(all_items, key=lambda m: counts.get(m.id, 0))[:limit]
+
+def top_selling_items(db: Session, limit: int = 5, restaurant_id=SITE) -> list[tuple[MenuItem, int]]:
+    counts = _units_sold(db, restaurant_id)
+    items = [(item, counts[item.id]) for item in list_menu_items(db, restaurant_id) if item.id in counts]
+    return sorted(items, key=lambda pair: pair[1], reverse=True)[:limit]
+
+
+def slow_moving_items(db: Session, limit: int = 5, restaurant_id=SITE) -> list[tuple[MenuItem, int]]:
+    counts = _units_sold(db, restaurant_id)
+    ranked = sorted(list_menu_items(db, restaurant_id), key=lambda m: counts.get(m.id, 0))[:limit]
     return [(m, counts.get(m.id, 0)) for m in ranked]
 
 
-def menu_performance(db: Session) -> list[dict]:
+def menu_performance(db: Session, restaurant_id=SITE) -> list[dict]:
     """Per-item sales and margin -- the numbers the marketing agent reasons about.
 
     Aggregated in SQL rather than by walking every order line in Python,
@@ -113,14 +128,14 @@ def menu_performance(db: Session) -> list[dict]:
                 func.sum(OrderItem.qty * OrderItem.unit_price),
             )
             .join(Order, Order.id == OrderItem.order_id)
-            .where(Order.status == "completed")
+            .where(Order.status == "completed", Order.restaurant_id == _scope(db, restaurant_id))
             .group_by(OrderItem.menu_item_id)
         )
     }
 
     from_recipe = recipe_costs(db)
     rows = []
-    for item in list_menu_items(db):
+    for item in list_menu_items(db, restaurant_id):
         units, revenue = sold.get(item.id, (0, 0.0))
         # A recipe is a computed cost; the stored field is someone's estimate.
         cost = from_recipe.get(item.id, item.cost)
@@ -170,7 +185,11 @@ def profit_summary(db: Session, days: int = 30, restaurant_id=SITE) -> dict:
         select(Order, OrderItem, MenuItem)
         .join(OrderItem, OrderItem.order_id == Order.id)
         .join(MenuItem, MenuItem.id == OrderItem.menu_item_id)
-        .where(Order.status == "completed", func.date(Order.created_at) >= start)
+        .where(
+            Order.status == "completed",
+            Order.restaurant_id == _scope(db, restaurant_id),
+            func.date(Order.created_at) >= start,
+        )
     )
 
     by_day: dict[str, dict] = {}
@@ -260,10 +279,10 @@ def supply_chain_summary(db: Session, restaurant_id=SITE) -> dict:
     "Restock cost" is each low item's `reorder_qty` at its unit cost -- what
     placing the reorder would cost, not the value of what is already there.
     """
-    suppliers = {s.id: s for s in list_suppliers(db)}
+    suppliers = {s.id: s for s in list_suppliers(db, restaurant_id)}
     items = list_inventory_items(db, restaurant_id)
     total_value = sum(i.quantity_on_hand * i.unit_cost for i in items)
-    burn = daily_consumption(db)
+    burn = daily_consumption(db, restaurant_id=restaurant_id)
 
     buckets: dict[str | None, dict] = {}
     for item in items:
@@ -444,7 +463,7 @@ def check_and_deplete_stock(db: Session, lines: list[tuple[str, int]]) -> list[d
     return used
 
 
-def daily_consumption(db: Session, days: int = 30) -> dict[str, float]:
+def daily_consumption(db: Session, days: int = 30, restaurant_id=SITE) -> dict[str, float]:
     """inventory_item_id -> average units consumed per day over the window.
 
     Derived from what was actually sold and the recipes behind it, so it
@@ -459,7 +478,11 @@ def daily_consumption(db: Session, days: int = 30) -> dict[str, float]:
         select(RecipeItem.inventory_item_id, func.sum(RecipeItem.quantity * OrderItem.qty))
         .join(OrderItem, OrderItem.menu_item_id == RecipeItem.menu_item_id)
         .join(Order, Order.id == OrderItem.order_id)
-        .where(Order.status == "completed", func.date(Order.created_at) >= start)
+        .where(
+            Order.status == "completed",
+            Order.restaurant_id == _scope(db, restaurant_id),
+            func.date(Order.created_at) >= start,
+        )
         .group_by(RecipeItem.inventory_item_id)
     )
     return {item_id: float(total or 0.0) / days for item_id, total in rows}
@@ -476,7 +499,7 @@ def utc_day(moment: datetime) -> str:
     return moment.date().isoformat()
 
 
-def forecast(db: Session, days_ahead: int = 7, history_days: int = 28) -> dict:
+def forecast(db: Session, days_ahead: int = 7, history_days: int = 28, restaurant_id=SITE) -> dict:
     """Project revenue and gross profit for the coming days from real sales.
 
     Deliberately simple and explicit about its footing, replacing a panel
@@ -495,7 +518,7 @@ def forecast(db: Session, days_ahead: int = 7, history_days: int = 28) -> dict:
 
     today = datetime.now(timezone.utc).date()
     history_end = today - timedelta(days=1)
-    summary = profit_summary(db, days=history_days + 1)
+    summary = profit_summary(db, days=history_days + 1, restaurant_id=restaurant_id)
     history = [d for d in summary["daily"] if d["date"] <= history_end.isoformat()]
 
     first_trade = next((d["date"] for d in history if d["orders"] > 0), None)
@@ -554,3 +577,23 @@ def forecast(db: Session, days_ahead: int = 7, history_days: int = 28) -> dict:
         "total_revenue": round(sum(d["revenue"] for d in projected), 2),
         "total_profit": round(sum(d["profit"] for d in projected), 2),
     }
+
+
+def claim_unassigned(db: Session, restaurant) -> None:
+    """Give everything that belongs to no restaurant to `restaurant`.
+
+    Run when setup creates the restaurant, so sample data seeded before
+    then -- stock, team, menu, suppliers, orders, the agent's work and the
+    history of all of it -- becomes this restaurant's instead of vanishing.
+    """
+    from sqlalchemy import update
+
+    from app.agents.models import AgentAction, AgentRun
+    from app.audit.models import ChangeLog
+    from app.hr import staff as hr
+    from app.restaurant import inventory
+
+    inventory.claim_unassigned(db, restaurant)
+    hr.claim_unassigned(db, restaurant)
+    for model in (Supplier, MenuItem, Order, AgentRun, AgentAction, ChangeLog):
+        db.execute(update(model).where(model.restaurant_id.is_(None)).values(restaurant_id=restaurant.id))

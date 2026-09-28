@@ -40,6 +40,15 @@ class EditConflict(ValueError):
 
 
 def get_restaurant(db: Session) -> Restaurant | None:
+    """The restaurant the current work is for: the signed-in person's, or the
+    one an agent run or approved proposal belongs to (the actor carries it);
+    otherwise the site's first. Its rules, roles and hours are the ones that apply."""
+    from app.audit.context import get_actor
+
+    if acting_for := get_actor().restaurant_id:
+        restaurant = db.get(Restaurant, acting_for)
+        if restaurant is not None:
+            return restaurant
     return db.query(Restaurant).order_by(Restaurant.created_at).first()
 
 
@@ -122,12 +131,10 @@ def save_section(db: Session, user: User, section: str, data: BaseModel) -> Rest
         restaurant.completed_steps = [s for s in SECTIONS if s in {*restaurant.completed_steps, section}]
     if created:
         db.flush()  # after the values are set, so the history shows a single insert
-        # Sample stock and staff seeded before setup become this restaurant's.
-        from app.hr import staff as hr
-        from app.restaurant.inventory import claim_unassigned
+        # Sample data seeded before setup becomes this restaurant's.
+        from app.restaurant.crud import claim_unassigned
 
         claim_unassigned(db, restaurant)
-        hr.claim_unassigned(db, restaurant)
     if user.restaurant_id != restaurant.id:
         db.flush()  # the restaurant row must exist before the user can point at it
         user.restaurant_id = restaurant.id

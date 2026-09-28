@@ -36,6 +36,10 @@ class AgentRun(Base):
     __tablename__ = "agent_runs"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    #: Whose restaurant the run works on; its tools see only that restaurant's data.
+    restaurant_id: Mapped[str | None] = mapped_column(
+        ForeignKey("restaurants.id", name="fk_agent_runs_restaurant_id_restaurants"), nullable=True, index=True
+    )
     agent_definition_id: Mapped[str] = mapped_column(String(32), ForeignKey("agent_definitions.id"), nullable=False)
     parent_run_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("agent_runs.id"), nullable=True)
     depth: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -75,6 +79,10 @@ class AgentAction(Base):
     __tablename__ = "agent_actions"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    #: The run's restaurant: only its owners and admins may decide the proposal.
+    restaurant_id: Mapped[str | None] = mapped_column(
+        ForeignKey("restaurants.id", name="fk_agent_actions_restaurant_id_restaurants"), nullable=True, index=True
+    )
     run_id: Mapped[str] = mapped_column(String(32), ForeignKey("agent_runs.id"), nullable=False)
     agent_definition_id: Mapped[str] = mapped_column(String(32), ForeignKey("agent_definitions.id"), nullable=False)
     action_type: Mapped[str] = mapped_column(String(64), nullable=False)

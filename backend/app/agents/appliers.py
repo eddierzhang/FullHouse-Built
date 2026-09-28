@@ -83,7 +83,12 @@ def apply_purchase_order(db: Session, payload: dict) -> str:
 
 def apply_shift_change(db: Session, payload: dict) -> str:
     staff_id = _require(payload, "staff_id")
-    staff = db.get(Staff, staff_id)
+    from app.hr import staff as hr
+    from app.restaurant.inventory import site_scope
+
+    # The proposal's own restaurant (the approver's actor carries it): a
+    # proposal naming another restaurant's employee finds no one.
+    staff = hr.person_in(db, site_scope(db), staff_id)
     if staff is None:
         raise ApplyError(f"No staff member with id {staff_id}")
 
@@ -136,7 +141,7 @@ def _promo_end(raw) -> datetime | None:
 
 def apply_menu_change(db: Session, payload: dict) -> str:
     item_id = _require(payload, "menu_item_id")
-    item = db.get(MenuItem, item_id)
+    item = restaurant_crud.get_menu_item(db, item_id)
     if item is None:
         raise ApplyError(f"No menu item with id {item_id}")
 

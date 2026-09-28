@@ -69,9 +69,17 @@ def scope_for(db: Session, user: User) -> str | None:
 
 
 def site_scope(db: Session) -> str | None:
-    """The site's restaurant, for work no one signed in to -- the agent and its scheduled jobs."""
+    """The restaurant the current work is for, when no signed-in person names one.
+
+    An agent run, or a proposal being approved, acts for its own restaurant
+    (the actor carries it); anything else -- a scheduled job, a script --
+    works for the site's restaurant.
+    """
+    from app.audit.context import get_actor
     from app.restaurant.profile import get_restaurant
 
+    if acting_for := get_actor().restaurant_id:
+        return acting_for
     restaurant = get_restaurant(db)
     return restaurant.id if restaurant else None
 
