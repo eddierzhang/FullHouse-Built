@@ -71,6 +71,8 @@ test.describe('navigation', () => {
     await page.goto('/')
 
     const nav = page.getByRole('navigation')
+    // allInnerTexts doesn't wait: read the links only once the whole sidebar is there.
+    await expect(nav.getByRole('link', { name: /^Help/ })).toBeVisible()
     const labels = await nav.getByRole('link').allInnerTexts()
     const names = labels.map((l) => l.replace(/\d+$/, '').trim())
     // The day's work first, then the kitchen, the agent, the records and the restaurant.
