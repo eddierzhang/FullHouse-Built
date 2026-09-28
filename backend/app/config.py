@@ -90,5 +90,16 @@ class Settings:
     # single-container image). Unset in development, where Vite serves it.
     static_dir: str | None = os.getenv("STATIC_DIR") or None
 
+    # Error alerts. With a DSN set, unhandled errors -- in the API, in agent
+    # runs, and ones browsers report -- go to Sentry, which emails you about
+    # new ones. Unset (the default), nothing is sent anywhere.
+    sentry_dsn: str | None = os.getenv("SENTRY_DSN") or None
+    sentry_environment: str = os.getenv("SENTRY_ENVIRONMENT", "production")
+
+    # Who owners and staff contact for help, shown on the Help page. Blank
+    # until you set them.
+    support_email: str | None = os.getenv("SUPPORT_EMAIL") or None
+    support_url: str | None = os.getenv("SUPPORT_URL") or None
+
 
 settings = Settings()

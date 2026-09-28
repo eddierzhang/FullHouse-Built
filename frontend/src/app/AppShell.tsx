@@ -18,6 +18,7 @@ import {
   triggerRun,
 } from '../api/client'
 import { ActionDrawer } from '../components/ActionDrawer'
+import { FeedbackButton } from '../components/FeedbackButton'
 import { Icon, type IconName } from '../components/Icon'
 import { NewTaskModal } from '../components/NewTaskModal'
 import { Toast, type ToastState } from '../components/Toast'
@@ -25,6 +26,7 @@ import { relativeTime } from '../lib/format'
 import { announceDataChanged } from '../lib/useLoad'
 import { type Route, useHashRoute } from '../lib/useHashRoute'
 import { AgentsPage } from '../pages/AgentsPage'
+import { HelpPage } from '../pages/HelpPage'
 import { HistoryPage } from '../pages/HistoryPage'
 import { ApprovalsPage } from '../pages/ApprovalsPage'
 import { InventoryPage } from '../pages/InventoryPage'
@@ -83,7 +85,13 @@ const NAV: { label: string | null; items: NavItem[] }[] = [
       { route: 'history', label: 'History & undo', icon: 'clock' },
     ],
   },
-  { label: 'Restaurant', items: [{ route: 'profile', label: 'Profile', icon: 'store' }] },
+  {
+    label: 'Restaurant',
+    items: [
+      { route: 'profile', label: 'Profile', icon: 'store' },
+      { route: 'help', label: 'Help', icon: 'info' },
+    ],
+  },
 ]
 
 /** The phone's bottom bar: the day's work, and everything else behind More. */
@@ -269,6 +277,8 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
         return <ProfilePage app={app} user={user} />
       case 'history':
         return <HistoryPage app={app} />
+      case 'help':
+        return <HelpPage app={app} />
       default:
         return <OverviewPage app={app} />
     }
@@ -325,6 +335,7 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
           <button className="btn btn-secondary btn-sm sign-out" onClick={onSignOut}>
             Sign out
           </button>
+          <FeedbackButton onSent={() => toast('Thanks, feedback sent', 'The people running FullHouse will see it.')} />
           <div className="row">
             <span
               className="dot"

@@ -304,3 +304,70 @@ pg_restore --no-owner --no-privileges --clean --if-exists -d "postgresql://...ne
 Point `DATABASE_URL` at the restored database. Neon also keeps a short point-in-time history of its own
 (Neon console → Branches → Restore); the nightly dump covers anything older.
 
+## Error alerts
+
+With `SENTRY_DSN` set, every unhandled error goes to [Sentry](https://sentry.io), which emails you the first
+time each new kind happens. That covers an API request that fails, an agent run that crashes, and a crash in
+someone's browser (the app reports those to its own server, which passes them on). The free plan is plenty
+for a few restaurants.
+
+1. Create a free Sentry account and a project of type **Python** (FastAPI).
+2. Copy the project's DSN (Settings → Client Keys).
+3. Set it as `SENTRY_DSN` on the service (Render: Environment → Add). Optionally set `SENTRY_ENVIRONMENT`
+   (for example `pilot`) to tell restaurants apart.
+4. Redeploy. The log line `error alerts: sending to Sentry` confirms it's on.
+
+What is never sent: cookies, request bodies (so no passwords or two-step codes), the Authorization and
+Idempotency-Key headers, query strings, one-time invite and reset tokens, and people's emails or IP
+addresses. Errors are named by route (`/api/v1/auth/invite/{token}`), never the real link. With no DSN,
+nothing leaves the server, and errors still appear as single lines in the service's logs.
+
+Also worth turning on:
+
+- **Render's own emails** (Account → Notifications): failed deploys, and the service going unhealthy.
+  `/health` now checks the database, so a lost database connection counts as unhealthy.
+- **An uptime check** on `/health` (UptimeRobot's free plan, every 5 minutes): it tells you when the site
+  is down, and keeps a free instance awake.
+
+## Rolling back
+
+Something went wrong after a deploy? In order of how much they undo:
+
+**1. Go back to the previous version of the app.** Render: the service → **Events** (or **Deploys**) → the
+last good deploy → **Rollback**. It's live again in a minute or two. Turn off **Auto-Deploy** while you work
+out what happened, so the next push doesn't redeploy the broken version.
+
+**2. If that deploy also changed the database.** Rolling the app back doesn't undo database migrations.
+Every migration here can be reversed, one step at a time. First find the revision the good version expects:
+it's the `revision = ...` of the newest file in `backend/alembic/versions/` *in that version*. Then, from a
+checkout of the **newer** code (which knows how to undo its own migrations):
+
+```bash
+cd backend
+DATABASE_URL="postgresql://...production..." python -m alembic current      # where it is now
+DATABASE_URL="postgresql://...production..." python -m alembic downgrade <good-revision>
+```
+
+Take a backup first (Actions → Nightly backup → Run workflow), and do it while the app is rolled back
+(step 1), so nothing writes in between. Downgrades drop what the newer version added: for example, rolling
+back past pack sizes forgets each item's pack size, but not its stock.
+
+**3. If data itself is wrong.** For a few records, use **History & undo** in the app: every change can be
+undone, including ones the Assistant Manager made. For something bigger, restore last night's backup (see
+Backups above), or use Neon's point-in-time restore for a moment within the last day.
+
+Before each deploy to a restaurant that's using it, check: tests pass in CI, the migration was tried on a
+copy of real data (restore a backup into a scratch Neon branch and run `alembic upgrade head`), and you
+know the revision you'd roll back to.
+
+## Support contact and user guide
+
+Set `SUPPORT_EMAIL` (and optionally `SUPPORT_URL`) and the Help page shows them to owners and staff. The
+Help page also has a short guide to everyday tasks (the longer version is
+[docs/USER_GUIDE.md](docs/USER_GUIDE.md)), a **Send feedback** button (also in the sidebar), and, for owners
+and admins, **Download all data**: a zip of CSV files with everything the restaurant keeps here. Each export
+is recorded in the security log.
+
+Feedback is kept with the restaurant (owners and admins see it on the Help page) and logged as
+`fullhouse.feedback` warnings, so it also turns up in the service's logs.
+

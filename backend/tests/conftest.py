@@ -30,6 +30,7 @@ from app.agents import models as agent_models  # noqa: E402,F401
 from app.audit import listener as audit_listener  # noqa: E402
 from app.audit import models as audit_models  # noqa: E402,F401
 from app.auth import models as auth_models  # noqa: E402,F401
+from app.support import models as support_models  # noqa: E402,F401
 from app.db import session as app_session  # noqa: E402
 from app.db.session import Base, get_db  # noqa: E402
 from app.restaurant import models as restaurant_models  # noqa: E402,F401

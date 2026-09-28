@@ -32,6 +32,7 @@ TYPES = {
     "reset_link_issued": "Password reset link created",
     "password_reset": "Password reset with a link",
     "access_denied": "Tried something their role doesn't allow",
+    "data_exported": "Exported the restaurant's data",
     "mfa_enabled": "Two-step sign-in turned on",
     "mfa_failed": "Wrong two-step code",
     "mfa_backup_code_used": "Signed in with a backup code",

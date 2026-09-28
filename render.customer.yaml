@@ -45,3 +45,10 @@ services:
       # never change it, or everyone must set two-step sign-in up again.
       - key: SECRET_KEY
         generateValue: true
+      # Error alerts: paste the DSN from a free Sentry project (see DEPLOY.md,
+      # "Error alerts"). Left blank, nothing is sent anywhere.
+      - key: SENTRY_DSN
+        sync: false
+      # Who owners and staff contact, shown on the Help page.
+      - key: SUPPORT_EMAIL
+        sync: false

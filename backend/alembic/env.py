@@ -13,6 +13,7 @@ from app.config import settings  # noqa: E402
 from app.agents import models as agent_models  # noqa: E402,F401
 from app.audit import models as audit_models  # noqa: E402,F401
 from app.auth import models as auth_models  # noqa: E402,F401
+from app.support import models as support_models  # noqa: E402,F401
 from app.restaurant import models as restaurant_models  # noqa: E402,F401
 from app.db.session import Base, normalize_database_url  # noqa: E402
 

@@ -12,6 +12,7 @@ export const ROUTES = [
   'profit',
   'profile',
   'history',
+  'help',
 ] as const
 
 export type Route = (typeof ROUTES)[number]

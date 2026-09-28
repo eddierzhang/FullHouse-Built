@@ -20,10 +20,15 @@ from app.auth.routes import router as auth_router
 from app.config import settings
 from app.restaurant.routes import router as restaurant_router
 from app.restaurant.profile_routes import router as profile_router
+from app.support.alerts import configure_logging, configure_sentry
+from app.support.routes import router as support_router
 
 # Must happen before any session is used, so that no mutation escapes
 # unrecorded during startup.
 setup()
+# Before the app exists, so Sentry (when configured) sees errors from the start.
+configure_logging()
+configure_sentry()
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +123,8 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # So a frontend on another origin can name the export's download.
+    expose_headers=["Content-Disposition"],
 )
 
 # Everything but signing in needs a signed-in user.
@@ -127,6 +134,7 @@ app.include_router(restaurant_router, dependencies=signed_in)
 app.include_router(agents_router, dependencies=signed_in)
 app.include_router(changes_router, dependencies=signed_in)
 app.include_router(profile_router, dependencies=signed_in)
+app.include_router(support_router, dependencies=signed_in)
 
 
 @app.get("/health")

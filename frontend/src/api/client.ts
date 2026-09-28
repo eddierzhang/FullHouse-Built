@@ -778,3 +778,48 @@ export const revertChange = (id: number, force = false) =>
 
 /** The newest change this person can see; it moves whenever anything they could see changes. */
 export const fetchChangeVersion = () => get<{ version: number; latest_at: string | null }>('/api/v1/changes/version')
+
+// --- support -------------------------------------------------------------------------
+
+export type SupportInfo = { support_email: string | null; support_url: string | null }
+export type FeedbackEntry = { id: number; sent_by: string; page: string | null; message: string; created_at: string }
+
+export const fetchSupportInfo = () => get<SupportInfo>('/api/v1/support')
+export const sendFeedback = (message: string, page: string | null) =>
+  send<FeedbackEntry>('POST', '/api/v1/support/feedback', { message, page })
+/** What the team has sent. Owners and admins. */
+export const listFeedback = () => get<FeedbackEntry[]>('/api/v1/support/feedback')
+
+/** Everything the restaurant keeps here, as a zip of CSV files, saved by the browser. Owners and admins. */
+export async function downloadExport(): Promise<void> {
+  const res = await request('/api/v1/support/export')
+  const blob = await res.blob()
+  const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? 'fullhouse-export.zip'
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = name
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 10_000)
+}
+
+/**
+ * Tell the server about a crash in this browser, so it's alerted on like a
+ * server error. Deliberately quiet: its own plain request (a failure here
+ * must never sign anyone out or show an error), and never throws.
+ */
+export function reportClientError(message: string, stack?: string): void {
+  fetch(`${API_BASE}/api/v1/support/client-errors`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: message.slice(0, 500),
+      stack: stack?.slice(0, 4000) ?? null,
+      page: window.location.hash.replace(/^#\/?/, '').slice(0, 255) || null,
+    }),
+    keepalive: true,
+  }).catch(() => {})
+}

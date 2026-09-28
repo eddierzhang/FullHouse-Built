@@ -2343,3 +2343,40 @@ a.sidebar-user:hover {
     border: 0;
   }
 }
+
+/* ---------- help, feedback --------------------------------------------------------- */
+
+.feedback-button {
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.guide details {
+  border-bottom: 1px solid var(--border);
+}
+
+.guide details:last-child {
+  border-bottom: 0;
+}
+
+.guide summary {
+  min-height: 44px;
+  padding: 12px 0;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.guide ol {
+  margin: 0 0 14px;
+  padding-left: 22px;
+  color: var(--text-secondary);
+}
+
+.guide li {
+  margin: 4px 0;
+}
+
+.feedback-message {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

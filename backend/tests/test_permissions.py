@@ -31,6 +31,8 @@ STAFF_MAY = {
     ("POST", "/api/v1/auth/mfa/disable"): "your own, with a current code; refused where it's required",
     ("PATCH", "/api/v1/auth/team/{user_id}"): "owners only, checked in the route",
     ("POST", "/api/v1/restaurant/inventory-items"): "staff add stock items",
+    ("POST", "/api/v1/support/feedback"): "anyone signed in may send feedback; rate-limited per person",
+    ("POST", "/api/v1/support/client-errors"): "a crash report from the person's own browser; rate-limited per person",
     ("POST", "/api/v1/restaurant/inventory-items/{inventory_item_id}/adjustments"): "staff record deliveries and use",
     ("PATCH", "/api/v1/restaurant/inventory-items/{inventory_item_id}"): "item details are checked in the route",
     ("POST", "/api/v1/restaurant/orders"): "staff take orders",

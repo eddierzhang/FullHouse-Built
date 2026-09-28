@@ -175,6 +175,12 @@ Full report: [evals/results/latest.md](backend/evals/results/latest.md).
 **Quality** — pytest (210 tests on SQLite and Postgres), Playwright end-to-end tests, agent evals, GitHub Actions
 **Delivery** — a single-container demo image, and Docker Compose with nginx and Ollama
 
+## For restaurants
+
+- [docs/USER_GUIDE.md](docs/USER_GUIDE.md): a short guide for owners and staff (also in the app, under Help).
+- [docs/PILOT.md](docs/PILOT.md): the checklist for running a pilot with the first restaurant.
+- [DEPLOY.md](DEPLOY.md): deploying, error alerts (Sentry), backups, and rolling back.
+
 ## Running it
 
 Every task is one command through [`dev.py`](dev.py), which works the same on Windows, macOS and Linux:
@@ -224,7 +230,7 @@ frontend/
   src/components/   shared UI: approvals list, charts, drawer, recipe editor
   e2e/              Playwright tests
   scripts/          records the demo GIF and screenshots
-docs/               development log, original plan, screenshots
+docs/               user guide, pilot checklist, development log, original plan, screenshots
 Dockerfile          single-container image (demo, free hosts)
 docker-compose.yml  nginx + API + Ollama
 dev.py              developer tasks

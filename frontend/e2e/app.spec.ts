@@ -86,6 +86,7 @@ test.describe('navigation', () => {
       'Profit & forecast',
       'History & undo',
       'Profile',
+      'Help',
     ])
 
     const headings: Record<string, string> = {
@@ -99,6 +100,7 @@ test.describe('navigation', () => {
       'Profit & forecast': 'Profit & forecast',
       'History & undo': 'History & undo',
       Profile: 'Profile',
+      Help: 'Help',
     }
     for (const [link, heading] of Object.entries(headings)) {
       await nav.getByRole('link', { name: new RegExp(`^${link}`) }).click()
