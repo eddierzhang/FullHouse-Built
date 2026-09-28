@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useState } from 'react'
+import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { type MfaSetup as Setup, enableMfa, startMfaSetup } from '../api/client'
 
 /** Backup codes, shown once, with a way to keep them. */
@@ -42,11 +42,17 @@ export function MfaSetup({ currentCode, onDone }: { currentCode?: string; onDone
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
+  // One request per setup. Each replaces the secret waiting on the server, so
+  // two in flight (React runs effects twice in development) could finish in
+  // either order and leave the page showing a secret the server no longer
+  // expects. The ref outlives that second run; starting setup again mounts a
+  // new component, with a new request.
+  const request = useRef<Promise<Setup> | null>(null)
+
   useEffect(() => {
-    // Each request replaces the secret waiting on the server, so only the
-    // latest response may be shown -- an earlier one's code would never match.
     let current = true
-    startMfaSetup(currentCode)
+    request.current ??= startMfaSetup(currentCode)
+    request.current
       .then((next) => current && setSetup(next))
       .catch((err) => current && setError(err instanceof Error ? err.message : String(err)))
     return () => {
