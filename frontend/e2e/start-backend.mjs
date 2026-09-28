@@ -20,6 +20,8 @@ const env = {
   DATABASE_URL: `sqlite:///${db}`,
   LLM_PROVIDER: 'scripted',
   SCHEDULER_ENABLED: 'false',
+  // Coworkers sign up directly in the tests, rather than through invite links.
+  ALLOW_SIGNUP: 'true',
   FRONTEND_ORIGIN: process.env.E2E_WEB_ORIGIN ?? 'http://127.0.0.1:5174',
   PYTHONUNBUFFERED: '1',
 }

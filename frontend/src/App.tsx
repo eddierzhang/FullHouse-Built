@@ -9,6 +9,7 @@ import {
   logout,
 } from './api/client'
 import { AppShell } from './app/AppShell'
+import { type AccountLink, LinkPage, readAccountLink } from './pages/LinkPage'
 import { LoginPage } from './pages/LoginPage'
 import { SetupPage } from './pages/SetupPage'
 
@@ -28,6 +29,19 @@ type AuthState =
  */
 export default function App() {
   const [auth, setAuth] = useState<AuthState>({ status: 'checking' })
+  // An invite or password-reset link opens its own page, signed in or not.
+  const [link, setLink] = useState<AccountLink | null>(readAccountLink)
+
+  useEffect(() => {
+    const onChange = () => setLink(readAccountLink())
+    window.addEventListener('hashchange', onChange)
+    return () => window.removeEventListener('hashchange', onChange)
+  }, [])
+
+  const leaveLink = useCallback(() => {
+    window.location.hash = '#overview'
+    setLink(null)
+  }, [])
 
   const enter = useCallback(async (user: User) => {
     setAuth({ status: 'checking' })
@@ -62,6 +76,19 @@ export default function App() {
     (restaurant: Restaurant) => setAuth((a) => (a.status === 'signed-in' ? { ...a, restaurant } : a)),
     [],
   )
+
+  if (link && auth.status !== 'checking') {
+    return (
+      <LinkPage
+        link={link}
+        onSignedIn={(user) => {
+          leaveLink()
+          void enter(user)
+        }}
+        onCancel={leaveLink}
+      />
+    )
+  }
 
   switch (auth.status) {
     case 'checking':

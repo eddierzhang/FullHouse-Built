@@ -29,7 +29,9 @@ def _user_for_token(db: Session, token: str) -> User | None:
         db.delete(session)
         db.commit()
         return None
-    return db.get(User, session.user_id)
+    user = db.get(User, session.user_id)
+    # Turning access off ends the sessions too; this catches any still in flight.
+    return None if user is None or user.disabled_at else user
 
 
 async def current_user(request: Request, db: Session = Depends(get_db)) -> User:
@@ -43,9 +45,12 @@ async def current_user(request: Request, db: Session = Depends(get_db)) -> User:
     return user
 
 
-def manager(user: User = Depends(current_user)) -> User:
+def manager(request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)) -> User:
     """Owners and admins only: editing the menu and suppliers, running and
-    approving the agent, undoing changes, and the profit figures."""
+    approving the agent, undoing changes, and the profit figures. A refusal
+    goes in the security log."""
     if not user.is_manager:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the owner or an admin can do that.")
+        from app.auth.events import deny
+
+        raise deny(db, user, request, "Only the owner or an admin can do that.")
     return user

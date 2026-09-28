@@ -16,6 +16,19 @@ def _normalise_email(value: str) -> str:
     return value
 
 
+def _valid_password(value: str) -> str:
+    if len(value) < 8:
+        raise ValueError("Use at least 8 characters.")
+    return value
+
+
+def _valid_name(value: str) -> str:
+    value = value.strip()
+    if not value:
+        raise ValueError("Enter your name.")
+    return value
+
+
 class LoginIn(BaseModel):
     email: str = Field(max_length=254)
     password: str = Field(min_length=1, max_length=256)
@@ -30,20 +43,8 @@ class SignupIn(BaseModel):
 
     _email = field_validator("email")(_normalise_email)
 
-    @field_validator("name")
-    @classmethod
-    def _name(cls, value: str) -> str:
-        value = value.strip()
-        if not value:
-            raise ValueError("Enter your name.")
-        return value
-
-    @field_validator("password")
-    @classmethod
-    def _password(cls, value: str) -> str:
-        if len(value) < 8:
-            raise ValueError("Use at least 8 characters.")
-        return value
+    _name = field_validator("name")(_valid_name)
+    _password = field_validator("password")(_valid_password)
 
 
 class UserOut(BaseModel):
@@ -55,6 +56,8 @@ class UserOut(BaseModel):
     role: str
     restaurant_id: str | None
     created_at: datetime
+    #: Set while an owner or admin has turned the account off.
+    disabled_at: datetime | None = None
 
 
 class RoleIn(BaseModel):
@@ -71,3 +74,75 @@ class AuthOptions(BaseModel):
     signup_enabled: bool
     #: Shown on the login page of the public demo; null everywhere else.
     demo: DemoCredentials | None = None
+
+
+class InviteIn(BaseModel):
+    role: Literal["admin", "member"] = "member"
+    #: Optional: when given, only this address can accept the invite.
+    email: str | None = Field(default=None, max_length=254)
+
+    @field_validator("email")
+    @classmethod
+    def _email(cls, value: str | None) -> str | None:
+        return _normalise_email(value) if value and value.strip() else None
+
+
+class InviteOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    role: str
+    email: str | None
+    created_at: datetime
+    expires_at: datetime
+
+
+class InviteCreated(InviteOut):
+    #: Shown once: only its hash is stored, so it can't be looked up again.
+    token: str
+
+
+class InvitePreview(BaseModel):
+    restaurant_name: str | None
+    role: str
+    email: str | None
+
+
+class AcceptInviteIn(BaseModel):
+    name: str = Field(max_length=100)
+    email: str = Field(max_length=254)
+    password: str = Field(max_length=256)
+
+    _email = field_validator("email")(_normalise_email)
+    _name = field_validator("name")(_valid_name)
+    _password = field_validator("password")(_valid_password)
+
+
+class ResetLink(BaseModel):
+    token: str
+    expires_at: datetime
+
+
+class ResetPreview(BaseModel):
+    name: str
+    email: str
+
+
+class NewPasswordIn(BaseModel):
+    password: str = Field(max_length=256)
+
+    _password = field_validator("password")(_valid_password)
+
+
+class SecurityEventOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    ts: datetime
+    type: str
+    label: str
+    email: str | None
+    actor_email: str | None
+    ip: str | None
+    user_agent: str | None
+    detail: dict | None

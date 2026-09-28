@@ -82,10 +82,20 @@ def test_an_email_can_only_sign_up_once(anon_client):
     assert response.status_code == 409
 
 
-def test_signup_can_be_turned_off(anon_client, monkeypatch):
+def test_with_signup_off_the_owner_starts_and_the_team_needs_invites(anon_client, db, monkeypatch):
+    from app.restaurant.models import Restaurant
+
     monkeypatch.setattr("app.config.settings.allow_signup", False)
-    assert _signup(anon_client).status_code == 403
+    # No restaurant yet: signing up is how its owner starts.
+    assert anon_client.get("/api/v1/auth/options").json()["signup_enabled"] is True
+    assert _signup(anon_client).json()["role"] == "owner"
+
+    db.add(Restaurant(name="Casa", completed_steps=[]))
+    db.commit()
+    anon_client.post("/api/v1/auth/logout")
     assert anon_client.get("/api/v1/auth/options").json()["signup_enabled"] is False
+    refused = _signup(anon_client, email="walk-in@example.com")
+    assert refused.status_code == 403 and "invite" in refused.json()["detail"]
 
 
 def test_login_with_the_right_password(client):

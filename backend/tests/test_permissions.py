@@ -14,13 +14,16 @@ from test_restaurant_details import _member
 from test_restaurant_setup import _set_up
 
 #: Dependencies that let only owners and admins through.
-MANAGER_GUARDS = {"manager", "hr_manager", "editor"}
+MANAGER_GUARDS = {"manager", "hr_manager", "editor", "_manager"}
 
 #: Writes staff may make, and where each is limited instead.
 STAFF_MAY = {
     ("POST", "/api/v1/auth/signup"): "public; signup can be turned off",
     ("POST", "/api/v1/auth/login"): "public",
     ("POST", "/api/v1/auth/logout"): "anyone may end their own session",
+    ("POST", "/api/v1/auth/logout-everywhere"): "anyone may end all of their own sessions",
+    ("POST", "/api/v1/auth/invite/{token}"): "public; needs a live invite link",
+    ("POST", "/api/v1/auth/reset/{token}"): "public; needs a live reset link",
     ("PATCH", "/api/v1/auth/team/{user_id}"): "owners only, checked in the route",
     ("POST", "/api/v1/restaurant/inventory-items"): "staff add stock items",
     ("POST", "/api/v1/restaurant/inventory-items/{inventory_item_id}/adjustments"): "staff record deliveries and use",

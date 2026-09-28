@@ -9,6 +9,7 @@ import tempfile
 # TEST_DATABASE_URL runs the whole suite against that database instead (CI
 # uses it for Postgres); otherwise a throwaway SQLite file isolates it.
 os.environ["SCHEDULER_ENABLED"] = "false"  # tests drive scheduled jobs directly
+os.environ["ALLOW_SIGNUP"] = "true"  # tests sign coworkers up directly; test_invites covers the invite path
 
 TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
 if TEST_DATABASE_URL:
@@ -83,10 +84,11 @@ TEST_USER_PASSWORD = "correct-horse"
 @pytest.fixture
 def anon_client(db):
     """TestClient sharing the test's session, so assertions see its writes. Not signed in."""
-    from app.auth.routes import failed_logins
+    from app.auth.routes import failed_accounts, failed_logins
     from app.main import app
 
     failed_logins.clear()
+    failed_accounts.clear()
     app.dependency_overrides[get_db] = lambda: db
     with TestClient(app) as test_client:
         yield test_client

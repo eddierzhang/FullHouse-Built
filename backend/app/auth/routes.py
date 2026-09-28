@@ -7,8 +7,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.auth import schemas
+from app.auth import events
 from app.auth.deps import SESSION_COOKIE, current_user
-from app.auth.models import MEMBER, OWNER, AuthSession, User
+from app.auth.models import ADMIN, MEMBER, OWNER, AuthSession, Invite, PasswordReset, SecurityEvent, User
 from app.auth.security import DUMMY_HASH, hash_password, new_session_token, token_id, verify_password
 from app.config import settings
 from app.db.session import get_db
@@ -16,6 +17,8 @@ from app.db.session import get_db
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 SESSION_DAYS = 14
+INVITE_DAYS = 7
+RESET_MINUTES = 60
 
 
 class _FailedLogins:
@@ -56,14 +59,14 @@ class _FailedLogins:
                 self._failures.pop(key, None)
 
 
+#: Per client address: stops one visitor guessing many passwords.
 failed_logins = _FailedLogins()
+#: Per account: stops many addresses guessing one account's password.
+failed_accounts = _FailedLogins()
 
 
 def _client_key(request: Request) -> str:
-    # Behind Render or nginx every request arrives from the proxy, so the
-    # first forwarded address is the one that identifies the visitor.
-    forwarded = request.headers.get("x-forwarded-for", "")
-    return forwarded.split(",")[0].strip() or (request.client.host if request.client else "unknown")
+    return events.client_ip(request) or "unknown"
 
 
 def _is_https(request: Request) -> bool:
@@ -86,50 +89,77 @@ def _start_session(db: Session, user: User, request: Request, response: Response
     )
 
 
+def _site_restaurant(db: Session):
+    from app.restaurant.profile import get_restaurant
+
+    return get_restaurant(db)
+
+
+def _signup_open(db: Session) -> bool:
+    """Before the restaurant exists, signing up creates its owner. After, the
+    team joins by invite -- unless ALLOW_SIGNUP opens the door to anyone."""
+    return _site_restaurant(db) is None or settings.allow_signup
+
+
 @router.get("/options", response_model=schemas.AuthOptions)
-def options():
+def options(db: Session = Depends(get_db)):
     """What the login page should offer. Public: it is read before signing in."""
     demo = None
     if settings.demo_mode:
         from app.demo import DEMO_EMAIL, DEMO_PASSWORD
 
         demo = schemas.DemoCredentials(email=DEMO_EMAIL, password=DEMO_PASSWORD)
-    return schemas.AuthOptions(signup_enabled=settings.allow_signup, demo=demo)
+    return schemas.AuthOptions(signup_enabled=_signup_open(db), demo=demo)
 
 
 @router.post("/signup", response_model=schemas.UserOut, status_code=201)
 def signup(body: schemas.SignupIn, request: Request, response: Response, db: Session = Depends(get_db)):
-    if not settings.allow_signup:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "New accounts are turned off here.")
+    if not _signup_open(db):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "New accounts need an invite. Ask the owner or a manager for a link.")
     if db.query(User).filter(User.email == body.email).first():
         raise HTTPException(status.HTTP_409_CONFLICT, "An account with that email already exists. Sign in instead.")
     # One restaurant per site. Before it exists, whoever signs up is an
-    # owner and can set it up; after, a new account joins it as a member,
-    # who can't change its details until an owner makes them an admin.
-    from app.restaurant.profile import get_restaurant
-
-    restaurant = get_restaurant(db)
+    # owner and can set it up; after (with ALLOW_SIGNUP on), a new account
+    # joins it as a member, who can't change its details until an owner
+    # makes them an admin.
+    restaurant = _site_restaurant(db)
     user = User(email=body.email, name=body.name, password_hash=hash_password(body.password),
                 role=MEMBER if restaurant else OWNER, restaurant_id=restaurant.id if restaurant else None)
     db.add(user)
     db.flush()
     _start_session(db, user, request, response)
+    events.record(db, "signup" if user.role == OWNER else "invite_accepted", request, actor=user,
+                  detail=None if user.role == OWNER else {"open_signup": True})
     return user
 
 
 @router.post("/login", response_model=schemas.UserOut)
 def login(body: schemas.LoginIn, request: Request, response: Response, db: Session = Depends(get_db)):
     key = _client_key(request)
-    if failed_logins.blocked(key):
+    if failed_logins.blocked(key) or failed_accounts.blocked(body.email):
+        events.record(db, "login_blocked", request, email=body.email)
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many failed attempts. Try again in 15 minutes.")
 
     user = db.query(User).filter(User.email == body.email).first()
     if not verify_password(body.password, user.password_hash if user else DUMMY_HASH) or user is None:
         failed_logins.record(key)
+        failed_accounts.record(body.email)
+        events.record(db, "login_failed", request, email=body.email,
+                      restaurant_id=user.restaurant_id if user else None)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "That email and password don't match.")
+    if user.disabled_at:
+        # Only after the password matched, so this can't be used to probe accounts.
+        events.record(db, "login_disabled", request, actor=user)
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Your access has been turned off. Ask the owner or a manager.")
 
     failed_logins.clear(key)
+    failed_accounts.clear(body.email)
+    if events.is_new_device(db, user, request) and db.query(SecurityEvent.id).filter(
+        SecurityEvent.email == user.email, SecurityEvent.type == "login_succeeded"
+    ).first():
+        events.record(db, "new_device", request, actor=user)
     _start_session(db, user, request, response)
+    events.record(db, "login_succeeded", request, actor=user)
     return user
 
 
@@ -151,6 +181,20 @@ def me(user: User = Depends(current_user)):
     return user
 
 
+# --- your sessions ----------------------------------------------------------------
+
+
+@router.post("/logout-everywhere", status_code=204)
+def logout_everywhere(request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """End every session this account has, this browser's included."""
+    db.query(AuthSession).filter(AuthSession.user_id == user.id).delete()
+    db.commit()
+    events.record(db, "logout_everywhere", request, actor=user)
+    response = Response(status_code=204)
+    response.delete_cookie(SESSION_COOKIE, path="/", httponly=True, samesite="lax", secure=_is_https(request))
+    return response
+
+
 # --- team -------------------------------------------------------------------------
 
 
@@ -163,26 +207,239 @@ def _teammates(db: Session, user: User):
     return query
 
 
-@router.get("/team", response_model=list[schemas.UserOut])
-def team(user: User = Depends(current_user), db: Session = Depends(get_db)):
-    """Who can sign in to this restaurant, and with what role. Owners and admins only."""
+def _manager(request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)) -> User:
     if not user.is_manager:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the owner or an admin can see the team.")
+        raise events.deny(db, user, request, "Only the owner or an admin can manage the team.")
+    return user
+
+
+def _can_manage(actor: User, target: User) -> bool:
+    """Owners manage admins and members; admins manage members. Nobody manages
+    an owner, or themselves, from here."""
+    if target.id == actor.id or target.role == OWNER:
+        return False
+    return actor.role == OWNER or (actor.role == ADMIN and target.role == MEMBER)
+
+
+def _teammate(db: Session, actor: User, user_id: str, request: Request) -> User:
+    """Someone in the caller's restaurant whom the caller may manage."""
+    # Looked up within the caller's restaurant, so another's accounts read as missing.
+    target = _teammates(db, actor).filter(User.id == user_id).first()
+    if target is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No one with that account works here.")
+    if not _can_manage(actor, target):
+        raise events.deny(db, actor, request, "You can't change that account.")
+    return target
+
+
+@router.get("/team", response_model=list[schemas.UserOut])
+def team(user: User = Depends(_manager), db: Session = Depends(get_db)):
+    """Who can sign in to this restaurant, and with what role. Owners and admins only."""
     return _teammates(db, user).order_by(User.created_at, User.email).all()
 
 
 @router.patch("/team/{user_id}", response_model=schemas.UserOut)
-def set_role(user_id: str, body: schemas.RoleIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def set_role(
+    user_id: str, body: schemas.RoleIn, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
+):
     """Make someone an admin, or take it away. Owners only, and never an owner's own role."""
     if user.role != OWNER:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the owner can change who is an admin.")
-    # Looked up within the caller's restaurant, so another's accounts read as missing.
+        raise events.deny(db, user, request, "Only the owner can change who is an admin.")
     target = _teammates(db, user).filter(User.id == user_id).first()
     if target is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No one with that account works here.")
     if target.role == OWNER:
         raise HTTPException(status.HTTP_409_CONFLICT, "An owner's role can't be changed here.")
+    before = target.role
     target.role = body.role
     db.commit()
     db.refresh(target)
+    if before != target.role:
+        events.record(db, "role_changed", request, email=target.email, actor=user,
+                      detail={"from": before, "to": target.role})
     return target
+
+
+@router.post("/team/{user_id}/disable", response_model=schemas.UserOut)
+def disable(user_id: str, request: Request, user: User = Depends(_manager), db: Session = Depends(get_db)):
+    """Turn someone's access off, at once: every session they have ends now."""
+    target = _teammate(db, user, user_id, request)
+    if target.disabled_at is None:
+        target.disabled_at = datetime.now(timezone.utc)
+        db.query(AuthSession).filter(AuthSession.user_id == target.id).delete()
+        db.commit()
+        events.record(db, "access_disabled", request, email=target.email, actor=user)
+    db.refresh(target)
+    return target
+
+
+@router.post("/team/{user_id}/enable", response_model=schemas.UserOut)
+def enable(user_id: str, request: Request, user: User = Depends(_manager), db: Session = Depends(get_db)):
+    target = _teammate(db, user, user_id, request)
+    if target.disabled_at is not None:
+        target.disabled_at = None
+        db.commit()
+        events.record(db, "access_enabled", request, email=target.email, actor=user)
+    db.refresh(target)
+    return target
+
+
+# --- password resets -----------------------------------------------------------------
+
+
+def issue_reset(db: Session, target: User, issued_by: User | None) -> tuple[str, PasswordReset]:
+    """A one-time link for `target` to set a new password; earlier unused ones stop working."""
+    now = datetime.now(timezone.utc)
+    db.query(PasswordReset).filter(PasswordReset.user_id == target.id, PasswordReset.used_at.is_(None)).update(
+        {PasswordReset.used_at: now}
+    )
+    token = new_session_token()
+    reset = PasswordReset(token_hash=token_id(token), user_id=target.id, created_by=issued_by.id if issued_by else None,
+                          expires_at=now + timedelta(minutes=RESET_MINUTES))
+    db.add(reset)
+    db.commit()
+    return token, reset
+
+
+@router.post("/team/{user_id}/reset-link", response_model=schemas.ResetLink)
+def reset_link(user_id: str, request: Request, user: User = Depends(_manager), db: Session = Depends(get_db)):
+    """A link, valid for an hour, that lets a teammate set a new password. Hand it to them yourself."""
+    target = _teammate(db, user, user_id, request)
+    token, reset = issue_reset(db, target, user)
+    events.record(db, "reset_link_issued", request, email=target.email, actor=user)
+    return schemas.ResetLink(token=token, expires_at=reset.expires_at)
+
+
+def _live_reset(db: Session, token: str) -> PasswordReset:
+    reset = db.query(PasswordReset).filter(PasswordReset.token_hash == token_id(token)).first()
+    if reset is None or reset.used_at is not None or reset.expires_at <= datetime.now(timezone.utc):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "This link has expired or was already used. Ask for a new one.")
+    return reset
+
+
+@router.get("/reset/{token}", response_model=schemas.ResetPreview)
+def preview_reset(token: str, db: Session = Depends(get_db)):
+    """Whose password a reset link is for. Public: it's opened before signing in."""
+    user = db.get(User, _live_reset(db, token).user_id)
+    return schemas.ResetPreview(name=user.name, email=user.email)
+
+
+@router.post("/reset/{token}", response_model=schemas.UserOut)
+def use_reset(token: str, body: schemas.NewPasswordIn, request: Request, response: Response,
+              db: Session = Depends(get_db)):
+    """Set the new password. Every other session the account had ends."""
+    reset = _live_reset(db, token)
+    user = db.get(User, reset.user_id)
+    if user.disabled_at:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Your access has been turned off. Ask the owner or a manager.")
+    user.password_hash = hash_password(body.password)
+    reset.used_at = datetime.now(timezone.utc)
+    db.query(AuthSession).filter(AuthSession.user_id == user.id).delete()
+    db.commit()
+    events.record(db, "password_reset", request, actor=user)
+    _start_session(db, user, request, response)
+    return user
+
+
+# --- invites -------------------------------------------------------------------------
+
+
+@router.post("/invites", response_model=schemas.InviteCreated, status_code=201)
+def create_invite(body: schemas.InviteIn, request: Request, user: User = Depends(_manager),
+                  db: Session = Depends(get_db)):
+    """A one-time link, valid for a week, that creates an account in this restaurant."""
+    if body.role == ADMIN and user.role != OWNER:
+        raise events.deny(db, user, request, "Only the owner can invite admins.")
+    if not user.restaurant_id:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Set the restaurant up before inviting anyone.")
+    if body.email and db.query(User).filter(User.email == body.email).first():
+        raise HTTPException(status.HTTP_409_CONFLICT, f"{body.email} already has an account.")
+    token = new_session_token()
+    invite = Invite(token_hash=token_id(token), restaurant_id=user.restaurant_id, role=body.role, email=body.email,
+                    created_by=user.id, expires_at=datetime.now(timezone.utc) + timedelta(days=INVITE_DAYS))
+    db.add(invite)
+    db.commit()
+    db.refresh(invite)
+    events.record(db, "invite_created", request, email=body.email, actor=user, detail={"role": body.role})
+    return schemas.InviteCreated(**schemas.InviteOut.model_validate(invite).model_dump(), token=token)
+
+
+@router.get("/invites", response_model=list[schemas.InviteOut])
+def list_invites(user: User = Depends(_manager), db: Session = Depends(get_db)):
+    """Invites not yet used, cancelled or expired."""
+    return (
+        db.query(Invite)
+        .filter(Invite.restaurant_id == user.restaurant_id, Invite.accepted_at.is_(None), Invite.revoked_at.is_(None),
+                Invite.expires_at > datetime.now(timezone.utc))
+        .order_by(Invite.created_at.desc())
+        .all()
+    )
+
+
+@router.delete("/invites/{invite_id}", status_code=204)
+def revoke_invite(invite_id: str, request: Request, user: User = Depends(_manager), db: Session = Depends(get_db)):
+    invite = db.query(Invite).filter(Invite.id == invite_id, Invite.restaurant_id == user.restaurant_id).first()
+    if invite is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such invite.")
+    if invite.revoked_at is None and invite.accepted_at is None:
+        invite.revoked_at = datetime.now(timezone.utc)
+        db.commit()
+        events.record(db, "invite_revoked", request, email=invite.email, actor=user)
+    return Response(status_code=204)
+
+
+def _live_invite(db: Session, token: str) -> Invite:
+    invite = db.query(Invite).filter(Invite.token_hash == token_id(token)).first()
+    if (invite is None or invite.accepted_at is not None or invite.revoked_at is not None
+            or invite.expires_at <= datetime.now(timezone.utc)):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "This invite has expired or was already used. Ask for a new one.")
+    return invite
+
+
+@router.get("/invite/{token}", response_model=schemas.InvitePreview)
+def preview_invite(token: str, db: Session = Depends(get_db)):
+    """Which restaurant an invite is for. Public: it's opened before signing in."""
+    from app.restaurant.models import Restaurant
+
+    invite = _live_invite(db, token)
+    restaurant = db.get(Restaurant, invite.restaurant_id)
+    return schemas.InvitePreview(restaurant_name=restaurant.name if restaurant else None, role=invite.role,
+                                 email=invite.email)
+
+
+@router.post("/invite/{token}", response_model=schemas.UserOut, status_code=201)
+def accept_invite(token: str, body: schemas.AcceptInviteIn, request: Request, response: Response,
+                  db: Session = Depends(get_db)):
+    """Create the account the invite is for, and sign it in."""
+    invite = _live_invite(db, token)
+    if invite.email and body.email != invite.email:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, f"This invite is for {invite.email}.")
+    if db.query(User).filter(User.email == body.email).first():
+        raise HTTPException(status.HTTP_409_CONFLICT, "An account with that email already exists. Sign in instead.")
+    user = User(email=body.email, name=body.name, password_hash=hash_password(body.password), role=invite.role,
+                restaurant_id=invite.restaurant_id)
+    db.add(user)
+    db.flush()
+    invite.accepted_at = datetime.now(timezone.utc)
+    invite.accepted_by = user.id
+    _start_session(db, user, request, response)
+    events.record(db, "invite_accepted", request, actor=user, detail={"role": invite.role})
+    return user
+
+
+# --- the security log ------------------------------------------------------------------
+
+
+@router.get("/security-events", response_model=list[schemas.SecurityEventOut])
+def security_events(limit: int = 200, user: User = Depends(_manager), db: Session = Depends(get_db)):
+    """This restaurant's sign-ins, refusals and account changes, newest first."""
+    rows = (
+        db.query(SecurityEvent)
+        .filter(SecurityEvent.restaurant_id == user.restaurant_id)
+        .order_by(SecurityEvent.ts.desc(), SecurityEvent.id.desc())
+        .limit(min(max(limit, 1), 500))
+        .all()
+    )
+    return [schemas.SecurityEventOut(**{c: getattr(r, c) for c in (
+        "id", "ts", "type", "email", "actor_email", "ip", "user_agent", "detail")}, label=events.TYPES[r.type])
+        for r in rows]

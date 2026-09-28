@@ -38,7 +38,11 @@ from app.db.session import Base
 #: double-record history and, for change_log, recurse -- and the login
 #: tables, whose rows hold password hashes and session ids that must never
 #: be copied into a history anyone signed in can read.
-EXCLUDED_TABLES = frozenset({"change_log", "agent_events", "inventory_adjustments", "users", "auth_sessions"})
+EXCLUDED_TABLES = frozenset({
+    "change_log", "agent_events", "inventory_adjustments",
+    # Accounts and their secrets have their own record: the security log.
+    "users", "auth_sessions", "invites", "password_resets", "security_events",
+})
 
 #: Key under which half-built rows wait on `Session.info` between the two events.
 _PENDING = "_audit_pending_rows"

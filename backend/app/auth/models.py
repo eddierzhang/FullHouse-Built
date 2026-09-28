@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import JSON, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.session import Base
@@ -42,6 +42,9 @@ class User(Base):
         ForeignKey("restaurants.id", ondelete="SET NULL", name="fk_users_restaurant_id_restaurants"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now, nullable=False)
+    #: Set when an owner or admin turns the account off: it can't sign in,
+    #: and every session it had was ended at that moment.
+    disabled_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
 
     @property
     def is_manager(self) -> bool:
@@ -61,3 +64,66 @@ class AuthSession(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+
+
+class Invite(Base):
+    """A one-time link that creates an account in a restaurant, with a role.
+
+    Like sessions, only a SHA-256 of the link's token is stored.
+    """
+
+    __tablename__ = "invites"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    restaurant_id: Mapped[str] = mapped_column(
+        ForeignKey("restaurants.id", ondelete="CASCADE", name="fk_invites_restaurant_id_restaurants"),
+        nullable=False, index=True,
+    )
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    #: When set, only this address can accept it.
+    email: Mapped[str | None] = mapped_column(String(254), nullable=True)
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    accepted_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    accepted_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+
+
+class PasswordReset(Base):
+    """A one-time, short-lived link to set a new password, issued by a manager."""
+
+    __tablename__ = "password_resets"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    #: None when issued from the server's command line (scripts/reset_link.py).
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+
+
+class SecurityEvent(Base):
+    """Sign-ins, refusals and account changes, for owners and admins to review.
+
+    Kept apart from the change log: it records attempts as well as changes,
+    including ones that were stopped. Plain values, no foreign keys, so the
+    record outlives the account it names.
+    """
+
+    __tablename__ = "security_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ts: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now, nullable=False, index=True)
+    restaurant_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    type: Mapped[str] = mapped_column(String(32), nullable=False)
+    #: Who it happened to or was attempted as.
+    email: Mapped[str | None] = mapped_column(String(254), nullable=True)
+    #: Who did it, when that's someone else (a manager turning an account off).
+    actor_email: Mapped[str | None] = mapped_column(String(254), nullable=True)
+    ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    detail: Mapped[dict | None] = mapped_column(JSON, nullable=True)

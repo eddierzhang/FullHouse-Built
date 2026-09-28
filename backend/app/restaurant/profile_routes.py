@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.auth.deps import current_user
+from app.auth.events import deny
 from app.auth.models import User
 from app.db.session import get_db
 from app.restaurant import profile
@@ -18,10 +19,10 @@ from app.restaurant.profile_schemas import (
 router = APIRouter(prefix="/api/v1/restaurant-profile", tags=["restaurant profile"])
 
 
-def editor(user: User = Depends(current_user)) -> User:
+def editor(request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)) -> User:
     """Owners and admins; everyone else can look but not change."""
     if not user.is_manager:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the owner or an admin can change the restaurant's details.")
+        raise deny(db, user, request, "Only the owner or an admin can change the restaurant's details.")
     return user
 
 

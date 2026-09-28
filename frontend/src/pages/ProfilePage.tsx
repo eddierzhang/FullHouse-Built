@@ -8,9 +8,20 @@ import {
   type Section,
   type SectionValues,
   type User,
+  type Invite,
+  type SecurityEvent,
   canEditRestaurant,
+  createInvite,
+  createResetLink,
+  disableAccess,
+  enableAccess,
   fetchRestaurant,
+  linkFor,
+  listInvites,
+  listSecurityEvents,
   listTeam,
+  logoutEverywhere,
+  revokeInvite,
   saveRestaurantDetails,
   saveSection,
   setTeamRole,
@@ -21,12 +32,14 @@ import { dateTime, relativeTime } from '../lib/format'
 import { DetailsFields, HoursFields, SECTION_META, SectionFields, initialValues, payload, timezones } from '../restaurant/sections'
 import { type Errors, normalizeWebsite, validateDetails, validateHours } from '../restaurant/validation'
 
-type Tab = 'details' | 'rules' | 'team'
+type Tab = 'details' | 'rules' | 'team' | 'security' | 'account'
 
 const TABS: { id: Tab; label: string; managersOnly?: boolean }[] = [
   { id: 'details', label: 'Restaurant details' },
   { id: 'rules', label: 'Operating rules' },
   { id: 'team', label: 'Team access', managersOnly: true },
+  { id: 'security', label: 'Security log', managersOnly: true },
+  { id: 'account', label: 'Your account' },
 ]
 
 /** "#profile/team" -> "team". Anything else, including the old "#settings", opens the details. */
@@ -102,6 +115,8 @@ export function ProfilePage({ app, user }: { app: AppContext; user: User }) {
         {current === 'details' && <DetailsTab app={app} />}
         {current === 'rules' && <RulesTab app={app} />}
         {current === 'team' && <TeamTab app={app} user={user} />}
+        {current === 'security' && <SecurityTab />}
+        {current === 'account' && <AccountTab app={app} user={user} />}
       </div>
     </main>
   )
@@ -444,41 +459,283 @@ function SettingsCard({
 
 // --- Team access ---------------------------------------------------------------------
 
+/** Mirrors the server: owners manage admins and members; admins manage members; nobody their own account. */
+const canManage = (actor: User, target: User) =>
+  target.id !== actor.id && target.role !== 'owner' && (actor.role === 'owner' || (actor.role === 'admin' && target.role === 'member'))
+
+/** A link to hand over: shown once, with a copy button. */
+function LinkBox({ label, url, note, onDone }: { label: string; url: string; note: string; onDone: () => void }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <div className="callout callout-info" role="status">
+      <Icon name="info" />
+      <div className="callout-body stack" style={{ gap: 8, flex: 1, minWidth: 0 }}>
+        <div className="callout-title">{label}</div>
+        <div className="row">
+          <input className="input input-sm mono" readOnly aria-label={label} value={url} onFocus={(e) => e.target.select()} style={{ flex: 1 }} />
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => navigator.clipboard?.writeText(url).then(() => setCopied(true)).catch(() => {})}
+          >
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onDone}>
+            Done
+          </button>
+        </div>
+        <div className="small">{note}</div>
+      </div>
+    </div>
+  )
+}
+
 function TeamTab({ app, user }: { app: AppContext; user: User }) {
   const [team, setTeam] = useState<User[] | null>(null)
+  const [invites, setInvites] = useState<Invite[]>([])
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [inviteRole, setInviteRole] = useState<Exclude<Role, 'owner'>>('member')
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [shown, setShown] = useState<{ label: string; url: string; note: string } | null>(null)
   const isOwner = user.role === 'owner'
 
-  useEffect(() => {
+  const load = useCallback(() => {
     listTeam()
       .then(setTeam)
       .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+    listInvites().then(setInvites).catch(() => {})
   }, [])
+  useEffect(load, [load])
 
-  const change = async (person: User, role: Exclude<Role, 'owner'>) => {
-    setBusyId(person.id)
+  const act = async (id: string, work: () => Promise<unknown>, done?: string) => {
+    setBusyId(id)
     try {
-      const updated = await setTeamRole(person.id, role)
-      setTeam((people) => people?.map((p) => (p.id === updated.id ? updated : p)) ?? null)
-      app.toast(role === 'admin' ? `${person.name} is now an admin` : `${person.name} is now a member`)
+      await work()
+      if (done) app.toast(done)
+      load()
     } catch (err) {
-      app.toast('Couldn’t change their role', err instanceof Error ? err.message : String(err))
+      app.toast('That didn’t work', err instanceof Error ? err.message : String(err))
     } finally {
       setBusyId(null)
     }
   }
 
+  const change = (person: User, role: Exclude<Role, 'owner'>) =>
+    act(person.id, () => setTeamRole(person.id, role), role === 'admin' ? `${person.name} is now an admin` : `${person.name} is now a member`)
+
+  return (
+    <div className="stack">
+      <section className="card settings-stack">
+        <div className="card-header">
+          <div>
+            <h2 className="card-title">Invite someone</h2>
+            <p className="card-subtitle">
+              Create a link and send it to them yourself. It works once, for 7 days, and makes an account in this restaurant.
+            </p>
+          </div>
+        </div>
+        <div className="card-body stack" style={{ gap: 10 }}>
+          <div className="form-row">
+            <label className="field">
+              <span className="field-label">Access</span>
+              <select className="select" value={inviteRole} onChange={(e) => setInviteRole(e.target.value as Exclude<Role, 'owner'>)}>
+                <option value="member">Member — sees everything, changes only day-to-day things</option>
+                {isOwner && <option value="admin">Admin — can manage the restaurant and team</option>}
+              </select>
+            </label>
+            <label className="field">
+              <span className="field-label">Their email (optional)</span>
+              <input className="input" type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} />
+              <span className="field-hint">If given, only this address can use the link.</span>
+            </label>
+          </div>
+          <div>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={busyId === 'invite'}
+              onClick={() =>
+                act('invite', async () => {
+                  const invite = await createInvite(inviteRole, inviteEmail.trim() || null)
+                  setInviteEmail('')
+                  setShown({
+                    label: 'Invite link',
+                    url: linkFor('invite', invite.token),
+                    note: 'Copy it now: for safety it can’t be shown again. Anyone with the link can join, so send it only to them.',
+                  })
+                })
+              }
+            >
+              Create invite link
+            </button>
+          </div>
+          {shown && <LinkBox {...shown} onDone={() => setShown(null)} />}
+          {invites.length > 0 && (
+            <ul className="list" aria-label="Unused invites">
+              {invites.map((invite) => (
+                <li key={invite.id} className="list-item">
+                  <div className="list-item-main">
+                    <div className="strong">{invite.email ?? 'Anyone with the link'}</div>
+                    <div className="muted small">
+                      {ROLE_LABELS[invite.role]} · expires {relativeTime(invite.expires_at)}
+                    </div>
+                  </div>
+                  <button type="button" className="btn btn-ghost btn-sm" disabled={busyId === invite.id} onClick={() => act(invite.id, () => revokeInvite(invite.id), 'Invite cancelled')}>
+                    Cancel invite
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
+
+      <section className="card settings-stack">
+        <div className="card-header">
+          <div>
+            <h2 className="card-title">Who can sign in</h2>
+            <p className="card-subtitle">
+              Owners and admins can edit the restaurant; members see it but can’t change it.
+              {isOwner ? ' Make someone an admin to share the work.' : ' Only an owner can change who is an admin.'} Turning access off signs them out
+              everywhere at once.
+            </p>
+          </div>
+        </div>
+        {error ? (
+          <div className="card-body">
+            <div className="auth-error" role="alert">
+              {error}
+            </div>
+          </div>
+        ) : !team ? (
+          <div className="card-body">
+            <div className="skeleton" style={{ height: 120 }} aria-busy="true" />
+          </div>
+        ) : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Access</th>
+                  <th className="actions">
+                    <span className="sr-only">Actions</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {team.map((person) => (
+                  <tr key={person.id}>
+                    <td className="strong">
+                      {person.name}
+                      {person.id === user.id && <span className="muted"> (you)</span>}
+                      {person.disabled_at && <span className="badge badge-danger" style={{ marginLeft: 6 }}>Access off</span>}
+                    </td>
+                    <td className="muted">{person.email}</td>
+                    <td>
+                      {isOwner && person.role !== 'owner' ? (
+                        <select
+                          className="select input-sm"
+                          aria-label={`Access for ${person.name}`}
+                          value={person.role}
+                          disabled={busyId === person.id}
+                          onChange={(e) => void change(person, e.target.value as Exclude<Role, 'owner'>)}
+                        >
+                          <option value="admin">Admin</option>
+                          <option value="member">Member</option>
+                        </select>
+                      ) : (
+                        ROLE_LABELS[person.role] ?? person.role
+                      )}
+                    </td>
+                    <td className="actions">
+                      {canManage(user, person) && (
+                        <div className="row" style={{ justifyContent: 'flex-end' }}>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            disabled={busyId === person.id || !!person.disabled_at}
+                            onClick={() =>
+                              act(person.id, async () => {
+                                const link = await createResetLink(person.id)
+                                setShown({
+                                  label: `Password reset link for ${person.name}`,
+                                  url: linkFor('reset', link.token),
+                                  note: 'Works once, for one hour. Give it only to them: whoever opens it sets their password.',
+                                })
+                              })
+                            }
+                          >
+                            Reset password
+                          </button>
+                          {person.disabled_at ? (
+                            <button type="button" className="btn btn-secondary btn-sm" disabled={busyId === person.id} onClick={() => act(person.id, () => enableAccess(person.id), `${person.name} can sign in again`)}>
+                              Turn access on
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-sm negative"
+                              disabled={busyId === person.id}
+                              onClick={() =>
+                                window.confirm(`Turn off ${person.name}'s access? They'll be signed out everywhere, right away.`) &&
+                                act(person.id, () => disableAccess(person.id), `${person.name}'s access is off`)
+                              }
+                            >
+                              Turn access off
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </div>
+  )
+}
+
+// --- Security log -----------------------------------------------------------------
+
+/** "Mozilla/5.0 (Macintosh; ...) Chrome/..." -> "Chrome on Mac", roughly. */
+function device(agent: string | null): string {
+  if (!agent) return '—'
+  const browser = /Edg\//.test(agent) ? 'Edge' : /Chrome\//.test(agent) ? 'Chrome' : /Firefox\//.test(agent) ? 'Firefox' : /Safari\//.test(agent) ? 'Safari' : null
+  const os = /iPhone|iPad/.test(agent) ? 'iPhone/iPad' : /Android/.test(agent) ? 'Android' : /Mac OS X/.test(agent) ? 'Mac' : /Windows/.test(agent) ? 'Windows' : /Linux/.test(agent) ? 'Linux' : null
+  return browser && os ? `${browser} on ${os}` : agent.slice(0, 40)
+}
+
+const WORRYING = new Set(['login_failed', 'login_blocked', 'login_disabled', 'new_device', 'access_denied', 'mfa_failed'])
+
+function SecurityTab() {
+  const [rows, setRows] = useState<SecurityEvent[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [onlyWorrying, setOnlyWorrying] = useState(false)
+
+  useEffect(() => {
+    listSecurityEvents()
+      .then(setRows)
+      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+  }, [])
+
+  const shown = (rows ?? []).filter((r) => !onlyWorrying || WORRYING.has(r.type))
+
   return (
     <section className="card settings-stack">
       <div className="card-header">
         <div>
-          <h2 className="card-title">Who can change the restaurant’s details</h2>
-          <p className="card-subtitle">
-            Owners and admins can edit the profile. Members see it but can’t change it.
-            {isOwner ? ' Make someone an admin to share the work.' : ' Only an owner can change who is an admin.'}
-          </p>
+          <h2 className="card-title">Security log</h2>
+          <p className="card-subtitle">Sign-ins, failed attempts, refused actions and account changes at this restaurant, newest first.</p>
         </div>
+        <label className="row small">
+          <input type="checkbox" checked={onlyWorrying} onChange={(e) => setOnlyWorrying(e.target.checked)} /> Only things worth a look
+        </label>
       </div>
       {error ? (
         <div className="card-body">
@@ -486,43 +743,39 @@ function TeamTab({ app, user }: { app: AppContext; user: User }) {
             {error}
           </div>
         </div>
-      ) : !team ? (
+      ) : !rows ? (
         <div className="card-body">
           <div className="skeleton" style={{ height: 120 }} aria-busy="true" />
         </div>
+      ) : shown.length === 0 ? (
+        <div className="empty">Nothing recorded yet.</div>
       ) : (
         <div className="table-wrap">
-          <table className="table">
+          <table className="table" aria-label="Security events">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Access</th>
+                <th>When</th>
+                <th>What</th>
+                <th>Account</th>
+                <th>By</th>
+                <th>From</th>
               </tr>
             </thead>
             <tbody>
-              {team.map((person) => (
-                <tr key={person.id}>
-                  <td className="strong">
-                    {person.name}
-                    {person.id === user.id && <span className="muted"> (you)</span>}
+              {shown.map((r) => (
+                <tr key={r.id}>
+                  <td className="muted small" title={dateTime(r.ts)}>
+                    {relativeTime(r.ts)}
                   </td>
-                  <td className="muted">{person.email}</td>
                   <td>
-                    {isOwner && person.role !== 'owner' ? (
-                      <select
-                        className="select input-sm"
-                        aria-label={`Access for ${person.name}`}
-                        value={person.role}
-                        disabled={busyId === person.id}
-                        onChange={(e) => void change(person, e.target.value as Exclude<Role, 'owner'>)}
-                      >
-                        <option value="admin">Admin</option>
-                        <option value="member">Member</option>
-                      </select>
-                    ) : (
-                      ROLE_LABELS[person.role] ?? person.role
-                    )}
+                    {WORRYING.has(r.type) ? <span className="badge badge-warning">{r.label}</span> : r.label}
+                    {typeof r.detail?.path === 'string' && <div className="cell-sub mono">{r.detail.path}</div>}
+                  </td>
+                  <td>{r.email ?? '—'}</td>
+                  <td className="muted">{r.actor_email ?? ''}</td>
+                  <td className="muted small">
+                    {device(r.user_agent)}
+                    {r.ip && <div className="cell-sub mono">{r.ip}</div>}
                   </td>
                 </tr>
               ))}
@@ -530,6 +783,50 @@ function TeamTab({ app, user }: { app: AppContext; user: User }) {
           </table>
         </div>
       )}
+    </section>
+  )
+}
+
+// --- Your account ---------------------------------------------------------------------
+
+function AccountTab({ app, user }: { app: AppContext; user: User }) {
+  const [busy, setBusy] = useState(false)
+  return (
+    <section className="card settings-stack">
+      <div className="card-header">
+        <div>
+          <h2 className="card-title">Your account</h2>
+          <p className="card-subtitle">
+            {user.name} · {user.email} · {ROLE_LABELS[user.role] ?? user.role}
+          </p>
+        </div>
+      </div>
+      <div className="card-body stack" style={{ gap: 10 }}>
+        <div className="strong">Signed in somewhere you shouldn’t be?</div>
+        <p className="muted small" style={{ margin: 0 }}>
+          Sign out of every browser and device at once, including this one. Forgot your password? Ask the owner or an admin for a reset link.
+        </p>
+        <div>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            disabled={busy}
+            onClick={async () => {
+              if (!window.confirm('Sign out of every device, including this one?')) return
+              setBusy(true)
+              try {
+                await logoutEverywhere()
+                window.location.reload()
+              } catch (err) {
+                app.toast('Couldn’t sign out everywhere', err instanceof Error ? err.message : String(err))
+                setBusy(false)
+              }
+            }}
+          >
+            Sign out everywhere
+          </button>
+        </div>
+      </div>
     </section>
   )
 }

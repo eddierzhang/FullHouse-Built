@@ -36,7 +36,8 @@ services:
       # The owner's setup fills the restaurant; no sample suppliers or staff.
       - key: SEED_SAMPLE_DATA
         value: "false"
-      # The first person to sign up is the owner. Once the team has accounts,
-      # set this to "false" in the service's Environment tab.
+      # The first person to sign up is the owner; everyone else joins with an
+      # invite link from Profile -> Team access. "true" would let anyone who
+      # finds the site create an account in the restaurant.
       - key: ALLOW_SIGNUP
-        value: "true"
+        value: "false"

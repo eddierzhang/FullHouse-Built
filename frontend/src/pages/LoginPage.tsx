@@ -162,6 +162,9 @@ export function LoginPage({ unreachable, onRetry, onSignedIn }: Props) {
           </button>
         </form>
 
+        {options?.signup_enabled === false && !signingUp && (
+          <p className="auth-switch">New here? Ask the owner or a manager for an invite link.</p>
+        )}
         {options?.signup_enabled !== false && (
           <p className="auth-switch">
             {signingUp ? 'Already have an account?' : 'New to FullHouse?'}{' '}

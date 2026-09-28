@@ -1,10 +1,11 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.auth.deps import current_user, manager
+from app.auth.events import deny
 from app.auth.models import User
 from app.db.session import get_db
 from app.hr import staff as hr
@@ -24,10 +25,10 @@ from app.restaurant.models import (
 router = APIRouter(prefix="/api/v1/restaurant", tags=["restaurant"])
 
 
-def hr_manager(user: User = Depends(current_user)) -> User:
+def hr_manager(request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)) -> User:
     """Owners and admins run HR and the schedule."""
     if not user.is_manager:
-        raise HTTPException(403, "Only the owner or an admin can manage the team and the schedule.")
+        raise deny(db, user, request, "Only the owner or an admin can manage the team and the schedule.")
     return user
 
 
@@ -394,7 +395,11 @@ def set_recipe(
 
 @router.patch("/staff/{staff_id}", response_model=schemas.StaffOut)
 def update_staff(
-    staff_id: str, payload: schemas.StaffUpdate, user: User = Depends(current_user), db: Session = Depends(get_db)
+    staff_id: str,
+    payload: schemas.StaffUpdate,
+    request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
 ):
     """Managers edit anyone; an employee may update their own phone and emergency contact."""
     restaurant_id = inventory.scope_for(db, user)
@@ -405,8 +410,9 @@ def update_staff(
     if not user.is_manager:
         is_me = bool(staff.email) and staff.email.lower() == user.email.lower()
         if not is_me or not set(fields) <= hr.SELF_EDITABLE:
-            raise HTTPException(
-                403, "Only the owner or an admin can change this. You can update your own phone and emergency contact."
+            raise deny(
+                db, user, request,
+                "Only the owner or an admin can change this. You can update your own phone and emergency contact.",
             )
     if fields.get("role") and fields["role"] != staff.role and (problem := profile.role_problem(db, fields["role"])):
         raise HTTPException(422, problem)
@@ -590,13 +596,14 @@ def delete_supplier(supplier_id: str, user: User = Depends(manager), db: Session
 def update_inventory_item(
     inventory_item_id: str,
     payload: schemas.InventoryItemUpdate,
+    request: Request,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ):
     """An item's details -- name, unit, reorder point and quantity, cost, supplier. Owners and admins."""
     item = _item_or_404(db, user, inventory_item_id)
     if not user.is_manager:
-        raise HTTPException(403, "Only the owner or an admin can change an item's details. You can record stock changes.")
+        raise deny(db, user, request, "Only the owner or an admin can change an item's details. You can record stock changes.")
 
     fields = payload.model_dump(exclude_unset=True)
     for required in ("name", "unit", "reorder_threshold", "reorder_qty", "unit_cost"):

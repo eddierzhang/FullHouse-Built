@@ -66,9 +66,10 @@ class Settings:
     # instance, which starts empty and is filled by the owner's setup.
     seed_sample_data: bool = os.getenv("SEED_SAMPLE_DATA", "true").strip().lower() in ("1", "true", "yes")
 
-    # Whether the login page offers "Create account". Anyone who can reach
-    # the site can then sign up, so turn it off once your team is in.
-    allow_signup: bool = os.getenv("ALLOW_SIGNUP", "true").strip().lower() in ("1", "true", "yes")
+    # Whether anyone can create an account in the restaurant from the login
+    # page. Off by default: the team joins with invite links from the Profile
+    # page. (Before the restaurant exists, signing up is how its owner starts.)
+    allow_signup: bool = os.getenv("ALLOW_SIGNUP", "false").strip().lower() in ("1", "true", "yes")
 
     # The built frontend, when one process serves both it and the API (the
     # single-container image). Unset in development, where Vite serves it.

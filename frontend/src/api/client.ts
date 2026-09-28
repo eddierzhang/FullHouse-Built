@@ -436,6 +436,8 @@ export type User = {
   /** Null until the owner saves the first setup step. */
   restaurant_id: string | null
   created_at: string
+  /** Set while an owner or admin has turned the account off. */
+  disabled_at?: string | null
 }
 
 export type AuthOptions = {
@@ -461,6 +463,44 @@ export const listTeam = () => get<User[]>('/api/v1/auth/team')
 /** Owners only; an owner's own role can't be changed. */
 export const setTeamRole = (userId: string, role: Exclude<Role, 'owner'>) =>
   send<User>('PATCH', `/api/v1/auth/team/${userId}`, { role })
+/** Ends every session they have, at once. Owners manage admins and members; admins manage members. */
+export const disableAccess = (userId: string) => send<User>('POST', `/api/v1/auth/team/${userId}/disable`)
+export const enableAccess = (userId: string) => send<User>('POST', `/api/v1/auth/team/${userId}/enable`)
+/** Ends every session this account has, this browser's included. */
+export const logoutEverywhere = () => sendVoid('POST', '/api/v1/auth/logout-everywhere')
+
+/** A link someone opens to get in: `#invite/<token>` or `#reset/<token>`. */
+export const linkFor = (kind: 'invite' | 'reset', token: string) => `${window.location.origin}${window.location.pathname}#${kind}/${token}`
+
+export type Invite = { id: string; role: Exclude<Role, 'owner'>; email: string | null; created_at: string; expires_at: string }
+/** The token is shown once: only its hash is kept. */
+export const createInvite = (role: Exclude<Role, 'owner'>, email: string | null) =>
+  send<Invite & { token: string }>('POST', '/api/v1/auth/invites', { role, email })
+export const listInvites = () => get<Invite[]>('/api/v1/auth/invites')
+export const revokeInvite = (id: string) => sendVoid('DELETE', `/api/v1/auth/invites/${id}`)
+export const previewInvite = (token: string) =>
+  get<{ restaurant_name: string | null; role: Exclude<Role, 'owner'>; email: string | null }>(`/api/v1/auth/invite/${token}`)
+export const acceptInvite = (token: string, name: string, email: string, password: string) =>
+  send<User>('POST', `/api/v1/auth/invite/${token}`, { name, email, password })
+
+/** A one-time link, valid for an hour, to set a new password. */
+export const createResetLink = (userId: string) =>
+  send<{ token: string; expires_at: string }>('POST', `/api/v1/auth/team/${userId}/reset-link`)
+export const previewReset = (token: string) => get<{ name: string; email: string }>(`/api/v1/auth/reset/${token}`)
+export const resetPassword = (token: string, password: string) => send<User>('POST', `/api/v1/auth/reset/${token}`, { password })
+
+export type SecurityEvent = {
+  id: number
+  ts: string
+  type: string
+  label: string
+  email: string | null
+  actor_email: string | null
+  ip: string | null
+  user_agent: string | null
+  detail: Record<string, unknown> | null
+}
+export const listSecurityEvents = () => get<SecurityEvent[]>('/api/v1/auth/security-events')
 
 // --- restaurant profile ------------------------------------------------------------
 
