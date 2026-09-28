@@ -6,25 +6,34 @@ from sqlalchemy.orm import Session
 
 from app.agents import crud as agent_crud
 from app.agents.models import AgentRun
-from app.restaurant import crud as restaurant_crud
+from app.hr import staff as hr
+from app.restaurant.inventory import site_scope
+from app.restaurant.models import Shift
 
 
 def build_tools(db: Session, run: AgentRun, agent_definition_id: str) -> list:
+    restaurant_id = site_scope(db)
+
     @beta_tool
     def list_staff() -> str:
         """List all staff members with their roles."""
-        staff = restaurant_crud.list_staff(db)
+        staff = hr.staff_in(db, restaurant_id)
         return json.dumps([{"id": s.id, "name": s.name, "role": s.role} for s in staff])
 
     @beta_tool
     def get_upcoming_shifts(days_ahead: int = 7) -> str:
         """List scheduled shifts for the next N days, to spot coverage gaps.
+        Includes drafts the manager hasn't published yet (`published: false`).
 
         Args:
             days_ahead: How many days ahead to look, starting today. Defaults to 7.
         """
         today = date.today()
-        shifts = restaurant_crud.list_shifts_between(db, today, today + timedelta(days=days_ahead))
+        shifts = (
+            hr.shift_query(db, restaurant_id)
+            .filter(Shift.date >= today, Shift.date <= today + timedelta(days=days_ahead))
+            .order_by(Shift.date, Shift.start_time)
+        )
         return json.dumps(
             [
                 {
@@ -34,6 +43,7 @@ def build_tools(db: Session, run: AgentRun, agent_definition_id: str) -> list:
                     "start_time": s.start_time.isoformat(),
                     "end_time": s.end_time.isoformat(),
                     "role": s.role,
+                    "published": s.published_at is not None,
                 }
                 for s in shifts
             ]
@@ -53,7 +63,7 @@ def build_tools(db: Session, run: AgentRun, agent_definition_id: str) -> list:
             role: The role being covered during this shift.
             note: Optional note explaining why this change is recommended.
         """
-        staff = next((s for s in restaurant_crud.list_staff(db) if s.id == staff_id), None)
+        staff = hr.person_in(db, restaurant_id, staff_id)
         if not staff:
             return f"Error: no staff member with id {staff_id}"
         action = agent_crud.create_action(
@@ -71,6 +81,9 @@ def build_tools(db: Session, run: AgentRun, agent_definition_id: str) -> list:
                 "note": note,
             },
         )
-        return f"Shift proposal {action.id} for {staff.name} on {date_iso} submitted for operator approval."
+        return (
+            f"Shift proposal {action.id} for {staff.name} on {date_iso} submitted for operator approval. "
+            "Once approved it joins the draft schedule for the manager to publish."
+        )
 
     return [list_staff, get_upcoming_shifts, propose_shift_change]

@@ -1,10 +1,46 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { type Shift, type Staff, createShift, createStaff, deleteShift, deleteStaff, listShifts, listStaff, updateStaff } from '../api/client'
+import {
+  type Shift,
+  type Staff,
+  type StaffInput,
+  type User,
+  canEditRestaurant,
+  createShift,
+  createStaff,
+  deleteShift,
+  deleteStaff,
+  listShifts,
+  listStaff,
+  publishShifts,
+  updateStaff,
+} from '../api/client'
 import type { AppContext } from '../app/context'
 import { Icon } from '../components/Icon'
 import { byName, initials, longDate, timeHm } from '../lib/format'
 
 const BLANK_PERSON = { name: '', role: '', email: '' }
+
+type ProfileForm = { name: string; role: string; email: string; phone: string; emergency_contact: string; hire_date: string; notes: string }
+
+const toForm = (p: Staff): ProfileForm => ({
+  name: p.name,
+  role: p.role,
+  email: p.email ?? '',
+  phone: p.phone ?? '',
+  emergency_contact: p.emergency_contact ?? '',
+  hire_date: p.hire_date ?? '',
+  notes: p.notes ?? '',
+})
+
+const fromForm = (f: ProfileForm): StaffInput => ({
+  name: f.name.trim(),
+  role: f.role.trim(),
+  email: f.email.trim() || null,
+  phone: f.phone.trim() || null,
+  emergency_contact: f.emergency_contact.trim() || null,
+  hire_date: f.hire_date || null,
+  notes: f.notes.trim() || null,
+})
 
 /**
  * The roles set in Restaurant Settings, as a dropdown; free text only when
@@ -31,6 +67,75 @@ function RoleInput({ roles, value, onChange, small }: { roles: string[] | null; 
     </select>
   )
 }
+
+/** Every profile field, for a manager editing someone. */
+function ProfileEditor({
+  roles,
+  initial,
+  busy,
+  onCancel,
+  onSave,
+}: {
+  roles: string[] | null
+  initial: ProfileForm
+  busy: boolean
+  onCancel: () => void
+  onSave: (form: ProfileForm) => void
+}) {
+  const [form, setForm] = useState(initial)
+  const set = (field: keyof ProfileForm) => (e: { target: { value: string } }) => setForm({ ...form, [field]: e.target.value })
+  return (
+    <li className="list-item" style={{ display: 'block' }}>
+      <div className="stack" style={{ gap: 10 }}>
+        <div className="form-row">
+          <label className="field">
+            <span className="field-label">Name</span>
+            <input className="input" autoFocus value={form.name} onChange={set('name')} />
+          </label>
+          <label className="field">
+            <span className="field-label">Role</span>
+            <RoleInput roles={roles} value={form.role} onChange={(role) => setForm({ ...form, role })} />
+          </label>
+        </div>
+        <div className="form-row">
+          <label className="field">
+            <span className="field-label">Email</span>
+            <input className="input" type="email" value={form.email} onChange={set('email')} />
+            <span className="field-hint">They see their own shifts when they sign in with this address.</span>
+          </label>
+          <label className="field">
+            <span className="field-label">Phone</span>
+            <input className="input" type="tel" value={form.phone} onChange={set('phone')} />
+          </label>
+        </div>
+        <div className="form-row">
+          <label className="field">
+            <span className="field-label">Emergency contact</span>
+            <input className="input" placeholder="Name, relationship, phone" value={form.emergency_contact} onChange={set('emergency_contact')} />
+          </label>
+          <label className="field">
+            <span className="field-label">Hire date</span>
+            <input className="input" type="date" value={form.hire_date} onChange={set('hire_date')} />
+          </label>
+        </div>
+        <label className="field">
+          <span className="field-label">Manager notes</span>
+          <textarea className="textarea" rows={2} value={form.notes} onChange={set('notes')} />
+          <span className="field-hint">Only owners and admins see these.</span>
+        </label>
+        <div className="row" style={{ justifyContent: 'flex-end' }}>
+          <button className="btn btn-ghost btn-sm" onClick={onCancel}>
+            Cancel
+          </button>
+          <button className="btn btn-primary btn-sm" disabled={busy || !form.name.trim() || !form.role.trim()} onClick={() => onSave(form)}>
+            Save
+          </button>
+        </div>
+      </div>
+    </li>
+  )
+}
+
 const todayIso = () => new Date().toISOString().slice(0, 10)
 
 const hours = (s: Pick<Shift, 'start_time' | 'end_time'>) => {
@@ -39,7 +144,8 @@ const hours = (s: Pick<Shift, 'start_time' | 'end_time'>) => {
   return (eh * 60 + em - (sh * 60 + sm)) / 60
 }
 
-export function StaffPage({ app }: { app: AppContext }) {
+export function StaffPage({ app, user }: { app: AppContext; user: User }) {
+  const isManager = canEditRestaurant(user)
   const [staff, setStaff] = useState<Staff[]>([])
   const [shifts, setShifts] = useState<Shift[]>([])
   const [busy, setBusy] = useState(false)
@@ -47,10 +153,11 @@ export function StaffPage({ app }: { app: AppContext }) {
   const [addingPerson, setAddingPerson] = useState(false)
   const [person, setPerson] = useState(BLANK_PERSON)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [edit, setEdit] = useState(BLANK_PERSON)
 
   const [addingShift, setAddingShift] = useState(false)
   const [shift, setShift] = useState({ staff_id: '', date: todayIso(), start_time: '17:00', end_time: '23:00' })
+
+  const [contact, setContact] = useState<{ phone: string; emergency_contact: string } | null>(null)
 
   const load = useCallback(() => {
     listStaff().then(setStaff).catch(() => {})
@@ -75,6 +182,7 @@ export function StaffPage({ app }: { app: AppContext }) {
 
   const roster = useMemo(() => [...staff].sort(byName), [staff])
   const staffById = useMemo(() => new Map(staff.map((s) => [s.id, s])), [staff])
+  const me = staff.find((s) => s.is_me) ?? null
 
   // Upcoming only, soonest first; each day's shifts by start time.
   const schedule = useMemo(() => {
@@ -87,6 +195,8 @@ export function StaffPage({ app }: { app: AppContext }) {
   }, [shifts])
 
   const upcomingShifts = schedule.flatMap(([, day]) => day)
+  const myShifts = me ? upcomingShifts.filter((s) => s.staff_id === me.id) : []
+  const drafts = shifts.filter((s) => !s.published_at).length
   const unscheduled = roster.filter((p) => !upcomingShifts.some((s) => s.staff_id === p.id))
   const proposals = app.pendingActions.filter((a) => a.action_type === 'shift_change').length
 
@@ -95,12 +205,25 @@ export function StaffPage({ app }: { app: AppContext }) {
       <div className="page-header">
         <div>
           <h1 className="page-title">Staff</h1>
-          <p className="page-subtitle">The team and the upcoming schedule.</p>
+          <p className="page-subtitle">{isManager ? 'The team and the schedule.' : 'Your shifts and the team schedule.'}</p>
         </div>
+        {isManager && drafts > 0 && (
+          <button className="btn btn-primary" disabled={busy} onClick={() => run(publishShifts, `Schedule published — staff can see ${drafts === 1 ? 'the new shift' : `all ${drafts} new shifts`}`)}>
+            <Icon name="check" size={14} /> Publish {drafts} {drafts === 1 ? 'shift' : 'shifts'}
+          </button>
+        )}
       </div>
 
       <div className="stack">
-        {proposals > 0 && (
+        {isManager && drafts > 0 && (
+          <div className="callout callout-warning">
+            <Icon name="info" />
+            <div className="callout-body">
+              {drafts} {drafts === 1 ? 'shift is a draft' : 'shifts are drafts'}. Staff see {drafts === 1 ? 'it' : 'them'} once you publish. Changes to shifts that are already published show straight away.
+            </div>
+          </div>
+        )}
+        {isManager && proposals > 0 && (
           <div className="callout callout-info">
             <Icon name="info" />
             <div className="callout-body">
@@ -108,26 +231,129 @@ export function StaffPage({ app }: { app: AppContext }) {
             </div>
           </div>
         )}
+        {!isManager && !me && (
+          <div className="callout callout-info">
+            <Icon name="info" />
+            <div className="callout-body">
+              Your account isn’t linked to a staff profile yet. Ask a manager to put <strong>{user.email}</strong> on your profile, and your shifts will show here.
+            </div>
+          </div>
+        )}
 
-        <section className="grid grid-stats">
-          <div className="card stat">
-            <div className="stat-label">People</div>
-            <div className="stat-value">{roster.length}</div>
+        {!isManager && me && (
+          <div className="grid grid-2" style={{ alignItems: 'start' }}>
+            <section className="card">
+              <div className="card-header">
+                <div>
+                  <h2 className="card-title">My shifts</h2>
+                  <div className="card-subtitle">
+                    {myShifts.length ? `${myShifts.length} upcoming · ${myShifts.reduce((sum, s) => sum + hours(s), 0).toFixed(1)} hours` : 'Nothing scheduled yet'}
+                  </div>
+                </div>
+              </div>
+              <ul className="list">
+                {myShifts.length === 0 && <li className="empty">No upcoming shifts.</li>}
+                {myShifts.map((s) => (
+                  <li key={s.id} className="list-item">
+                    <div className="list-item-main">
+                      <div className="strong">{longDate(s.date)}</div>
+                      <div className="muted small tabular">
+                        {timeHm(s.start_time)}–{timeHm(s.end_time)} · {hours(s).toFixed(1)} h
+                      </div>
+                    </div>
+                    <span className="badge">{s.role}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+
+            <section className="card">
+              <div className="card-header">
+                <div>
+                  <h2 className="card-title">My details</h2>
+                  <div className="card-subtitle">
+                    {me.role}
+                    {me.hire_date ? ` · since ${longDate(me.hire_date)}` : ''}
+                  </div>
+                </div>
+                {!contact && (
+                  <button className="btn btn-secondary btn-sm" onClick={() => setContact({ phone: me.phone ?? '', emergency_contact: me.emergency_contact ?? '' })}>
+                    <Icon name="edit" size={14} /> Edit
+                  </button>
+                )}
+              </div>
+              {contact ? (
+                <div className="inline-form stack" style={{ gap: 10 }}>
+                  <label className="field">
+                    <span className="field-label">Phone</span>
+                    <input className="input" type="tel" value={contact.phone} onChange={(e) => setContact({ ...contact, phone: e.target.value })} />
+                  </label>
+                  <label className="field">
+                    <span className="field-label">Emergency contact</span>
+                    <input
+                      className="input"
+                      placeholder="Name, relationship, phone"
+                      value={contact.emergency_contact}
+                      onChange={(e) => setContact({ ...contact, emergency_contact: e.target.value })}
+                    />
+                  </label>
+                  <div className="row" style={{ justifyContent: 'flex-end' }}>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setContact(null)}>
+                      Cancel
+                    </button>
+                    <button
+                      className="btn btn-primary btn-sm"
+                      disabled={busy}
+                      onClick={async () =>
+                        (await run(() => updateStaff(me.id, { phone: contact.phone.trim() || null, emergency_contact: contact.emergency_contact.trim() || null }), 'Your details are saved')) &&
+                        setContact(null)
+                      }
+                    >
+                      Save
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <dl className="stack" style={{ gap: 6, padding: '12px 20px', margin: 0 }}>
+                  <div className="row">
+                    <dt className="muted small" style={{ width: 140 }}>Email</dt>
+                    <dd style={{ margin: 0 }}>{me.email}</dd>
+                  </div>
+                  <div className="row">
+                    <dt className="muted small" style={{ width: 140 }}>Phone</dt>
+                    <dd style={{ margin: 0 }}>{me.phone ?? <span className="faint">Not given</span>}</dd>
+                  </div>
+                  <div className="row">
+                    <dt className="muted small" style={{ width: 140 }}>Emergency contact</dt>
+                    <dd style={{ margin: 0 }}>{me.emergency_contact ?? <span className="faint">Not given</span>}</dd>
+                  </div>
+                </dl>
+              )}
+            </section>
           </div>
-          <div className="card stat">
-            <div className="stat-label">Upcoming shifts</div>
-            <div className="stat-value">{upcomingShifts.length}</div>
-          </div>
-          <div className="card stat">
-            <div className="stat-label">Hours scheduled</div>
-            <div className="stat-value">{upcomingShifts.reduce((sum, s) => sum + hours(s), 0).toFixed(0)}</div>
-          </div>
-          <div className={`card stat${unscheduled.length ? ' attention' : ''}`}>
-            <div className="stat-label">Without a shift</div>
-            <div className="stat-value">{unscheduled.length}</div>
-            <div className="stat-meta truncate">{unscheduled.map((p) => p.name).join(', ') || 'everyone is scheduled'}</div>
-          </div>
-        </section>
+        )}
+
+        {isManager && (
+          <section className="grid grid-stats">
+            <div className="card stat">
+              <div className="stat-label">People</div>
+              <div className="stat-value">{roster.length}</div>
+            </div>
+            <div className="card stat">
+              <div className="stat-label">Upcoming shifts</div>
+              <div className="stat-value">{upcomingShifts.length}</div>
+            </div>
+            <div className="card stat">
+              <div className="stat-label">Hours scheduled</div>
+              <div className="stat-value">{upcomingShifts.reduce((sum, s) => sum + hours(s), 0).toFixed(0)}</div>
+            </div>
+            <div className={`card stat${unscheduled.length ? ' attention' : ''}`}>
+              <div className="stat-label">Without a shift</div>
+              <div className="stat-value">{unscheduled.length}</div>
+              <div className="stat-meta truncate">{unscheduled.map((p) => p.name).join(', ') || 'everyone is scheduled'}</div>
+            </div>
+          </section>
+        )}
 
         <div className="grid grid-2" style={{ alignItems: 'start' }}>
           <section className="card">
@@ -136,12 +362,14 @@ export function StaffPage({ app }: { app: AppContext }) {
                 <h2 className="card-title">Team</h2>
                 <div className="card-subtitle">Alphabetical</div>
               </div>
-              <button className="btn btn-secondary btn-sm" onClick={() => setAddingPerson((v) => !v)}>
-                <Icon name={addingPerson ? 'close' : 'plus'} size={14} /> {addingPerson ? 'Cancel' : 'Add person'}
-              </button>
+              {isManager && (
+                <button className="btn btn-secondary btn-sm" onClick={() => setAddingPerson((v) => !v)}>
+                  <Icon name={addingPerson ? 'close' : 'plus'} size={14} /> {addingPerson ? 'Cancel' : 'Add person'}
+                </button>
+              )}
             </div>
 
-            {addingPerson && (
+            {isManager && addingPerson && (
               <div className="inline-form stack" style={{ gap: 10 }}>
                 <div className="form-row">
                   <label className="field">
@@ -157,6 +385,7 @@ export function StaffPage({ app }: { app: AppContext }) {
                   <label className="field">
                     <span className="field-label">Email (optional)</span>
                     <input className="input" type="email" value={person.email} onChange={(e) => setPerson({ ...person, email: e.target.value })} />
+                    <span className="field-hint">Lets them see their own shifts when they sign in with it.</span>
                   </label>
                   <button
                     className="btn btn-primary"
@@ -182,28 +411,16 @@ export function StaffPage({ app }: { app: AppContext }) {
               {roster.length === 0 && <li className="empty">Nobody on the team yet.</li>}
               {roster.map((p) => {
                 const count = upcomingShifts.filter((s) => s.staff_id === p.id).length
-                if (editingId === p.id) {
+                if (isManager && editingId === p.id) {
                   return (
-                    <li key={p.id} className="list-item" style={{ flexWrap: 'wrap' }}>
-                      <input className="input input-sm" aria-label="Name" style={{ flex: '1 1 140px' }} value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} />
-                      <span style={{ flex: '1 1 100px', display: 'flex' }}>
-                        <RoleInput small roles={app.restaurant.staff_roles} value={edit.role} onChange={(role) => setEdit({ ...edit, role })} />
-                      </span>
-                      <input className="input input-sm" aria-label="Email" style={{ flex: '1 1 160px' }} value={edit.email} onChange={(e) => setEdit({ ...edit, email: e.target.value })} />
-                      <button className="btn btn-ghost btn-sm" onClick={() => setEditingId(null)}>
-                        Cancel
-                      </button>
-                      <button
-                        className="btn btn-primary btn-sm"
-                        disabled={busy || !edit.name.trim() || !edit.role.trim()}
-                        onClick={async () =>
-                          (await run(() => updateStaff(p.id, { name: edit.name.trim(), role: edit.role.trim(), email: edit.email.trim() || null }), 'Details updated')) &&
-                          setEditingId(null)
-                        }
-                      >
-                        Save
-                      </button>
-                    </li>
+                    <ProfileEditor
+                      key={p.id}
+                      roles={app.restaurant.staff_roles}
+                      initial={toForm(p)}
+                      busy={busy}
+                      onCancel={() => setEditingId(null)}
+                      onSave={async (form) => (await run(() => updateStaff(p.id, fromForm(form)), 'Details updated')) && setEditingId(null)}
+                    />
                   )
                 }
                 return (
@@ -213,28 +430,33 @@ export function StaffPage({ app }: { app: AppContext }) {
                       <div className="row wrap">
                         <span className="strong">{p.name}</span>
                         <span className="badge">{p.role}</span>
+                        {p.is_me && <span className="badge badge-brand">You</span>}
+                        {isManager && p.email && p.has_account === false && (
+                          <span className="badge badge-warning" title="Nobody has signed up with this email yet">
+                            No login yet
+                          </span>
+                        )}
                       </div>
-                      <div className="muted small truncate">{p.email ?? 'No email on file'}</div>
+                      {isManager && (
+                        <div className="muted small truncate">{[p.email ?? 'No email on file', p.phone].filter(Boolean).join(' · ')}</div>
+                      )}
                     </div>
-                    <span className={`small ${count ? 'muted' : 'negative strong'}`}>{count ? `${count} upcoming` : 'No shifts'}</span>
-                    <button
-                      className="btn btn-ghost btn-sm btn-icon"
-                      aria-label={`Edit ${p.name}`}
-                      onClick={() => {
-                        setEditingId(p.id)
-                        setEdit({ name: p.name, role: p.role, email: p.email ?? '' })
-                      }}
-                    >
-                      <Icon name="edit" size={14} />
-                    </button>
-                    <button
-                      className="btn btn-ghost btn-sm btn-icon"
-                      aria-label={`Remove ${p.name}`}
-                      disabled={busy}
-                      onClick={() => window.confirm(`Remove ${p.name} from the team?`) && run(() => deleteStaff(p.id), `${p.name} removed`)}
-                    >
-                      <Icon name="trash" size={14} />
-                    </button>
+                    {isManager && (
+                      <>
+                        <span className={`small ${count ? 'muted' : 'negative strong'}`}>{count ? `${count} upcoming` : 'No shifts'}</span>
+                        <button className="btn btn-ghost btn-sm btn-icon" aria-label={`Edit ${p.name}`} onClick={() => setEditingId(p.id)}>
+                          <Icon name="edit" size={14} />
+                        </button>
+                        <button
+                          className="btn btn-ghost btn-sm btn-icon"
+                          aria-label={`Remove ${p.name}`}
+                          disabled={busy}
+                          onClick={() => window.confirm(`Remove ${p.name} from the team?`) && run(() => deleteStaff(p.id), `${p.name} removed`)}
+                        >
+                          <Icon name="trash" size={14} />
+                        </button>
+                      </>
+                    )}
                   </li>
                 )
               })}
@@ -245,14 +467,16 @@ export function StaffPage({ app }: { app: AppContext }) {
             <div className="card-header">
               <div>
                 <h2 className="card-title">Schedule</h2>
-                <div className="card-subtitle">Upcoming, soonest first</div>
+                <div className="card-subtitle">{isManager ? 'Upcoming, soonest first' : 'Published shifts, soonest first'}</div>
               </div>
-              <button className="btn btn-secondary btn-sm" onClick={() => setAddingShift((v) => !v)}>
-                <Icon name={addingShift ? 'close' : 'plus'} size={14} /> {addingShift ? 'Cancel' : 'Add shift'}
-              </button>
+              {isManager && (
+                <button className="btn btn-secondary btn-sm" onClick={() => setAddingShift((v) => !v)}>
+                  <Icon name={addingShift ? 'close' : 'plus'} size={14} /> {addingShift ? 'Cancel' : 'Add shift'}
+                </button>
+              )}
             </div>
 
-            {addingShift && (
+            {isManager && addingShift && (
               <div className="inline-form stack" style={{ gap: 10 }}>
                 <label className="field">
                   <span className="field-label">Who</span>
@@ -286,12 +510,12 @@ export function StaffPage({ app }: { app: AppContext }) {
                   onClick={async () => {
                     const ok = await run(
                       () => createShift({ ...shift, role: staffById.get(shift.staff_id)?.role ?? 'Staff' }),
-                      'Shift scheduled',
+                      'Shift added as a draft',
                     )
                     if (ok) setAddingShift(false)
                   }}
                 >
-                  Schedule shift
+                  Add draft shift
                 </button>
               </div>
             )}
@@ -309,15 +533,14 @@ export function StaffPage({ app }: { app: AppContext }) {
                         {timeHm(s.start_time)}–{timeHm(s.end_time)}
                       </span>
                       <span className="list-item-main truncate">{staffById.get(s.staff_id)?.name ?? 'Unknown'}</span>
+                      {me?.id === s.staff_id && <span className="badge badge-brand">You</span>}
+                      {!s.published_at && <span className="badge badge-warning">Draft</span>}
                       <span className="badge">{s.role}</span>
-                      <button
-                        className="btn btn-ghost btn-sm btn-icon"
-                        aria-label="Remove shift"
-                        disabled={busy}
-                        onClick={() => run(() => deleteShift(s.id), 'Shift removed')}
-                      >
-                        <Icon name="close" size={14} />
-                      </button>
+                      {isManager && (
+                        <button className="btn btn-ghost btn-sm btn-icon" aria-label="Remove shift" disabled={busy} onClick={() => run(() => deleteShift(s.id), 'Shift removed')}>
+                          <Icon name="close" size={14} />
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>

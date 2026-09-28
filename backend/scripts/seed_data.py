@@ -98,10 +98,11 @@ def seed():
             db.commit()
 
             today = date.today()
+            published = datetime.now(timezone.utc)  # a live schedule, not drafts
             shifts = [
-                Shift(staff_id=staff[0].id, date=today + timedelta(days=1), start_time=time(17, 0), end_time=time(23, 0), role="Server"),
-                Shift(staff_id=staff[1].id, date=today + timedelta(days=1), start_time=time(15, 0), end_time=time(23, 0), role="Line Cook"),
-                Shift(staff_id=staff[2].id, date=today + timedelta(days=2), start_time=time(17, 0), end_time=time(22, 0), role="Host"),
+                Shift(staff_id=staff[0].id, date=today + timedelta(days=1), start_time=time(17, 0), end_time=time(23, 0), role="Server", published_at=published),
+                Shift(staff_id=staff[1].id, date=today + timedelta(days=1), start_time=time(15, 0), end_time=time(23, 0), role="Line Cook", published_at=published),
+                Shift(staff_id=staff[2].id, date=today + timedelta(days=2), start_time=time(17, 0), end_time=time(22, 0), role="Host", published_at=published),
             ]
             db.add_all(shifts)
             db.commit()

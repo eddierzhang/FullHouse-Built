@@ -211,10 +211,11 @@ def reset_demo_data(db: Session, now: datetime | None = None) -> dict:
 
     staff = {name: _id() for name, _ in STAFF}
     _insert(db, Staff, [
-        dict(id=staff[name], name=name, role=role, email=f"{name.split()[0].lower()}@bistro.example.com")
+        dict(id=staff[name], restaurant_id=restaurant_id, name=name, role=role,
+             email=f"{name.split()[0].lower()}@bistro.example.com")
         for name, role in STAFF
     ])
-    _insert(db, Shift, _shifts(today, staff))
+    _insert(db, Shift, [dict(row, restaurant_id=restaurant_id, published_at=now) for row in _shifts(today, staff)])
 
     orders, lines = _orders(rng, now, menu)
     _insert(db, Order, orders)

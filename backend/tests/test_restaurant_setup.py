@@ -181,7 +181,9 @@ def test_setup_needs_an_owner(client, db):
 
 
 def _person(db, role="Server") -> Staff:
-    person = Staff(name="Ana", role=role)
+    """On the site's restaurant's team -- or unclaimed, before there is one."""
+    restaurant = db.query(Restaurant).order_by(Restaurant.created_at).first()
+    person = Staff(name="Ana", role=role, restaurant_id=restaurant.id if restaurant else None)
     db.add(person)
     db.commit()
     return person

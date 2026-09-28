@@ -9,6 +9,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    Text,
     Time,
     UniqueConstraint,
 )
@@ -137,23 +138,43 @@ class OrderItem(Base):
 
 
 class Staff(Base):
+    """An employee's HR profile. See app/hr/staff.py for who may see what.
+
+    `email` is also how a person's login finds their profile: an account
+    with the same address, at the same restaurant, is that employee.
+    """
+
     __tablename__ = "staff"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    restaurant_id: Mapped[str | None] = mapped_column(
+        ForeignKey("restaurants.id", name="fk_staff_restaurant_id_restaurants"), nullable=True, index=True
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(64), nullable=False)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    #: Free text, e.g. "Dana Rivera (sister) +1 206 555 0100".
+    emergency_contact: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    hire_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    #: Managers only; never shown to the employee.
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class Shift(Base):
     __tablename__ = "shifts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    restaurant_id: Mapped[str | None] = mapped_column(
+        ForeignKey("restaurants.id", name="fk_shifts_restaurant_id_restaurants"), nullable=True, index=True
+    )
     staff_id: Mapped[str] = mapped_column(String(32), ForeignKey("staff.id"), nullable=False)
     date: Mapped[date] = mapped_column(Date, nullable=False)
     start_time: Mapped[time] = mapped_column(Time, nullable=False)
     end_time: Mapped[time] = mapped_column(Time, nullable=False)
     role: Mapped[str] = mapped_column(String(64), nullable=False)
+    #: None while it's a draft only managers see; set when a manager publishes.
+    published_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
 
     staff: Mapped[Staff] = relationship()
 

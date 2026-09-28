@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -5,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.auth.deps import current_user
 from app.auth.models import User
 from app.db.session import get_db
+from app.hr import staff as hr
 from app.restaurant import crud, inventory, profile, schemas
 from app.restaurant.models import (
     InventoryAdjustment,
@@ -19,6 +22,25 @@ from app.restaurant.models import (
 )
 
 router = APIRouter(prefix="/api/v1/restaurant", tags=["restaurant"])
+
+
+def hr_manager(user: User = Depends(current_user)) -> User:
+    """Owners and admins run HR and the schedule."""
+    if not user.is_manager:
+        raise HTTPException(403, "Only the owner or an admin can manage the team and the schedule.")
+    return user
+
+
+def _staff_fields(db: Session, restaurant_id: str | None, fields: dict, exclude_staff_id: str | None = None) -> dict:
+    """Tidy a profile's fields, refusing an email another profile here already uses."""
+    for name in ("phone", "emergency_contact", "notes"):
+        if name in fields and isinstance(fields[name], str):
+            fields[name] = fields[name].strip() or None
+    if "email" in fields:
+        fields["email"] = hr.normalize_email(fields["email"])
+        if fields["email"] and hr.email_in_use(db, restaurant_id, fields["email"], exclude_staff_id):
+            raise HTTPException(409, f"Someone on the team already uses {fields['email']}.")
+    return fields
 
 
 @router.get("/menu-items", response_model=list[schemas.MenuItemOut])
@@ -189,39 +211,59 @@ def create_supplier(payload: schemas.SupplierCreate, db: Session = Depends(get_d
 
 
 @router.get("/staff", response_model=list[schemas.StaffOut])
-def list_staff(db: Session = Depends(get_db)):
-    return crud.list_staff(db)
+def list_staff(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """The team. Coworkers see names and roles; see app/hr/staff.py."""
+    restaurant_id = inventory.scope_for(db, user)
+    accounts = hr.account_emails(db, restaurant_id) if user.is_manager else set()
+    return [hr.view(person, user, accounts) for person in hr.staff_in(db, restaurant_id)]
 
 
 @router.post("/staff", response_model=schemas.StaffOut)
-def create_staff(payload: schemas.StaffCreate, db: Session = Depends(get_db)):
+def create_staff(payload: schemas.StaffCreate, user: User = Depends(hr_manager), db: Session = Depends(get_db)):
     if problem := profile.role_problem(db, payload.role):
         raise HTTPException(422, problem)
-    staff = Staff(**payload.model_dump())
+    restaurant_id = inventory.scope_for(db, user)
+    fields = _staff_fields(db, restaurant_id, payload.model_dump())
+    staff = Staff(restaurant_id=restaurant_id, **fields)
     db.add(staff)
     db.commit()
     db.refresh(staff)
-    return staff
+    return hr.view(staff, user, hr.account_emails(db, restaurant_id))
 
 
 @router.get("/shifts", response_model=list[schemas.ShiftOut])
-def list_shifts(db: Session = Depends(get_db)):
-    return list(db.query(Shift).order_by(Shift.date, Shift.start_time))
+def list_shifts(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """The schedule. Drafts are for managers until they publish them."""
+    query = hr.shift_query(db, inventory.scope_for(db, user), published_only=not user.is_manager)
+    return list(query.order_by(Shift.date, Shift.start_time))
 
 
 @router.post("/shifts", response_model=schemas.ShiftOut)
-def create_shift(payload: schemas.ShiftCreate, db: Session = Depends(get_db)):
-    if not db.get(Staff, payload.staff_id):
+def create_shift(payload: schemas.ShiftCreate, user: User = Depends(hr_manager), db: Session = Depends(get_db)):
+    """A new shift starts as a draft; staff see it once it's published."""
+    restaurant_id = inventory.scope_for(db, user)
+    if not hr.person_in(db, restaurant_id, payload.staff_id):
         raise HTTPException(404, "Staff member not found")
     if payload.end_time <= payload.start_time:
         raise HTTPException(422, "A shift must end after it starts")
     if problems := profile.shift_problems(db, payload.staff_id, payload.date, payload.start_time, payload.end_time):
         raise HTTPException(422, " ".join(problems))
-    shift = Shift(**payload.model_dump())
+    shift = Shift(restaurant_id=restaurant_id, **payload.model_dump())
     db.add(shift)
     db.commit()
     db.refresh(shift)
     return shift
+
+
+@router.post("/shifts/publish", response_model=schemas.PublishOut)
+def publish_shifts(user: User = Depends(hr_manager), db: Session = Depends(get_db)):
+    """Publish every draft shift, so the staff can see them."""
+    drafts = hr.shift_query(db, inventory.scope_for(db, user)).filter(Shift.published_at.is_(None)).all()
+    now = datetime.now(timezone.utc)
+    for shift in drafts:
+        shift.published_at = now
+    db.commit()
+    return {"published": len(drafts)}
 
 
 @router.get("/orders", response_model=list[schemas.OrderOut])
@@ -336,24 +378,34 @@ def set_recipe(
 
 
 @router.patch("/staff/{staff_id}", response_model=schemas.StaffOut)
-def update_staff(staff_id: str, payload: schemas.StaffUpdate, db: Session = Depends(get_db)):
-    staff = db.get(Staff, staff_id)
+def update_staff(
+    staff_id: str, payload: schemas.StaffUpdate, user: User = Depends(current_user), db: Session = Depends(get_db)
+):
+    """Managers edit anyone; an employee may update their own phone and emergency contact."""
+    restaurant_id = inventory.scope_for(db, user)
+    staff = hr.person_in(db, restaurant_id, staff_id)
     if not staff:
         raise HTTPException(404, "Staff member not found")
     fields = payload.model_dump(exclude_unset=True)
+    if not user.is_manager:
+        is_me = bool(staff.email) and staff.email.lower() == user.email.lower()
+        if not is_me or not set(fields) <= hr.SELF_EDITABLE:
+            raise HTTPException(
+                403, "Only the owner or an admin can change this. You can update your own phone and emergency contact."
+            )
     if fields.get("role") and fields["role"] != staff.role and (problem := profile.role_problem(db, fields["role"])):
         raise HTTPException(422, problem)
-    for field, value in fields.items():
+    for field, value in _staff_fields(db, restaurant_id, fields, exclude_staff_id=staff.id).items():
         setattr(staff, field, value)
     db.add(staff)
     db.commit()
     db.refresh(staff)
-    return staff
+    return hr.view(staff, user, hr.account_emails(db, restaurant_id) if user.is_manager else set())
 
 
 @router.delete("/staff/{staff_id}", status_code=204)
-def delete_staff(staff_id: str, db: Session = Depends(get_db)):
-    staff = db.get(Staff, staff_id)
+def delete_staff(staff_id: str, user: User = Depends(hr_manager), db: Session = Depends(get_db)):
+    staff = hr.person_in(db, inventory.scope_for(db, user), staff_id)
     if not staff:
         raise HTTPException(404, "Staff member not found")
 
@@ -373,13 +425,17 @@ def delete_staff(staff_id: str, db: Session = Depends(get_db)):
 
 
 @router.patch("/shifts/{shift_id}", response_model=schemas.ShiftOut)
-def update_shift(shift_id: int, payload: schemas.ShiftUpdate, db: Session = Depends(get_db)):
-    shift = db.get(Shift, shift_id)
+def update_shift(
+    shift_id: int, payload: schemas.ShiftUpdate, user: User = Depends(hr_manager), db: Session = Depends(get_db)
+):
+    """Edits to a published shift show to staff straight away; a draft stays a draft."""
+    restaurant_id = inventory.scope_for(db, user)
+    shift = hr.shift_in(db, restaurant_id, shift_id)
     if not shift:
         raise HTTPException(404, "Shift not found")
 
     fields = payload.model_dump(exclude_unset=True)
-    if "staff_id" in fields and not db.get(Staff, fields["staff_id"]):
+    if "staff_id" in fields and not hr.person_in(db, restaurant_id, fields["staff_id"]):
         raise HTTPException(404, "Staff member not found")
 
     # Checked against the would-be shift before touching the row, so a
@@ -401,8 +457,8 @@ def update_shift(shift_id: int, payload: schemas.ShiftUpdate, db: Session = Depe
 
 
 @router.delete("/shifts/{shift_id}", status_code=204)
-def delete_shift(shift_id: int, db: Session = Depends(get_db)):
-    shift = db.get(Shift, shift_id)
+def delete_shift(shift_id: int, user: User = Depends(hr_manager), db: Session = Depends(get_db)):
+    shift = hr.shift_in(db, inventory.scope_for(db, user), shift_id)
     if not shift:
         raise HTTPException(404, "Shift not found")
     db.delete(shift)

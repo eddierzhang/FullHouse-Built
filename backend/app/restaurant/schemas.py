@@ -130,17 +130,32 @@ class OrderCreate(BaseModel):
 
 
 class StaffOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    """An employee as the viewer may see them (app/hr/staff.py): coworkers
+    get a name and role; contact details are for managers and the person
+    themselves; notes and `has_account` are for managers only."""
+
     id: str
     name: str
     role: str
-    email: str | None
+    #: This profile is the signed-in person's own.
+    is_me: bool = False
+    email: str | None = None
+    phone: str | None = None
+    emergency_contact: str | None = None
+    hire_date: date | None = None
+    notes: str | None = None
+    #: Someone can sign in with this profile's email. Managers only.
+    has_account: bool | None = None
 
 
 class StaffCreate(BaseModel):
-    name: str
-    role: str
-    email: str | None = None
+    name: str = Field(max_length=255)
+    role: str = Field(max_length=64)
+    email: str | None = Field(default=None, max_length=255)
+    phone: str | None = Field(default=None, max_length=40)
+    emergency_contact: str | None = Field(default=None, max_length=200)
+    hire_date: date | None = None
+    notes: str | None = Field(default=None, max_length=2000)
 
 
 class ShiftOut(BaseModel):
@@ -151,6 +166,12 @@ class ShiftOut(BaseModel):
     start_time: time
     end_time: time
     role: str
+    #: None while it's a draft, which only managers see.
+    published_at: datetime | None = None
+
+
+class PublishOut(BaseModel):
+    published: int
 
 
 class ShiftCreate(BaseModel):
@@ -165,9 +186,13 @@ class StaffUpdate(BaseModel):
     """Partial update. Unset fields are left alone, so a caller can send
     only what changed rather than having to echo the whole record."""
 
-    name: str | None = None
-    role: str | None = None
-    email: str | None = None
+    name: str | None = Field(default=None, max_length=255)
+    role: str | None = Field(default=None, max_length=64)
+    email: str | None = Field(default=None, max_length=255)
+    phone: str | None = Field(default=None, max_length=40)
+    emergency_contact: str | None = Field(default=None, max_length=200)
+    hire_date: _date | None = None
+    notes: str | None = Field(default=None, max_length=2000)
 
 
 class ShiftUpdate(BaseModel):

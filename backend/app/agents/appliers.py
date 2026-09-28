@@ -105,7 +105,10 @@ def apply_shift_change(db: Session, payload: dict) -> str:
     if problems := profile.shift_problems(db, staff_id, shift_date, start_time, end_time):
         raise ApplyError(f"This shift breaks the restaurant's scheduling rules: {' '.join(problems)}")
 
+    # A draft, like any shift a manager adds: approving the proposal puts it
+    # on the schedule, and publishing shows it to the staff.
     shift = Shift(
+        restaurant_id=staff.restaurant_id,
         staff_id=staff_id,
         date=shift_date,
         start_time=start_time,
@@ -113,7 +116,7 @@ def apply_shift_change(db: Session, payload: dict) -> str:
         role=role,
     )
     db.add(shift)
-    return f"Shift scheduled: {staff.name} on {shift_date} {start_time}-{end_time} as {shift.role}"
+    return f"Shift added to the draft schedule: {staff.name} on {shift_date} {start_time}-{end_time} as {shift.role}"
 
 
 def _promo_end(raw) -> datetime | None:

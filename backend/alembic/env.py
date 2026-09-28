@@ -73,12 +73,26 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        sqlite = connection.dialect.name == "sqlite"
+        if sqlite:
+            # SQLite changes a table in batch mode by copying it and dropping
+            # the original, which the app's always-on foreign keys refuse for
+            # any table other rows point at (shifts at staff, say). Off for the
+            # migration, as SQLite's own docs advise; it takes effect only
+            # outside a transaction, hence the commit.
+            connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+            connection.commit()
+
         context.configure(
             connection=connection, target_metadata=target_metadata
         )
 
         with context.begin_transaction():
             context.run_migrations()
+
+        if sqlite:
+            connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+            connection.commit()
 
 
 if context.is_offline_mode():

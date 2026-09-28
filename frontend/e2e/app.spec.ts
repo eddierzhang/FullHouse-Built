@@ -211,7 +211,7 @@ test('giving a dish a recipe replaces its estimated cost', async ({ page }) => {
   await expect(page.getByRole('row').filter({ hasText: 'Caesar Salad' })).toContainText('from recipe')
 })
 
-test('adding a person and a shift, then removing them', async ({ page }) => {
+test('adding a person and a draft shift, publishing it, then removing them', async ({ page }) => {
   await page.goto('/#staff')
 
   await page.getByRole('button', { name: 'Add person' }).click()
@@ -223,12 +223,19 @@ test('adding a person and a shift, then removing them', async ({ page }) => {
 
   await page.getByRole('button', { name: 'Add shift' }).click()
   await page.getByLabel('Who').selectOption({ label: 'Priya Test — Server' })
-  await page.getByRole('button', { name: 'Schedule shift' }).click()
+  await page.getByRole('button', { name: 'Add draft shift' }).click()
   await expect(person).toContainText('1 upcoming')
 
+  // A new shift is a draft until the manager publishes it.
   const shiftRow = page
     .locator('div.row', { hasText: 'Priya Test' })
     .filter({ has: page.getByRole('button', { name: 'Remove shift' }) })
+  await expect(shiftRow).toContainText('Draft')
+  await page.getByRole('button', { name: /^Publish \d+ shifts?$/ }).click()
+  await expect(page.getByText(/^Schedule published/)).toBeVisible()
+  await expect(shiftRow).not.toContainText('Draft')
+  await expect(page.getByRole('button', { name: /^Publish \d+ shifts?$/ })).toHaveCount(0)
+
   await shiftRow.getByRole('button', { name: 'Remove shift' }).click()
   await expect(person).toContainText('No shifts')
   page.once('dialog', (d) => d.accept())

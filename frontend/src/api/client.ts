@@ -293,10 +293,35 @@ export const deleteSupplier = (id: string) => sendVoid('DELETE', `/api/v1/restau
 
 // --- staff ------------------------------------------------------------------------
 
-export type Staff = { id: string; name: string; role: string; email: string | null }
-export type StaffInput = { name: string; role: string; email?: string | null }
-export type Shift = { id: number; staff_id: string; date: string; start_time: string; end_time: string; role: string }
-export type ShiftInput = Omit<Shift, 'id'>
+/**
+ * An employee as the signed-in person may see them: coworkers come with a
+ * name and role only; contact details are for managers and the person
+ * themselves; `notes` and `has_account` are for managers.
+ */
+export type Staff = {
+  id: string
+  name: string
+  role: string
+  is_me: boolean
+  email: string | null
+  phone: string | null
+  emergency_contact: string | null
+  hire_date: string | null
+  notes: string | null
+  has_account: boolean | null
+}
+export type StaffInput = {
+  name: string
+  role: string
+  email?: string | null
+  phone?: string | null
+  emergency_contact?: string | null
+  hire_date?: string | null
+  notes?: string | null
+}
+/** `published_at` is null while the shift is a draft, which only managers see. */
+export type Shift = { id: number; staff_id: string; date: string; start_time: string; end_time: string; role: string; published_at: string | null }
+export type ShiftInput = Omit<Shift, 'id' | 'published_at'>
 
 export const listStaff = () => get<Staff[]>('/api/v1/restaurant/staff')
 export const createStaff = (input: StaffInput) => send<Staff>('POST', '/api/v1/restaurant/staff', input)
@@ -307,6 +332,7 @@ export const deleteStaff = (id: string) => sendVoid('DELETE', `/api/v1/restauran
 export const listShifts = () => get<Shift[]>('/api/v1/restaurant/shifts')
 export const createShift = (input: ShiftInput) => send<Shift>('POST', '/api/v1/restaurant/shifts', input)
 export const deleteShift = (id: number) => sendVoid('DELETE', `/api/v1/restaurant/shifts/${id}`)
+export const publishShifts = () => send<{ published: number }>('POST', '/api/v1/restaurant/shifts/publish', {})
 
 // --- menu -------------------------------------------------------------------------
 

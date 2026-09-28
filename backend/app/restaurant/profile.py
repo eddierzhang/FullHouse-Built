@@ -122,10 +122,12 @@ def save_section(db: Session, user: User, section: str, data: BaseModel) -> Rest
         restaurant.completed_steps = [s for s in SECTIONS if s in {*restaurant.completed_steps, section}]
     if created:
         db.flush()  # after the values are set, so the history shows a single insert
-        # Sample stock seeded before setup becomes this restaurant's.
+        # Sample stock and staff seeded before setup become this restaurant's.
+        from app.hr import staff as hr
         from app.restaurant.inventory import claim_unassigned
 
         claim_unassigned(db, restaurant)
+        hr.claim_unassigned(db, restaurant)
     if user.restaurant_id != restaurant.id:
         db.flush()  # the restaurant row must exist before the user can point at it
         user.restaurant_id = restaurant.id

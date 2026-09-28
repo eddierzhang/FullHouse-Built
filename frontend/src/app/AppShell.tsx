@@ -180,7 +180,7 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
       case 'menu':
         return <MenuPage app={app} />
       case 'staff':
-        return <StaffPage app={app} />
+        return <StaffPage app={app} user={user} />
       case 'profit':
         return <ProfitPage app={app} />
       case 'profile':

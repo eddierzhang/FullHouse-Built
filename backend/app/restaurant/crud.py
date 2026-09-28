@@ -9,8 +9,6 @@ from app.restaurant.models import (
     Order,
     OrderItem,
     RecipeItem,
-    Shift,
-    Staff,
     Supplier,
 )
 
@@ -54,18 +52,6 @@ def get_inventory_item(db: Session, inventory_item_id: str, restaurant_id=SITE) 
     from app.restaurant.inventory import item_in
 
     return item_in(db, _scope(db, restaurant_id), inventory_item_id)
-
-
-def list_staff(db: Session) -> list[Staff]:
-    return list(db.scalars(select(Staff).order_by(Staff.name)))
-
-
-def list_shifts_between(db: Session, start: date, end: date) -> list[Shift]:
-    return list(
-        db.scalars(
-            select(Shift).where(Shift.date >= start, Shift.date <= end).order_by(Shift.date, Shift.start_time)
-        )
-    )
 
 
 def list_orders_between(db: Session, start_dt, end_dt) -> list[Order]:
