@@ -1,6 +1,6 @@
 from datetime import date, datetime, time
 from datetime import date as _date, time as _time
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
@@ -206,6 +206,9 @@ class ShiftUpdate(BaseModel):
 
 
 class MenuItemUpdate(BaseModel):
+    #: The values the editor's form started from, for the fields it changes;
+    #: a save is refused if any has changed since (app/restaurant/conflicts.py).
+    expected: dict[str, Any] | None = None
     name: str | None = None
     category: str | None = None
     price: float | None = None
@@ -271,6 +274,9 @@ class ProfitSummaryOut(BaseModel):
 
 
 class SupplierUpdate(BaseModel):
+    #: The values the editor's form started from, for the fields it changes;
+    #: a save is refused if any has changed since (app/restaurant/conflicts.py).
+    expected: dict[str, Any] | None = None
     name: str | None = None
     contact_info: str | None = None
     lead_time_days: int | None = None
@@ -278,6 +284,10 @@ class SupplierUpdate(BaseModel):
 
 class InventoryItemUpdate(BaseModel):
     """An item's details. Stock isn't one: it changes only through a recorded stock change."""
+
+    #: The values the editor's form started from, for the fields it changes;
+    #: a save is refused if any has changed since (app/restaurant/conflicts.py).
+    expected: dict[str, Any] | None = None
 
     name: str | None = Field(default=None, max_length=255)
     unit: str | None = None

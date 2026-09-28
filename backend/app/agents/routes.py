@@ -3,6 +3,7 @@ import json
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.agents import crud, executor, scheduler, schemas
@@ -37,6 +38,26 @@ def _action_for(db: Session, user: User, action_id: str):
     return action
 
 
+def _claim(db: Session, action, status: str) -> None:
+    """Take the decision on `action`, or refuse if someone else just did.
+
+    The status check before this reads a snapshot; this is the one that
+    counts (see crud.claim_pending). On SQLite a simultaneous decision can
+    also surface as "database is locked" -- the same situation, so the
+    same answer.
+    """
+    try:
+        claimed = crud.claim_pending(db, action, status)
+    except OperationalError as exc:
+        db.rollback()
+        if "locked" not in str(exc).lower():
+            raise
+        claimed = False
+    if not claimed:
+        db.rollback()
+        raise HTTPException(409, "Someone else has just decided this proposal. Refresh to see what they chose.")
+
+
 def _definition_out(defn, tz) -> schemas.AgentDefinitionOut:
     out = schemas.AgentDefinitionOut.model_validate(defn)
     if defn.enabled and defn.schedule_cron:
@@ -53,10 +74,18 @@ def runtime(db: Session = Depends(get_db)):
     from app.agents.providers import get_provider
     from app.config import settings
 
-    provider = get_provider()
+    # A misconfigured or missing AI mustn't take this down: every page reads
+    # it, and everything but the agent itself works without one.
+    try:
+        provider = get_provider()
+        provider_key, model, ai_problem = provider.key, provider.resolve_model("claude-opus-5"), None
+    except Exception as exc:  # noqa: BLE001 - reported to the UI instead
+        provider_key, model, ai_problem = "unavailable", None, str(exc)
     return {
-        "provider": provider.key,
-        "model": provider.resolve_model("claude-opus-5"),
+        "provider": provider_key,
+        "model": model,
+        # Why the agent can't run right now; null when it can.
+        "ai_problem": ai_problem,
         "scheduler_running": scheduler.is_running(),
         "max_concurrent_runs": executor.MAX_CONCURRENT_RUNS,
         "configured_provider": settings.llm_provider,
@@ -239,6 +268,7 @@ def approve_action(
     action = _action_for(db, user, action_id)
     if action.status != "pending":
         raise HTTPException(400, f"Action already {action.status}")
+    _claim(db, action, "approved")
 
     # Merge and persist the operator's values, so the record shows what was
     # actually approved rather than the incomplete proposal.
@@ -279,6 +309,7 @@ def reject_action(action_id: str, user: User = Depends(manager), db: Session = D
     action = _action_for(db, user, action_id)
     if action.status != "pending":
         raise HTTPException(400, f"Action already {action.status}")
+    _claim(db, action, "rejected")
     crud.mark_action_decided(db, action, "rejected")
     db.commit()
     db.refresh(action)

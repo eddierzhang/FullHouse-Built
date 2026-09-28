@@ -42,7 +42,8 @@ class AnthropicProvider(LLMProvider):
         emit: EventEmitter,
         should_cancel: CancelCheck | None = None,
     ) -> ProviderResult:
-        client = anthropic.Anthropic(api_key=self.api_key)
+        # Bounded per call, like the other providers; the SDK's own default is ten minutes.
+        client = anthropic.Anthropic(api_key=self.api_key, timeout=settings.llm_timeout_seconds)
         try:
             tool_runner = client.beta.messages.tool_runner(
                 model=model,

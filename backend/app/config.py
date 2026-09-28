@@ -44,6 +44,11 @@ class Settings:
     # same call fails loudly instead of running forever.
     agent_max_tool_rounds: int = int(os.getenv("AGENT_MAX_TOOL_ROUNDS", "12"))
 
+    # The longest one agent run may take, start to finish. A model that is
+    # slow or stuck ends as a failed run saying so, instead of "running"
+    # forever; everything else in the app carries on regardless.
+    agent_run_timeout_seconds: float = float(os.getenv("AGENT_RUN_TIMEOUT_SECONDS", "600"))
+
     # How many tool calls from one model turn may run at once. Only tools
     # marked parallel-safe (the Boss's delegations) ever run concurrently.
     agent_max_parallel_tools: int = int(os.getenv("AGENT_MAX_PARALLEL_TOOLS", "4"))

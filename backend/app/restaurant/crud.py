@@ -436,8 +436,15 @@ def check_and_deplete_stock(db: Session, lines: list[tuple[str, int]]) -> list[d
 
     shortfalls = []
     depleted = []
-    for inventory_item_id, quantity in needed.items():
-        item = db.get(InventoryItem, inventory_item_id)
+    # Locked before reading: two sales drawing on the same ingredient at once
+    # would otherwise each subtract from the same starting figure, and one
+    # sale's use would vanish (see inventory.lock_items).
+    from app.restaurant.inventory import lock_items
+
+    lock_items(db, needed)
+    for inventory_item_id in sorted(needed):
+        quantity = needed[inventory_item_id]
+        item = db.query(InventoryItem).filter(InventoryItem.id == inventory_item_id).populate_existing().first()
         if item is None:
             continue
         if item.quantity_on_hand < quantity:

@@ -1,3 +1,4 @@
+import time
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
@@ -8,6 +9,7 @@ from app.agents.providers import get_provider
 from app.agents.providers.base import RunCancelledError
 from app.agents.registry import resolve_tools
 from app.audit.context import AGENT, Actor, actor_context
+from app.config import settings
 from app.db.session import SessionLocal
 
 
@@ -27,6 +29,7 @@ def execute_run(run_id: str, db: Session | None = None) -> str:
         db = SessionLocal()
     run = None
     run_actor = None
+    deadline = None
     try:
         run = agent_crud.get_run(db, run_id)
         if run is None:
@@ -66,13 +69,16 @@ def execute_run(run_id: str, db: Session | None = None) -> str:
             from app.restaurant.profile import agent_context
 
             context = agent_context(db)
+            # Checked at every step, so a run past its time limit stops at the next one.
+            deadline = time.monotonic() + settings.agent_run_timeout_seconds
             result = provider.run_agent_loop(
                 model=model,
                 system=f"{defn.system_prompt}\n\n{context}" if context else defn.system_prompt,
                 tools=tools,
                 user_message=run.input or "Run now.",
                 emit=emit,
-                should_cancel=lambda: any(executor.is_cancelled(run_id) for run_id in watched),
+                should_cancel=lambda: time.monotonic() > deadline
+                or any(executor.is_cancelled(run_id) for run_id in watched),
             )
 
             output_summary = result.text
@@ -93,6 +99,19 @@ def execute_run(run_id: str, db: Session | None = None) -> str:
             )
             return output_summary
     except RunCancelledError as exc:
+        if run is not None and deadline is not None and time.monotonic() > deadline:
+            # Not a person's decision: the time limit ran out. Recorded as a failure that says so.
+            minutes = settings.agent_run_timeout_seconds / 60
+            message = (
+                f"Timed out: the AI took longer than {minutes:g} minute{'s' if minutes != 1 else ''}, "
+                "so the run was stopped. Anything it had already proposed is still waiting for review."
+            )
+            with actor_context(run_actor or Actor(type=AGENT, agent_run_id=run.id)):
+                agent_crud.set_run_status(db, run, "failed", error=message, finished_at=_now())
+                agent_crud.add_event(db, run.id, "status_change", {"status": "failed", "error": message})
+            broker.publish(run.id, {"type": "status_change", "run_id": run.id,
+                                    "payload": {"status": "failed", "error": message}})
+            return ""
         if run is not None:
             with actor_context(run_actor or Actor(type=AGENT, agent_run_id=run.id)):
                 agent_crud.set_run_status(db, run, "cancelled", error=str(exc), finished_at=_now())

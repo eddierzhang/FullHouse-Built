@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.agents.models import AgentAction, AgentDefinition, AgentEvent, AgentRun
@@ -116,6 +116,25 @@ def list_actions(db: Session, restaurant_id: str | None, status: str | None = No
 
 def get_action(db: Session, action_id: str) -> AgentAction | None:
     return db.get(AgentAction, action_id)
+
+
+def claim_pending(db: Session, action: AgentAction, status: str) -> bool:
+    """Atomically move `action` from pending to `status`; False if it was already decided.
+
+    Checking `action.status` in Python isn't enough: two managers approving
+    at once both read "pending" and both apply the effect -- a reorder
+    booked twice. A conditional UPDATE lets the database pick one winner:
+    the loser's WHERE no longer matches once the winner has written, so it
+    changes nothing. Uncommitted, like `mark_action_decided`: if the effect
+    then fails, rolling back returns the action to pending.
+    """
+    claimed = db.execute(
+        update(AgentAction)
+        .where(AgentAction.id == action.id, AgentAction.status == "pending")
+        .values(status=status)
+        .execution_options(synchronize_session=False)
+    )
+    return claimed.rowcount == 1
 
 
 def mark_action_decided(

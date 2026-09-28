@@ -98,6 +98,26 @@ def item_in(db: Session, restaurant_id: str | None, item_id: str) -> InventoryIt
     return in_scope(db.query(InventoryItem), restaurant_id).filter(InventoryItem.id == item_id).first()
 
 
+def lock_items(db: Session, item_ids) -> None:
+    """Hold these items' stock until this transaction ends, on any database.
+
+    `SELECT ... FOR UPDATE` locks the rows on Postgres, but SQLite ignores
+    it: two sales reading the same stock both see 10, both write 9, and a
+    sale vanishes. A no-op UPDATE takes a write lock on both -- row locks
+    on Postgres, the database write lock on SQLite -- so whoever comes next
+    waits, then reads what the first one left. Call it before reading stock
+    you're about to change.
+    """
+    ids = sorted(set(item_ids))
+    if ids:
+        db.execute(
+            update(InventoryItem)
+            .where(InventoryItem.id.in_(ids))
+            .values(quantity_on_hand=InventoryItem.quantity_on_hand)
+            .execution_options(synchronize_session=False)
+        )
+
+
 def claim_unassigned(db: Session, restaurant: Restaurant) -> None:
     """Give stock that belongs to no restaurant, and its history, to `restaurant`.
 
@@ -110,15 +130,19 @@ def claim_unassigned(db: Session, restaurant: Restaurant) -> None:
 
 # --- history -----------------------------------------------------------------------
 
-_reason: ContextVar[tuple[str, str | None] | None] = ContextVar("stock_change_reason", default=None)
+_reason: ContextVar[tuple[str, str | None, str | None] | None] = ContextVar("stock_change_reason", default=None)
 
 
 @contextmanager
-def stock_change(reason: str, note: str | None = None) -> Iterator[None]:
-    """Record every stock change made in this block with this reason and note."""
+def stock_change(reason: str, note: str | None = None, request_id: str | None = None) -> Iterator[None]:
+    """Record every stock change made in this block with this reason and note.
+
+    `request_id` is the client's Idempotency-Key, for a change to one item
+    that must not be recorded twice (see models.InventoryAdjustment).
+    """
     if reason not in REASONS:
         raise ValueError(f"Unknown stock change reason {reason!r}")
-    token = _reason.set((reason, note))
+    token = _reason.set((reason, note, request_id))
     try:
         yield
     finally:
@@ -126,7 +150,7 @@ def stock_change(reason: str, note: str | None = None) -> Iterator[None]:
 
 
 def _adjustment(item: InventoryItem, change: float, default_reason: str) -> InventoryAdjustment:
-    reason, note = _reason.get() or (default_reason, None)
+    reason, note, request_id = _reason.get() or (default_reason, None, None)
     actor = get_actor()
     return InventoryAdjustment(
         restaurant_id=item.restaurant_id,
@@ -138,6 +162,7 @@ def _adjustment(item: InventoryItem, change: float, default_reason: str) -> Inve
         note=note[:255] if note else None,
         actor_type=actor.type,
         actor_id=actor.id,
+        request_id=request_id,
     )
 
 

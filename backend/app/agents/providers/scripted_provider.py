@@ -11,8 +11,12 @@ events really persist and stream) with a fixed, model-free script:
    arguments;
 3. finish with a one-line finding per area.
 
-It makes no decisions, so it never proposes anything -- the approval flow
-is exercised with seeded proposals instead. Selected with LLM_PROVIDER=scripted.
+Asked to reorder, it makes the one decision a script can make honestly:
+it lists low stock and proposes a reorder of each low item the task names
+-- or, naming none, the one furthest below its reorder point -- for that
+item's usual reorder quantity. That is what lets a test (or a demo
+visitor) go from a stock change to a proposal to an approval without a
+model. Selected with LLM_PROVIDER=scripted.
 """
 
 import inspect
@@ -68,6 +72,9 @@ def describe(result: str, limit: int = 160) -> str:
 
 def _needs_no_arguments(tool: Any) -> bool:
     return not (tool.input_schema or {}).get("required")
+
+
+REORDER_WORDS = ("reorder", "restock", "order more", "top up")
 
 
 def route(task: str, available: Sequence[str]) -> list[str]:
@@ -127,8 +134,41 @@ class ScriptedProvider(LLMProvider):
             emit("tool_result", {"tool": tool.name, "result": result[:2000]})
             findings.append((area, tool.name, result))
 
+        proposed = self._maybe_reorder(tools, user_message, emit, should_cancel)
+        if proposed:
+            findings.append(("inventory", "propose_reorder", proposed))
+
         if len(findings) == 1:
             _, name, result = findings[0]
             return ProviderResult(text=f"Checked {name.replace('_', ' ')}: {describe(result)}.", tokens_used=0)
         lines = [f"- {area}: {describe(result, 240)}" for area, _, result in findings]
         return ProviderResult(text="What I found:\n" + "\n".join(lines), tokens_used=0)
+
+    def _maybe_reorder(self, tools, user_message, emit, should_cancel) -> str | None:
+        """Propose reorders when asked to; returns what was proposed, or None."""
+        text = user_message.lower()
+        by_name = {t.name: t for t in tools}
+        if not any(word in text for word in REORDER_WORDS) or not {"list_low_stock_items", "propose_reorder"} <= set(by_name):
+            return None
+        try:
+            low = json.loads(str(by_name["list_low_stock_items"].call({})))
+        except (TypeError, ValueError):
+            return None
+        if not low:
+            return "nothing is below its reorder point"
+        named = [row for row in low if str(row.get("name", "")).lower() in text]
+        chosen = named or [min(low, key=lambda row: row["quantity_on_hand"] - row["reorder_threshold"])]
+        results = []
+        for row in chosen:
+            quantity = row.get("reorder_qty") or max(row["reorder_threshold"] * 2 - row["quantity_on_hand"], 1)
+            args = {
+                "inventory_item_id": row["id"],
+                "quantity": quantity,
+                "note": f"{row['quantity_on_hand']:g} {row['unit']} on hand, reorder point {row['reorder_threshold']:g}.",
+            }
+            self._pause(should_cancel)
+            emit("tool_call", {"tool": "propose_reorder", "input": args})
+            result = str(by_name["propose_reorder"].call(args))
+            emit("tool_result", {"tool": "propose_reorder", "result": result[:2000]})
+            results.append(f"{quantity:g} {row['unit']} of {row['name']}")
+        return "proposed reordering " + ", ".join(results)

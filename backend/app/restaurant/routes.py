@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth.deps import current_user, manager
@@ -10,6 +11,7 @@ from app.auth.models import User
 from app.db.session import get_db
 from app.hr import staff as hr
 from app.restaurant import crud, inventory, profile, schemas
+from app.restaurant.conflicts import check_expected, idempotency_key
 from app.restaurant.models import (
     InventoryAdjustment,
     InventoryItem,
@@ -82,8 +84,12 @@ def create_menu_item(payload: schemas.MenuItemCreate, user: User = Depends(manag
 
 def _item_or_404(db: Session, user: User, item_id: str, lock: bool = False) -> InventoryItem:
     query = inventory.in_scope(db.query(InventoryItem), inventory.scope_for(db, user)).filter(InventoryItem.id == item_id)
-    # Locked for a stock change, so two people logging at once can't lose one's change.
-    item = (query.with_for_update() if lock else query).first()
+    if lock:
+        # Locked for a stock change, so two people logging at once can't lose
+        # one's change -- on SQLite as well as Postgres (see inventory.lock_items).
+        inventory.lock_items(db, [item_id])
+        query = query.populate_existing()
+    item = query.first()
     if item is None:
         raise HTTPException(404, "Inventory item not found")
     return item
@@ -150,11 +156,20 @@ def create_inventory_item(
 def record_stock_change(
     inventory_item_id: str,
     payload: schemas.StockChangeIn,
+    request: Request,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ):
-    """A delivery, stock used or wasted, or a count. Recorded with who and why."""
+    """A delivery, stock used or wasted, or a count. Recorded with who and why.
+
+    Sent twice with the same Idempotency-Key -- a double tap, a resend after
+    the connection dropped -- it is recorded once, and the repeat is answered
+    with that first change.
+    """
+    key = idempotency_key(request)
     item = _item_or_404(db, user, inventory_item_id, lock=True)
+    if key and (replay := _replay_stock_change(db, item, key)):
+        return replay
     before = item.quantity_on_hand
     if payload.reason == "count":
         after = payload.quantity
@@ -177,9 +192,17 @@ def record_stock_change(
         db.rollback()
         return schemas.StockChangeOut(item=schemas.InventoryItemOut.model_validate(item), adjustment=None)
 
-    with inventory.stock_change(payload.reason, payload.note):
-        item.quantity_on_hand = after
-        db.commit()
+    try:
+        with inventory.stock_change(payload.reason, payload.note, request_id=key):
+            item.quantity_on_hand = after
+            db.commit()
+    except IntegrityError:
+        # The same key arrived twice at once and the other copy won (SQLite
+        # has no row lock to queue them): answer with what it recorded.
+        db.rollback()
+        if key and (replay := _replay_stock_change(db, _item_or_404(db, user, inventory_item_id), key)):
+            return replay
+        raise
     db.refresh(item)
     latest = (
         db.query(InventoryAdjustment)
@@ -189,6 +212,24 @@ def record_stock_change(
     )
     return schemas.StockChangeOut(
         item=schemas.InventoryItemOut.model_validate(item), adjustment=_adjustments_out(db, [latest])[0]
+    )
+
+
+def _replay_stock_change(db: Session, item: InventoryItem, key: str) -> schemas.StockChangeOut | None:
+    """The change already recorded under `key`, answered again; None if there isn't one."""
+    earlier = (
+        db.query(InventoryAdjustment)
+        .filter(InventoryAdjustment.restaurant_id == item.restaurant_id, InventoryAdjustment.request_id == key)
+        .first()
+    )
+    if earlier is None:
+        return None
+    db.rollback()  # release the row lock; nothing new is written
+    if earlier.inventory_item_id != item.id:
+        raise HTTPException(409, "This request id was already used for a different item.")
+    db.refresh(item)
+    return schemas.StockChangeOut(
+        item=schemas.InventoryItemOut.model_validate(item), adjustment=_adjustments_out(db, [earlier])[0]
     )
 
 
@@ -289,15 +330,28 @@ def list_orders(user: User = Depends(current_user), db: Session = Depends(get_db
 
 
 @router.post("/orders", response_model=schemas.OrderOut)
-def create_order(payload: schemas.OrderCreate, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def create_order(
+    payload: schemas.OrderCreate, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
+):
     """Record a sale and draw its ingredients out of stock.
 
     Dishes without a recipe consume nothing, so an order of those still
-    goes through -- the link is opt-in per dish.
+    goes through -- the link is opt-in per dish. Resent with the same
+    Idempotency-Key, it is rung up once and the first order is returned.
     """
     restaurant_id = inventory.scope_for(db, user)
+    key = idempotency_key(request)
+
+    def earlier() -> Order | None:
+        if not key:
+            return None
+        return db.query(Order).filter(Order.restaurant_id == restaurant_id, Order.request_id == key).first()
+
+    if existing := earlier():
+        return existing
     order = Order(
-        restaurant_id=restaurant_id, channel=payload.channel, table_number=payload.table_number, status="completed"
+        restaurant_id=restaurant_id, channel=payload.channel, table_number=payload.table_number, status="completed",
+        request_id=key,
     )
     total = 0.0
     for line in payload.items:
@@ -318,7 +372,13 @@ def create_order(payload: schemas.OrderCreate, user: User = Depends(current_user
         raise HTTPException(409, str(exc)) from exc
 
     db.add(order)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()  # the same key's other copy won the race; its stock draw-down stands
+        if existing := earlier():
+            return existing
+        raise
     db.refresh(order)
     return order
 
@@ -500,6 +560,7 @@ def update_menu_item(
     item = _dish_or_404(db, user, menu_item_id)
 
     fields = payload.model_dump(exclude_unset=True)
+    check_expected(item, fields.pop("expected", None))
     if fields.get("price") is not None and fields["price"] < 0:
         raise HTTPException(422, "Price must not be negative")
     if fields.get("cost") is not None and fields["cost"] < 0:
@@ -564,6 +625,7 @@ def update_supplier(
     supplier = _supplier_or_404(db, user, supplier_id)
 
     fields = payload.model_dump(exclude_unset=True)
+    check_expected(supplier, fields.pop("expected", None))
     if fields.get("lead_time_days") is not None and fields["lead_time_days"] < 0:
         raise HTTPException(422, "Lead time cannot be negative")
 
@@ -606,6 +668,7 @@ def update_inventory_item(
         raise deny(db, user, request, "Only the owner or an admin can change an item's details. You can record stock changes.")
 
     fields = payload.model_dump(exclude_unset=True)
+    check_expected(item, fields.pop("expected", None))
     for required in ("name", "unit", "reorder_threshold", "reorder_qty", "unit_cost"):
         if required in fields and fields[required] is None:
             raise HTTPException(422, f"{required.replace('_', ' ').capitalize()} can't be empty.")

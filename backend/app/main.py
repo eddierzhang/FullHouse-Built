@@ -6,6 +6,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.agents import executor, scheduler
@@ -130,6 +131,19 @@ app.include_router(profile_router, dependencies=signed_in)
 
 @app.get("/health")
 def health():
+    """Up and able to reach the database -- what the host's health check and an
+    uptime monitor need to know. A 503 when the database is unreachable, so
+    the host marks the deploy unhealthy instead of serving errors."""
+    from sqlalchemy import text
+
+    from app.db.session import engine
+
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+    except Exception:
+        logger.exception("health check: database unreachable")
+        return JSONResponse({"status": "error", "detail": "database unreachable"}, status_code=503)
     return {"status": "ok"}
 
 

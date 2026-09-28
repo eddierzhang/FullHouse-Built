@@ -13,6 +13,7 @@ import {
   listInventoryItems,
   listStockChanges,
   listSuppliers,
+  newRequestKey,
   recordStockChange,
   updateInventoryItem,
 } from '../api/client'
@@ -414,6 +415,9 @@ function StockChangeForm({
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const meta = REASONS.find((r) => r.id === reason)!
+  // One id per entry, kept across retries so a resend after a dropped
+  // connection can't record it twice; editing the entry makes it a new one.
+  const requestKey = useMemo(() => newRequestKey(), [reason, amount, note])
 
   const parsed = parseAmount(amount, { allowZero: reason === 'count' })
   const after =
@@ -434,7 +438,7 @@ function StockChangeForm({
     setBusy(true)
     setError(null)
     try {
-      const result = await recordStockChange(item.id, reason, parsed, note.trim() || undefined)
+      const result = await recordStockChange(item.id, reason, parsed, note.trim() || undefined, requestKey)
       await onSaved(
         result.adjustment
           ? `${item.name}: ${qty(result.item.quantity_on_hand)} ${item.unit} on hand`
@@ -687,7 +691,9 @@ function EditItemForm({
     setBusy(true)
     setError(null)
     try {
-      await updateInventoryItem(item.id, checked)
+      // What this form started from, so someone else's change in the meantime isn't overwritten.
+      const expected = Object.fromEntries(Object.keys(checked).map((field) => [field, item[field as keyof InventoryItem]]))
+      await updateInventoryItem(item.id, checked, expected)
       await onSaved()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))

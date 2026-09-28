@@ -24,6 +24,8 @@ export function MenuPage({ app }: { app: AppContext }) {
   const [draft, setDraft] = useState(BLANK)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editDraft, setEditDraft] = useState({ price: '', description: '' })
+  // The price when editing started, so a teammate's change in the meantime isn't overwritten.
+  const [editBasePrice, setEditBasePrice] = useState<number | null>(null)
   const [recipeFor, setRecipeFor] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -266,7 +268,7 @@ export function MenuPage({ app }: { app: AppContext }) {
                               <button
                                 className="btn btn-primary btn-sm"
                                 disabled={busy || !(Number(editDraft.price) >= 0)}
-                                onClick={async () => (await run(() => updateMenuItem(row.id, { price: Number(editDraft.price) }), 'Price updated')) && setEditingId(null)}
+                                onClick={async () => (await run(() => updateMenuItem(row.id, { price: Number(editDraft.price) }, editBasePrice === null ? undefined : { price: editBasePrice }), 'Price updated')) && setEditingId(null)}
                               >
                                 Save
                               </button>
@@ -277,6 +279,7 @@ export function MenuPage({ app }: { app: AppContext }) {
                                 className="btn btn-ghost btn-sm"
                                 onClick={() => {
                                   setEditingId(row.id)
+                                  setEditBasePrice(row.price)
                                   setEditDraft({ price: String(row.price), description: row.description ?? '' })
                                 }}
                               >

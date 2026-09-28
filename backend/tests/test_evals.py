@@ -37,7 +37,16 @@ def test_a_do_nothing_agent_passes_a_negative_scenario():
     assert result.score == 1.0
 
 
-def test_a_do_nothing_agent_fails_when_action_was_needed():
+@pytest.fixture
+def look_only(monkeypatch):
+    """The scripted agent with its one decision -- reordering when asked -- taken away:
+    an agent that looks but never acts, which the evals must score as failing."""
+    monkeypatch.setattr(
+        "app.agents.providers.scripted_provider.ScriptedProvider._maybe_reorder", lambda *args, **kwargs: None
+    )
+
+
+def test_a_do_nothing_agent_fails_when_action_was_needed(look_only):
     result = run_scenario(BY_ID["inventory-shortage"], "scripted")
     checks = _checks(result)
 
@@ -78,7 +87,7 @@ def test_a_correct_proposal_is_dry_run_without_being_committed(monkeypatch):
     assert result.score == 1.0
 
 
-def test_report_lists_scores_and_failures():
+def test_report_lists_scores_and_failures(look_only):
     results = [
         run_scenario(BY_ID["inventory-shortage"], "scripted").to_dict(),
         run_scenario(BY_ID["inventory-nothing-low"], "scripted").to_dict(),

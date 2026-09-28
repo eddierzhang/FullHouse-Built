@@ -71,6 +71,9 @@ class InventoryAdjustment(Base):
     """
 
     __tablename__ = "inventory_adjustments"
+    # A retried request -- a double tap, a resend after the connection
+    # dropped -- carries the same request id, and can't be recorded twice.
+    __table_args__ = (UniqueConstraint("restaurant_id", "request_id", name="uq_inventory_adjustments_request"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     restaurant_id: Mapped[str | None] = mapped_column(
@@ -92,6 +95,8 @@ class InventoryAdjustment(Base):
     #: Who, as the change history names them: human (by email), agent, or system.
     actor_type: Mapped[str] = mapped_column(String(16), nullable=False)
     actor_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #: The client's Idempotency-Key for a hand-recorded change; null otherwise.
+    request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now, nullable=False, index=True)
 
     # Also what makes a flush insert a new item before its first adjustment.
@@ -118,6 +123,7 @@ class MenuItem(Base):
 
 class Order(Base):
     __tablename__ = "orders"
+    __table_args__ = (UniqueConstraint("restaurant_id", "request_id", name="uq_orders_request"),)
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
     restaurant_id: Mapped[str | None] = mapped_column(
@@ -127,6 +133,8 @@ class Order(Base):
     channel: Mapped[str] = mapped_column(String(32), default="dine_in", nullable=False)  # dine_in|takeout|delivery
     table_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     total: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    #: The client's Idempotency-Key, so a resent sale isn't rung up twice.
+    request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now)
 
     items: Mapped[list["OrderItem"]] = relationship(back_populates="order", cascade="all, delete-orphan")

@@ -24,6 +24,8 @@ export function SuppliersPage({ app }: { app: AppContext }) {
   const [draft, setDraft] = useState(blankDraft)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editDraft, setEditDraft] = useState(BLANK)
+  // The supplier as it was when editing started, so a teammate's change in the meantime isn't overwritten.
+  const [editBase, setEditBase] = useState<SupplyChain['suppliers'][number] | null>(null)
   const [busy, setBusy] = useState(false)
 
   const load = useCallback(() => {
@@ -233,7 +235,12 @@ export function SuppliersPage({ app }: { app: AppContext }) {
                           disabled={busy || leadDays(editDraft.lead_time_days) === null}
                           onClick={async () => {
                             const ok = await run(
-                              () => updateSupplier(s.id, { name: editDraft.name.trim(), contact_info: editDraft.contact_info.trim() || null, lead_time_days: leadDays(editDraft.lead_time_days)! }),
+                              () =>
+                                updateSupplier(
+                                  s.id,
+                                  { name: editDraft.name.trim(), contact_info: editDraft.contact_info.trim() || null, lead_time_days: leadDays(editDraft.lead_time_days)! },
+                                  editBase ? { name: editBase.name, contact_info: editBase.contact_info, lead_time_days: editBase.lead_time_days } : undefined,
+                                ),
                               'Supplier updated',
                             )
                             if (ok) setEditingId(null)
@@ -271,6 +278,7 @@ export function SuppliersPage({ app }: { app: AppContext }) {
                               className="btn btn-ghost btn-sm"
                               onClick={() => {
                                 setEditingId(s.id)
+                                setEditBase(s)
                                 setEditDraft({ name: s.name, contact_info: s.contact_info ?? '', lead_time_days: String(s.lead_time_days) })
                               }}
                             >

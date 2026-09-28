@@ -39,13 +39,69 @@ export class ApiError extends Error {
   }
 }
 
-async function request(path: string, options: RequestInit = {}): Promise<Response> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    // The session cookie, which in local dev goes to a different port.
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...options.headers },
-  })
+/**
+ * The server couldn't be reached at all -- no connection, or it's down.
+ * Distinct from ApiError (the server answered "no"), because the fix is
+ * different: check the connection and try again.
+ */
+export class NetworkError extends Error {
+  constructor(message = 'Couldn’t reach FullHouse. Check your internet connection and try again.') {
+    super(message)
+  }
+}
+
+/**
+ * A fresh id for one thing a person is saving -- a delivery, a sale.
+ *
+ * Make one when the form is filled in and send it with every attempt until
+ * the save is confirmed: the server records each id once, so a retry after a
+ * dropped connection can't count the delivery twice.
+ */
+export function newRequestKey(): string {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+}
+
+/** Pauses before each automatic retry after a dropped connection. */
+const RETRY_DELAYS_MS = [700, 2000]
+
+type RequestOptions = RequestInit & { idempotencyKey?: string }
+
+async function request(path: string, options: RequestOptions = {}): Promise<Response> {
+  const { idempotencyKey, ...init } = options
+  const method = (init.method ?? 'GET').toUpperCase()
+  // Only what's safe to send twice is retried: reads, and writes carrying a
+  // request id (the server answers a repeat with the first result).
+  const retryable = method === 'GET' || Boolean(idempotencyKey)
+  let res: Response | undefined
+  for (let attempt = 0; ; attempt++) {
+    try {
+      res = await fetch(`${API_BASE}${path}`, {
+        ...init,
+        // The session cookie, which in local dev goes to a different port.
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
+          ...init.headers,
+        },
+      })
+      break
+    } catch {
+      // fetch only throws when no response came back at all.
+      if (!retryable || attempt >= RETRY_DELAYS_MS.length) {
+        throw new NetworkError(
+          method === 'GET'
+            ? undefined
+            : idempotencyKey
+              ? 'Couldn’t confirm this was saved because the connection dropped. Try again: it won’t be recorded twice.'
+              : 'Couldn’t reach FullHouse, so this may not have saved. Check your connection, then refresh to see.',
+        )
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, RETRY_DELAYS_MS[attempt]))
+    }
+  }
   if (!res.ok) {
     if (res.status === 401 && !path.startsWith('/api/v1/auth/')) {
       window.dispatchEvent(new Event(SIGNED_OUT_EVENT))
@@ -57,10 +113,17 @@ async function request(path: string, options: RequestInit = {}): Promise<Respons
 }
 
 const get = <T>(path: string) => request(path).then((r) => r.json() as Promise<T>)
-const send = <T>(method: string, path: string, body?: unknown) =>
-  request(path, { method, body: body === undefined ? undefined : JSON.stringify(body) }).then(
+const send = <T>(method: string, path: string, body?: unknown, idempotencyKey?: string) =>
+  request(path, { method, body: body === undefined ? undefined : JSON.stringify(body), idempotencyKey }).then(
     (r) => r.json() as Promise<T>,
   )
+
+/**
+ * What an edit form started from, for the fields it changes. The server
+ * refuses the save if someone else changed any of them in the meantime,
+ * instead of silently overwriting their change.
+ */
+export type Expected = Record<string, unknown>
 /** For 204 responses, which have no body to parse. */
 const sendVoid = (method: string, path: string) => request(path, { method }).then(() => undefined)
 
@@ -265,17 +328,28 @@ export const listInventoryItems = () => get<InventoryItem[]>('/api/v1/restaurant
 export const createInventoryItem = (input: InventoryItemInput) =>
   send<InventoryItem>('POST', '/api/v1/restaurant/inventory-items', input)
 /** An item's details, for owners and admins. Stock changes only through `recordStockChange`. */
-export const updateInventoryItem = (id: string, patch: Partial<Omit<InventoryItemInput, 'quantity_on_hand'>>) =>
-  send<InventoryItem>('PATCH', `/api/v1/restaurant/inventory-items/${id}`, patch)
+export const updateInventoryItem = (
+  id: string,
+  patch: Partial<Omit<InventoryItemInput, 'quantity_on_hand'>>,
+  expected?: Expected,
+) => send<InventoryItem>('PATCH', `/api/v1/restaurant/inventory-items/${id}`, { ...patch, expected })
 /**
  * A delivery, use, waste or count. `quantity` is the amount moved -- or, for a
  * count, the level counted. `adjustment` is null when a count matched.
  */
-export const recordStockChange = (id: string, reason: StockReason, quantity: number, note?: string) =>
+export const recordStockChange = (
+  id: string,
+  reason: StockReason,
+  quantity: number,
+  note?: string,
+  /** From `newRequestKey()`: the same one for every attempt at this change. */
+  requestKey?: string,
+) =>
   send<{ item: InventoryItem; adjustment: StockAdjustment | null }>(
     'POST',
     `/api/v1/restaurant/inventory-items/${id}/adjustments`,
     { reason, quantity, note: note || null },
+    requestKey,
   )
 /** Newest first; one item's with `itemId`. */
 export const listStockChanges = (itemId?: string, limit = 25) =>
@@ -287,8 +361,8 @@ export const listSuppliers = () => get<Supplier[]>('/api/v1/restaurant/suppliers
 export const fetchSupplyChain = () => get<SupplyChain>('/api/v1/restaurant/supply-chain')
 export const createSupplier = (input: SupplierInput) =>
   send<Supplier>('POST', '/api/v1/restaurant/suppliers', input)
-export const updateSupplier = (id: string, patch: Partial<SupplierInput>) =>
-  send<Supplier>('PATCH', `/api/v1/restaurant/suppliers/${id}`, patch)
+export const updateSupplier = (id: string, patch: Partial<SupplierInput>, expected?: Expected) =>
+  send<Supplier>('PATCH', `/api/v1/restaurant/suppliers/${id}`, { ...patch, expected })
 export const deleteSupplier = (id: string) => sendVoid('DELETE', `/api/v1/restaurant/suppliers/${id}`)
 
 // --- staff ------------------------------------------------------------------------
@@ -377,8 +451,8 @@ export type Recipe = {
 
 export const listMenuPerformance = () => get<MenuPerformance[]>('/api/v1/restaurant/menu-performance')
 export const createMenuItem = (input: MenuItemInput) => send<MenuItem>('POST', '/api/v1/restaurant/menu-items', input)
-export const updateMenuItem = (id: string, patch: Partial<MenuItemInput>) =>
-  send<MenuItem>('PATCH', `/api/v1/restaurant/menu-items/${id}`, patch)
+export const updateMenuItem = (id: string, patch: Partial<MenuItemInput>, expected?: Expected) =>
+  send<MenuItem>('PATCH', `/api/v1/restaurant/menu-items/${id}`, { ...patch, expected })
 export const deleteMenuItem = (id: string) => sendVoid('DELETE', `/api/v1/restaurant/menu-items/${id}`)
 export const getRecipe = (menuItemId: string) => get<Recipe>(`/api/v1/restaurant/menu-items/${menuItemId}/recipe`)
 export const setRecipe = (menuItemId: string, lines: { inventory_item_id: string; quantity: number }[]) =>

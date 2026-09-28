@@ -55,10 +55,15 @@ def _restock(db: Session, payload: dict, source: str) -> str:
     item_id = _require(payload, "inventory_item_id")
     quantity = _positive_quantity(payload)
 
+    # Locked first, so a stock change someone records at the same moment isn't lost.
+    from app.restaurant.inventory import lock_items
+
+    lock_items(db, [item_id])
     # The agent works for the site's restaurant; another's stock reads as missing.
     item = restaurant_crud.get_inventory_item(db, item_id)
     if item is None:
         raise ApplyError(f"No inventory item with id {item_id}")
+    db.refresh(item)  # the figure as it stands now that it's locked
 
     previous = item.quantity_on_hand
     item.quantity_on_hand = previous + quantity
