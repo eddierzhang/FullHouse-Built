@@ -41,7 +41,7 @@ from app.db.session import Base
 EXCLUDED_TABLES = frozenset({
     "change_log", "agent_events", "inventory_adjustments",
     # Accounts and their secrets have their own record: the security log.
-    "users", "auth_sessions", "invites", "password_resets", "security_events",
+    "users", "auth_sessions", "invites", "password_resets", "security_events", "mfa_challenges",
 })
 
 #: Key under which half-built rows wait on `Session.info` between the two events.

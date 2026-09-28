@@ -14,13 +14,17 @@ import {
   createInvite,
   createResetLink,
   disableAccess,
+  disableMfa,
   enableAccess,
+  fetchCurrentUser,
   fetchRestaurant,
   linkFor,
   listInvites,
   listSecurityEvents,
   listTeam,
   logoutEverywhere,
+  newBackupCodes,
+  resetTeammateMfa,
   revokeInvite,
   saveRestaurantDetails,
   saveSection,
@@ -28,6 +32,7 @@ import {
 } from '../api/client'
 import type { AppContext } from '../app/context'
 import { Icon } from '../components/Icon'
+import { BackupCodes, MfaSetup } from '../components/MfaSetup'
 import { dateTime, relativeTime } from '../lib/format'
 import { DetailsFields, HoursFields, SECTION_META, SectionFields, initialValues, payload, timezones } from '../restaurant/sections'
 import { type Errors, normalizeWebsite, validateDetails, validateHours } from '../restaurant/validation'
@@ -670,6 +675,20 @@ function TeamTab({ app, user }: { app: AppContext; user: User }) {
                           >
                             Reset password
                           </button>
+                          {person.mfa_enabled && (
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-sm"
+                              disabled={busyId === person.id}
+                              title="For a lost phone: they set two-step sign-in up again when they next sign in"
+                              onClick={() =>
+                                window.confirm(`Reset ${person.name}'s two-step sign-in? They'll be signed out and set it up again on their next sign-in.`) &&
+                                act(person.id, () => resetTeammateMfa(person.id), `${person.name}'s two-step sign-in was reset`)
+                              }
+                            >
+                              Reset two-step
+                            </button>
+                          )}
                           {person.disabled_at ? (
                             <button type="button" className="btn btn-secondary btn-sm" disabled={busyId === person.id} onClick={() => act(person.id, () => enableAccess(person.id), `${person.name} can sign in again`)}>
                               Turn access on
@@ -789,44 +808,166 @@ function SecurityTab() {
 
 // --- Your account ---------------------------------------------------------------------
 
-function AccountTab({ app, user }: { app: AppContext; user: User }) {
-  const [busy, setBusy] = useState(false)
+/** Two-step sign-in for your own account: on/off, a new phone, new backup codes. */
+function TwoStepCard({ app, user }: { app: AppContext; user: User }) {
+  const [me, setMe] = useState(user)
+  const [mode, setMode] = useState<'idle' | 'setup' | 'code' | 'codes'>('idle')
+  const [purpose, setPurpose] = useState<'move' | 'codes' | 'off'>('move')
+  const [code, setCode] = useState('')
+  const [codes, setCodes] = useState<string[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const required = canEditRestaurant(user)
+
+  const refresh = () =>
+    fetchCurrentUser()
+      .then((u) => u && setMe(u))
+      .catch(() => {})
+  const reset = () => {
+    setMode('idle')
+    setCode('')
+    setError(null)
+  }
+
+  const withCode = async () => {
+    setError(null)
+    try {
+      if (purpose === 'move') return setMode('setup')
+      if (purpose === 'codes') {
+        setCodes((await newBackupCodes(code.trim())).codes)
+        return setMode('codes')
+      }
+      await disableMfa(code.trim())
+      app.toast('Two-step sign-in is off')
+      reset()
+      void refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const ask = (next: typeof purpose) => {
+    setPurpose(next)
+    setMode('code')
+  }
+
   return (
     <section className="card settings-stack">
       <div className="card-header">
         <div>
-          <h2 className="card-title">Your account</h2>
+          <h2 className="card-title">Two-step sign-in</h2>
           <p className="card-subtitle">
-            {user.name} · {user.email} · {ROLE_LABELS[user.role] ?? user.role}
+            {me.mfa_enabled
+              ? `On. ${me.mfa_backup_codes_left ?? 0} backup codes left.`
+              : 'Off. Turn it on so a stolen password alone can’t get into your account.'}
+            {required && ' Required for owners and admins.'}
           </p>
         </div>
       </div>
       <div className="card-body stack" style={{ gap: 10 }}>
-        <div className="strong">Signed in somewhere you shouldn’t be?</div>
-        <p className="muted small" style={{ margin: 0 }}>
-          Sign out of every browser and device at once, including this one. Forgot your password? Ask the owner or an admin for a reset link.
-        </p>
-        <div>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            disabled={busy}
-            onClick={async () => {
-              if (!window.confirm('Sign out of every device, including this one?')) return
-              setBusy(true)
-              try {
-                await logoutEverywhere()
-                window.location.reload()
-              } catch (err) {
-                app.toast('Couldn’t sign out everywhere', err instanceof Error ? err.message : String(err))
-                setBusy(false)
-              }
+        {mode === 'setup' ? (
+          <MfaSetup
+            currentCode={me.mfa_enabled ? code.trim() : undefined}
+            onDone={() => {
+              app.toast('Two-step sign-in is on')
+              reset()
+              void refresh()
             }}
-          >
-            Sign out everywhere
-          </button>
-        </div>
+          />
+        ) : mode === 'codes' && codes ? (
+          <BackupCodes
+            codes={codes}
+            onDone={() => {
+              reset()
+              void refresh()
+            }}
+          />
+        ) : mode === 'code' ? (
+          <div className="stack" style={{ gap: 10 }}>
+            <label className="field">
+              <span className="field-label">A current code from your authenticator app</span>
+              <input className="input mono" inputMode="numeric" autoComplete="one-time-code" maxLength={32} value={code} onChange={(e) => setCode(e.target.value)} />
+            </label>
+            {error && (
+              <div className="auth-error" role="alert">
+                {error}
+              </div>
+            )}
+            <div className="row">
+              <button type="button" className="btn btn-primary" disabled={!code.trim()} onClick={() => void withCode()}>
+                Continue
+              </button>
+              <button type="button" className="btn btn-ghost" onClick={reset}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : me.mfa_enabled ? (
+          <div className="row wrap">
+            <button type="button" className="btn btn-secondary" onClick={() => ask('move')}>
+              Move to a new phone
+            </button>
+            <button type="button" className="btn btn-secondary" onClick={() => ask('codes')}>
+              New backup codes
+            </button>
+            {!required && (
+              <button type="button" className="btn btn-ghost negative" onClick={() => ask('off')}>
+                Turn off
+              </button>
+            )}
+          </div>
+        ) : (
+          <div>
+            <button type="button" className="btn btn-primary" onClick={() => setMode('setup')}>
+              Turn on two-step sign-in
+            </button>
+          </div>
+        )}
       </div>
     </section>
+  )
+}
+
+function AccountTab({ app, user }: { app: AppContext; user: User }) {
+  const [busy, setBusy] = useState(false)
+  return (
+    <div className="stack">
+      <TwoStepCard app={app} user={user} />
+      <section className="card settings-stack">
+        <div className="card-header">
+          <div>
+            <h2 className="card-title">Your account</h2>
+            <p className="card-subtitle">
+              {user.name} · {user.email} · {ROLE_LABELS[user.role] ?? user.role}
+            </p>
+          </div>
+        </div>
+        <div className="card-body stack" style={{ gap: 10 }}>
+          <div className="strong">Signed in somewhere you shouldn’t be?</div>
+          <p className="muted small" style={{ margin: 0 }}>
+            Sign out of every browser and device at once, including this one. Forgot your password? Ask the owner or an admin for a reset link.
+          </p>
+          <div>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={busy}
+              onClick={async () => {
+                if (!window.confirm('Sign out of every device, including this one?')) return
+                setBusy(true)
+                try {
+                  await logoutEverywhere()
+                  window.location.reload()
+                } catch (err) {
+                  app.toast('Couldn’t sign out everywhere', err instanceof Error ? err.message : String(err))
+                  setBusy(false)
+                }
+              }}
+            >
+              Sign out everywhere
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
   )
 }

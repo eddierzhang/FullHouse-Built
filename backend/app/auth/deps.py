@@ -20,6 +20,12 @@ from app.db.session import get_db
 
 SESSION_COOKIE = "fullhouse_session"
 
+#: All an owner or admin may do before setting up two-step sign-in.
+MFA_SETUP_PATHS = frozenset({
+    "/api/v1/auth/me", "/api/v1/auth/logout", "/api/v1/auth/logout-everywhere",
+    "/api/v1/auth/mfa/setup", "/api/v1/auth/mfa/enable",
+})
+
 
 def _user_for_token(db: Session, token: str) -> User | None:
     session = db.get(AuthSession, token_id(token))
@@ -39,6 +45,8 @@ async def current_user(request: Request, db: Session = Depends(get_db)) -> User:
     user = await run_in_threadpool(_user_for_token, db, token) if token else None
     if user is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Sign in to continue.")
+    if user.mfa_setup_required and request.url.path not in MFA_SETUP_PATHS:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Set up two-step sign-in first: owners and admins need it.")
     # Change history records who did it by email: unique, and readable --
     # and for which restaurant, so nobody else's history ever shows it.
     set_actor(Actor(type=HUMAN, id=user.email[:64], restaurant_id=user.restaurant_id))

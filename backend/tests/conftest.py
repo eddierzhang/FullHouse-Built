@@ -9,7 +9,8 @@ import tempfile
 # TEST_DATABASE_URL runs the whole suite against that database instead (CI
 # uses it for Postgres); otherwise a throwaway SQLite file isolates it.
 os.environ["SCHEDULER_ENABLED"] = "false"  # tests drive scheduled jobs directly
-os.environ["ALLOW_SIGNUP"] = "true"  # tests sign coworkers up directly; test_invites covers the invite path
+os.environ["ALLOW_SIGNUP"] = "true"  # tests sign coworkers up directly; test_account_security covers invites
+os.environ["REQUIRE_MFA"] = "false"  # test_mfa turns it on; elsewhere owners sign in with a password alone
 
 TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
 if TEST_DATABASE_URL:

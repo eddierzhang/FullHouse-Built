@@ -2,7 +2,7 @@ import re
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # Deliberately loose: the only reliable check of an address is mailing it,
 # so this just catches typos like a missing "@" or domain.
@@ -58,6 +58,20 @@ class UserOut(BaseModel):
     created_at: datetime
     #: Set while an owner or admin has turned the account off.
     disabled_at: datetime | None = None
+    mfa_enabled: bool = False
+    #: An owner or admin who must set up two-step sign-in before anything else.
+    mfa_setup_required: bool = False
+    #: Unused backup codes, for their owner's own account view.
+    mfa_backup_codes_left: int | None = None
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def _from_user(cls, value, handler):
+        out = handler(value)
+        codes = getattr(value, "mfa_backup_codes", None)
+        if codes is not None:
+            out.mfa_backup_codes_left = len(codes)
+        return out
 
 
 class RoleIn(BaseModel):
@@ -146,3 +160,29 @@ class SecurityEventOut(BaseModel):
     ip: str | None
     user_agent: str | None
     detail: dict | None
+
+
+class MfaRequired(BaseModel):
+    """The password was right; a code from the authenticator app (or a backup code) comes next."""
+
+    mfa_required: Literal[True] = True
+
+
+class CodeIn(BaseModel):
+    code: str = Field(min_length=1, max_length=32)
+
+
+class OptionalCodeIn(BaseModel):
+    code: str | None = Field(default=None, max_length=32)
+
+
+class MfaSetupOut(BaseModel):
+    #: For typing in by hand when the QR code can't be scanned.
+    secret: str
+    otpauth_uri: str
+    qr_svg: str
+
+
+class BackupCodesOut(BaseModel):
+    #: Shown once: only their hashes are kept.
+    codes: list[str]

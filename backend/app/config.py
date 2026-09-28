@@ -66,6 +66,16 @@ class Settings:
     # instance, which starts empty and is filled by the owner's setup.
     seed_sample_data: bool = os.getenv("SEED_SAMPLE_DATA", "true").strip().lower() in ("1", "true", "yes")
 
+    # Encrypts two-step sign-in secrets at rest. Set a long random value in
+    # production (render.customer.yaml has Render generate one) and never
+    # change it: secrets saved under the old key stop working, and everyone
+    # with two-step sign-in would have to set it up again.
+    secret_key: str | None = os.getenv("SECRET_KEY") or None
+
+    # Owners and admins must use two-step sign-in. Off for the public demo,
+    # whose one shared account is meant for strangers to use.
+    require_mfa: bool = os.getenv("REQUIRE_MFA", "true").strip().lower() in ("1", "true", "yes")
+
     # Whether anyone can create an account in the restaurant from the login
     # page. Off by default: the team joins with invite links from the Profile
     # page. (Before the restaurant exists, signing up is how its owner starts.)

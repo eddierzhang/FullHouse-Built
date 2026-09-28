@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useState } from 'react'
-import { type AuthOptions, type User, fetchAuthOptions, login, signup } from '../api/client'
+import { type AuthOptions, type User, fetchAuthOptions, login, loginSecondStep, signup } from '../api/client'
 import { Icon } from '../components/Icon'
 
 type Mode = 'sign-in' | 'sign-up'
@@ -19,6 +19,9 @@ export function LoginPage({ unreachable, onRetry, onSignedIn }: Props) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // The password was right and the account uses two-step sign-in: a code comes next.
+  const [needsCode, setNeedsCode] = useState(false)
+  const [code, setCode] = useState('')
 
   useEffect(() => {
     fetchAuthOptions().then(setOptions).catch(() => {})
@@ -30,12 +33,17 @@ export function LoginPage({ unreachable, onRetry, onSignedIn }: Props) {
     setBusy(true)
     setError(null)
     try {
-      const user = credentials
+      const result = credentials
         ? await login(credentials.email, credentials.password)
         : signingUp
           ? await signup(name, email, password)
           : await login(email, password)
-      onSignedIn(user)
+      if ('mfa_required' in result) {
+        setNeedsCode(true)
+        setBusy(false)
+        return
+      }
+      onSignedIn(result)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
       setBusy(false)
@@ -45,6 +53,75 @@ export function LoginPage({ unreachable, onRetry, onSignedIn }: Props) {
   const onSubmit = (event: FormEvent) => {
     event.preventDefault()
     void submit()
+  }
+
+  const submitCode = async (event: FormEvent) => {
+    event.preventDefault()
+    setBusy(true)
+    setError(null)
+    try {
+      onSignedIn(await loginSecondStep(code.trim()))
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setError(message)
+      setBusy(false)
+      // The attempt ended (timed out, or too many wrong codes): start again from the password.
+      if (/Sign in again/.test(message)) {
+        setNeedsCode(false)
+        setCode('')
+      }
+    }
+  }
+
+  if (needsCode) {
+    return (
+      <main className="auth-screen">
+        <div className="auth-card">
+          <div className="brand auth-brand">
+            <span className="brand-mark">F</span>
+            FullHouse
+          </div>
+          <h1 className="auth-title">Two-step sign-in</h1>
+          <p className="auth-subtitle">Enter the 6-digit code from your authenticator app, or one of your backup codes.</p>
+          <form className="auth-form" onSubmit={submitCode} noValidate>
+            <label className="field">
+              <span className="field-label">Code</span>
+              <input
+                className="input auth-input mono"
+                autoFocus
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={32}
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+              />
+            </label>
+            {error && (
+              <div className="auth-error" role="alert">
+                {error}
+              </div>
+            )}
+            <button className="btn btn-primary auth-submit" type="submit" disabled={busy || !code.trim()}>
+              {busy ? 'Checking…' : 'Sign in'}
+            </button>
+          </form>
+          <p className="auth-switch">
+            Lost your phone and codes? Ask the owner to reset your two-step sign-in.{' '}
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => {
+                setNeedsCode(false)
+                setCode('')
+                setError(null)
+              }}
+            >
+              Back
+            </button>
+          </p>
+        </div>
+      </main>
+    )
   }
 
   const switchMode = (next: Mode) => {

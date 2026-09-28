@@ -7,9 +7,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.auth import schemas
-from app.auth import events
+from app.auth import events, mfa
 from app.auth.deps import SESSION_COOKIE, current_user
-from app.auth.models import ADMIN, MEMBER, OWNER, AuthSession, Invite, PasswordReset, SecurityEvent, User
+from app.auth.models import ADMIN, MEMBER, OWNER, AuthSession, Invite, MfaChallenge, PasswordReset, SecurityEvent, User
 from app.auth.security import DUMMY_HASH, hash_password, new_session_token, token_id, verify_password
 from app.config import settings
 from app.db.session import get_db
@@ -19,6 +19,10 @@ router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 SESSION_DAYS = 14
 INVITE_DAYS = 7
 RESET_MINUTES = 60
+MFA_CHALLENGE_MINUTES = 5
+MFA_MAX_ATTEMPTS = 5
+#: Holds the sign-in waiting for its code; sent only to the auth routes.
+MFA_COOKIE = "fullhouse_mfa"
 
 
 class _FailedLogins:
@@ -133,7 +137,7 @@ def signup(body: schemas.SignupIn, request: Request, response: Response, db: Ses
     return user
 
 
-@router.post("/login", response_model=schemas.UserOut)
+@router.post("/login", response_model=schemas.UserOut | schemas.MfaRequired)
 def login(body: schemas.LoginIn, request: Request, response: Response, db: Session = Depends(get_db)):
     key = _client_key(request)
     if failed_logins.blocked(key) or failed_accounts.blocked(body.email):
@@ -153,13 +157,151 @@ def login(body: schemas.LoginIn, request: Request, response: Response, db: Sessi
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your access has been turned off. Ask the owner or a manager.")
 
     failed_logins.clear(key)
+    if user.mfa_enabled:
+        # The password was right; the session waits for the code.
+        token = new_session_token()
+        db.add(MfaChallenge(id=token_id(token), user_id=user.id,
+                            expires_at=datetime.now(timezone.utc) + timedelta(minutes=MFA_CHALLENGE_MINUTES)))
+        db.commit()
+        response.set_cookie(MFA_COOKIE, token, max_age=MFA_CHALLENGE_MINUTES * 60, httponly=True, samesite="lax",
+                            secure=_is_https(request), path="/api/v1/auth")
+        return schemas.MfaRequired()
     failed_accounts.clear(body.email)
+    _complete_sign_in(db, user, request, response)
+    return user
+
+
+def _complete_sign_in(db: Session, user: User, request: Request, response: Response) -> None:
     if events.is_new_device(db, user, request) and db.query(SecurityEvent.id).filter(
         SecurityEvent.email == user.email, SecurityEvent.type == "login_succeeded"
     ).first():
         events.record(db, "new_device", request, actor=user)
     _start_session(db, user, request, response)
     events.record(db, "login_succeeded", request, actor=user)
+
+
+def _second_step(db: Session, user: User, code: str) -> str | None:
+    """Check a code from the app, or a backup code, and spend it. Returns which it was."""
+    secret = mfa.decrypt(user.mfa_secret) if user.mfa_secret else None
+    step = mfa.matching_step(secret, code) if secret else None
+    # A code works once: one already accepted for this or a later step is refused.
+    if step is not None and (user.mfa_last_step is None or step > user.mfa_last_step):
+        user.mfa_last_step = step
+        db.commit()
+        return "app"
+    remaining = mfa.use_backup_code(user.mfa_backup_codes or [], code)
+    if remaining is not None:
+        user.mfa_backup_codes = remaining
+        db.commit()
+        return "backup"
+    return None
+
+
+@router.post("/login/mfa", response_model=schemas.UserOut)
+def login_second_step(body: schemas.CodeIn, request: Request, response: Response, db: Session = Depends(get_db)):
+    """The code that finishes a sign-in the password started."""
+    token = request.cookies.get(MFA_COOKIE)
+    challenge = db.get(MfaChallenge, token_id(token)) if token else None
+    if challenge is None or challenge.expires_at <= datetime.now(timezone.utc):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "That took too long. Sign in again.")
+    user = db.get(User, challenge.user_id)
+    if failed_accounts.blocked(user.email):
+        events.record(db, "login_blocked", request, actor=user)
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many failed attempts. Try again in 15 minutes.")
+
+    used = _second_step(db, user, body.code)
+    if used is None:
+        challenge.attempts += 1
+        failed_accounts.record(user.email)
+        if challenge.attempts >= MFA_MAX_ATTEMPTS:
+            db.delete(challenge)
+        db.commit()
+        events.record(db, "mfa_failed", request, actor=user)
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "That code didn't work." if challenge.attempts < MFA_MAX_ATTEMPTS
+                            else "Too many wrong codes. Sign in again.")
+
+    db.delete(challenge)
+    db.commit()
+    failed_accounts.clear(user.email)
+    if used == "backup":
+        events.record(db, "mfa_backup_code_used", request, actor=user,
+                      detail={"remaining": len(user.mfa_backup_codes or [])})
+    response.delete_cookie(MFA_COOKIE, path="/api/v1/auth", httponly=True, samesite="lax", secure=_is_https(request))
+    _complete_sign_in(db, user, request, response)
+    return user
+
+
+# --- two-step sign-in, for your own account ---------------------------------------------
+
+
+def _require_code(db: Session, user: User, code: str | None, request: Request) -> None:
+    """Changing two-step settings once they're on takes a current code."""
+    if user.mfa_enabled and (not code or _second_step(db, user, code) is None):
+        events.record(db, "mfa_failed", request, actor=user)
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Enter a current code from your authenticator app.")
+
+
+@router.post("/mfa/setup", response_model=schemas.MfaSetupOut)
+def mfa_setup(body: schemas.OptionalCodeIn, request: Request, user: User = Depends(current_user),
+              db: Session = Depends(get_db)):
+    """A new secret to scan. Two-step stays as it was until /mfa/enable proves the scan."""
+    _require_code(db, user, body.code, request)
+    secret = mfa.new_secret()
+    user.mfa_pending_secret = mfa.encrypt(secret)
+    db.commit()
+    uri = mfa.provisioning_uri(secret, user.email)
+    return schemas.MfaSetupOut(secret=secret, otpauth_uri=uri, qr_svg=mfa.qr_svg(uri))
+
+
+@router.post("/mfa/enable", response_model=schemas.BackupCodesOut)
+def mfa_enable(body: schemas.CodeIn, request: Request, user: User = Depends(current_user),
+               db: Session = Depends(get_db)):
+    """Turn two-step on with the secret just scanned, and hand out backup codes -- once."""
+    pending = mfa.decrypt(user.mfa_pending_secret) if user.mfa_pending_secret else None
+    step = mfa.matching_step(pending, body.code) if pending else None
+    if step is None:
+        raise HTTPException(422, "That code didn't match. Check the app and try the newest one.")
+    codes, hashes = mfa.new_backup_codes()
+    user.mfa_secret, user.mfa_pending_secret = user.mfa_pending_secret, None
+    user.mfa_enabled_at = datetime.now(timezone.utc)
+    user.mfa_last_step = step
+    user.mfa_backup_codes = hashes
+    db.commit()
+    events.record(db, "mfa_enabled", request, actor=user)
+    return schemas.BackupCodesOut(codes=codes)
+
+
+@router.post("/mfa/backup-codes", response_model=schemas.BackupCodesOut)
+def mfa_new_backup_codes(body: schemas.CodeIn, request: Request, user: User = Depends(current_user),
+                         db: Session = Depends(get_db)):
+    """A fresh set of backup codes; the old ones stop working."""
+    if not user.mfa_enabled:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Turn two-step sign-in on first.")
+    _require_code(db, user, body.code, request)
+    codes, hashes = mfa.new_backup_codes()
+    user.mfa_backup_codes = hashes
+    db.commit()
+    return schemas.BackupCodesOut(codes=codes)
+
+
+def clear_mfa(user: User) -> None:
+    user.mfa_secret = user.mfa_pending_secret = None
+    user.mfa_enabled_at = None
+    user.mfa_backup_codes = None
+    user.mfa_last_step = None
+
+
+@router.post("/mfa/disable", response_model=schemas.UserOut)
+def mfa_disable(body: schemas.CodeIn, request: Request, user: User = Depends(current_user),
+                db: Session = Depends(get_db)):
+    """Turn two-step off -- only where it isn't required (members)."""
+    if user.is_manager and settings.require_mfa and not settings.demo_mode:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Owners and admins must keep two-step sign-in on.")
+    _require_code(db, user, body.code, request)
+    clear_mfa(user)
+    db.commit()
+    events.record(db, "mfa_reset", request, actor=user)
+    db.refresh(user)
     return user
 
 
@@ -280,6 +422,19 @@ def enable(user_id: str, request: Request, user: User = Depends(_manager), db: S
         target.disabled_at = None
         db.commit()
         events.record(db, "access_enabled", request, email=target.email, actor=user)
+    db.refresh(target)
+    return target
+
+
+@router.post("/team/{user_id}/reset-mfa", response_model=schemas.UserOut)
+def reset_mfa(user_id: str, request: Request, user: User = Depends(_manager), db: Session = Depends(get_db)):
+    """For a lost phone: clear their two-step sign-in and end their sessions.
+    They set it up again when they next sign in."""
+    target = _teammate(db, user, user_id, request)
+    clear_mfa(target)
+    db.query(AuthSession).filter(AuthSession.user_id == target.id).delete()
+    db.commit()
+    events.record(db, "mfa_reset", request, email=target.email, actor=user)
     db.refresh(target)
     return target
 

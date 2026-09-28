@@ -22,6 +22,8 @@ const env = {
   SCHEDULER_ENABLED: 'false',
   // Coworkers sign up directly in the tests, rather than through invite links.
   ALLOW_SIGNUP: 'true',
+  // Owners sign in with a password alone here; e2e/mfa.spec.ts turns two-step on for its own account.
+  REQUIRE_MFA: 'false',
   FRONTEND_ORIGIN: process.env.E2E_WEB_ORIGIN ?? 'http://127.0.0.1:5174',
   PYTHONUNBUFFERED: '1',
 }

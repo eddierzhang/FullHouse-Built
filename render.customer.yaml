@@ -41,3 +41,7 @@ services:
       # finds the site create an account in the restaurant.
       - key: ALLOW_SIGNUP
         value: "false"
+      # Encrypts two-step sign-in secrets. Render makes a random one once;
+      # never change it, or everyone must set two-step sign-in up again.
+      - key: SECRET_KEY
+        generateValue: true

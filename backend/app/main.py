@@ -70,6 +70,11 @@ async def lifespan(app: FastAPI):
         recovered = _recover_orphaned_runs()
         if recovered:
             logger.warning("marked %d interrupted run(s) as failed at startup", recovered)
+        if not settings.secret_key:
+            logger.warning(
+                "SECRET_KEY is not set: two-step sign-in secrets are encrypted with a development key. "
+                "Set a long random SECRET_KEY before real people use this site, and never change it."
+            )
     if settings.scheduler_enabled:
         scheduler.start()
     yield

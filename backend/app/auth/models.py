@@ -46,9 +46,30 @@ class User(Base):
     #: and every session it had was ended at that moment.
     disabled_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
 
+    # Two-step sign-in (app/auth/mfa.py). The secret is encrypted; backup
+    # codes are hashed. `mfa_pending_secret` holds a secret being set up,
+    # until a first code from the app proves it was scanned.
+    mfa_secret: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    mfa_pending_secret: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    mfa_enabled_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    mfa_backup_codes: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    #: The last code step accepted, so a code can't be used twice.
+    mfa_last_step: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     @property
     def is_manager(self) -> bool:
         return self.role in MANAGER_ROLES
+
+    @property
+    def mfa_enabled(self) -> bool:
+        return self.mfa_enabled_at is not None
+
+    @property
+    def mfa_setup_required(self) -> bool:
+        """An owner or admin who must set up two-step sign-in before anything else."""
+        from app.config import settings
+
+        return self.is_manager and not self.mfa_enabled and settings.require_mfa and not settings.demo_mode
 
 
 class AuthSession(Base):
@@ -127,3 +148,15 @@ class SecurityEvent(Base):
     ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
     user_agent: Mapped[str | None] = mapped_column(String(255), nullable=True)
     detail: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+
+class MfaChallenge(Base):
+    """A sign-in waiting for its second step: the password was right, the
+    code is still to come. Lives five minutes; its cookie holds the token."""
+
+    __tablename__ = "mfa_challenges"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)  # SHA-256 of the token
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

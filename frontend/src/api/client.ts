@@ -438,6 +438,10 @@ export type User = {
   created_at: string
   /** Set while an owner or admin has turned the account off. */
   disabled_at?: string | null
+  mfa_enabled?: boolean
+  /** An owner or admin who must set up two-step sign-in before anything else. */
+  mfa_setup_required?: boolean
+  mfa_backup_codes_left?: number | null
 }
 
 export type AuthOptions = {
@@ -453,7 +457,21 @@ export const fetchCurrentUser = () =>
     if (err instanceof ApiError && err.status === 401) return null
     throw err
   })
-export const login = (email: string, password: string) => send<User>('POST', '/api/v1/auth/login', { email, password })
+/** The password was right; a code from the authenticator app comes next. */
+export type MfaRequired = { mfa_required: true }
+export const login = (email: string, password: string) =>
+  send<User | MfaRequired>('POST', '/api/v1/auth/login', { email, password })
+export const loginSecondStep = (code: string) => send<User>('POST', '/api/v1/auth/login/mfa', { code })
+
+export type MfaSetup = { secret: string; otpauth_uri: string; qr_svg: string }
+/** Once two-step is on, changing it takes a current code. */
+export const startMfaSetup = (code?: string) => send<MfaSetup>('POST', '/api/v1/auth/mfa/setup', { code: code ?? null })
+/** Returns the backup codes -- shown once. */
+export const enableMfa = (code: string) => send<{ codes: string[] }>('POST', '/api/v1/auth/mfa/enable', { code })
+export const newBackupCodes = (code: string) => send<{ codes: string[] }>('POST', '/api/v1/auth/mfa/backup-codes', { code })
+export const disableMfa = (code: string) => send<User>('POST', '/api/v1/auth/mfa/disable', { code })
+/** For a lost phone: owners for admins and members, admins for members. */
+export const resetTeammateMfa = (userId: string) => send<User>('POST', `/api/v1/auth/team/${userId}/reset-mfa`)
 export const signup = (name: string, email: string, password: string) =>
   send<User>('POST', '/api/v1/auth/signup', { name, email, password })
 export const logout = () => sendVoid('POST', '/api/v1/auth/logout')

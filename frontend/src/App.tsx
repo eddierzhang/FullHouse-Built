@@ -9,6 +9,7 @@ import {
   logout,
 } from './api/client'
 import { AppShell } from './app/AppShell'
+import { MfaSetup } from './components/MfaSetup'
 import { type AccountLink, LinkPage, readAccountLink } from './pages/LinkPage'
 import { LoginPage } from './pages/LoginPage'
 import { SetupPage } from './pages/SetupPage'
@@ -46,7 +47,8 @@ export default function App() {
   const enter = useCallback(async (user: User) => {
     setAuth({ status: 'checking' })
     try {
-      setAuth({ status: 'signed-in', user, restaurant: await fetchRestaurant() })
+      // Until two-step is set up, the server answers nothing else -- the restaurant included.
+      setAuth({ status: 'signed-in', user, restaurant: user.mfa_setup_required ? null : await fetchRestaurant() })
     } catch {
       setAuth({ status: 'error' })
     }
@@ -94,6 +96,25 @@ export default function App() {
     case 'checking':
       return <div className="auth-screen" aria-busy="true" />
     case 'signed-in':
+      if (auth.user.mfa_setup_required) {
+        // The server refuses everything else until this is done.
+        return (
+          <main className="auth-screen">
+            <div className="auth-card">
+              <h1 className="auth-title">Set up two-step sign-in</h1>
+              <p className="auth-subtitle">
+                Owners and admins sign in with a password and a code from their phone, so a stolen password alone can’t get in. It takes a minute.
+              </p>
+              <MfaSetup onDone={check} />
+              <p className="auth-switch">
+                <button type="button" className="link-button" onClick={signOut}>
+                  Sign out
+                </button>
+              </p>
+            </div>
+          </main>
+        )
+      }
       if (!auth.restaurant?.setup_completed_at && !canEditRestaurant(auth.user)) {
         // A member can't set the restaurant up, so there's nothing to do but wait.
         return (
