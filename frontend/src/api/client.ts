@@ -166,6 +166,48 @@ export type InventoryItem = {
   reorder_qty: number
   unit_cost: number
   supplier_id: string | null
+  /** When the item or its stock last changed. */
+  updated_at: string
+  /** At or below the reorder point. */
+  low_stock: boolean
+}
+
+/** The units the server accepts, as it spells them (backend/app/restaurant/inventory.py). */
+export const UNITS = [
+  'each', 'dozen', 'case', 'box', 'pack', 'bag', 'bottle', 'can', 'jar', 'tray',
+  'bunch', 'head', 'loaf',
+  'g', 'kg', 'oz', 'lb',
+  'ml', 'L', 'fl oz', 'qt', 'gal',
+] as const
+
+export type InventoryItemInput = {
+  name: string
+  unit: string
+  quantity_on_hand?: number
+  reorder_threshold?: number
+  reorder_qty?: number
+  unit_cost?: number
+  supplier_id?: string | null
+}
+
+/** What staff record by hand; sales, approved reorders and undos are recorded for them. */
+export type StockReason = 'delivery' | 'used' | 'waste' | 'count'
+
+export type StockAdjustment = {
+  id: number
+  inventory_item_id: string
+  item_name: string
+  unit: string
+  /** Signed: positive came in, negative went out. */
+  change: number
+  quantity_after: number
+  reason: StockReason | 'initial' | 'sale' | 'reorder' | 'revert' | 'correction'
+  reason_label: string
+  note: string | null
+  actor_type: 'human' | 'agent' | 'system'
+  actor_id: string | null
+  actor_name: string | null
+  created_at: string
 }
 
 export type Supplier = { id: string; name: string; contact_info: string | null; lead_time_days: number }
@@ -220,10 +262,26 @@ export type SupplyChain = {
 }
 
 export const listInventoryItems = () => get<InventoryItem[]>('/api/v1/restaurant/inventory-items')
-export const updateInventoryItem = (
-  id: string,
-  patch: Partial<Omit<InventoryItem, 'id'>>,
-) => send<InventoryItem>('PATCH', `/api/v1/restaurant/inventory-items/${id}`, patch)
+export const createInventoryItem = (input: InventoryItemInput) =>
+  send<InventoryItem>('POST', '/api/v1/restaurant/inventory-items', input)
+/** An item's details, for owners and admins. Stock changes only through `recordStockChange`. */
+export const updateInventoryItem = (id: string, patch: Partial<Omit<InventoryItemInput, 'quantity_on_hand'>>) =>
+  send<InventoryItem>('PATCH', `/api/v1/restaurant/inventory-items/${id}`, patch)
+/**
+ * A delivery, use, waste or count. `quantity` is the amount moved -- or, for a
+ * count, the level counted. `adjustment` is null when a count matched.
+ */
+export const recordStockChange = (id: string, reason: StockReason, quantity: number, note?: string) =>
+  send<{ item: InventoryItem; adjustment: StockAdjustment | null }>(
+    'POST',
+    `/api/v1/restaurant/inventory-items/${id}/adjustments`,
+    { reason, quantity, note: note || null },
+  )
+/** Newest first; one item's with `itemId`. */
+export const listStockChanges = (itemId?: string, limit = 25) =>
+  get<StockAdjustment[]>(
+    `/api/v1/restaurant/inventory-adjustments?limit=${limit}${itemId ? `&inventory_item_id=${encodeURIComponent(itemId)}` : ''}`,
+  )
 
 export const listSuppliers = () => get<Supplier[]>('/api/v1/restaurant/suppliers')
 export const fetchSupplyChain = () => get<SupplyChain>('/api/v1/restaurant/supply-chain')

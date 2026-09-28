@@ -120,6 +120,12 @@ def save_section(db: Session, user: User, section: str, data: BaseModel) -> Rest
     if section not in restaurant.completed_steps:
         # A new list, not an in-place append: the JSON column only notices reassignment.
         restaurant.completed_steps = [s for s in SECTIONS if s in {*restaurant.completed_steps, section}]
+    if created:
+        db.flush()  # after the values are set, so the history shows a single insert
+        # Sample stock seeded before setup becomes this restaurant's.
+        from app.restaurant.inventory import claim_unassigned
+
+        claim_unassigned(db, restaurant)
     if user.restaurant_id != restaurant.id:
         db.flush()  # the restaurant row must exist before the user can point at it
         user.restaurant_id = restaurant.id
@@ -181,7 +187,7 @@ def save_restaurant_details(db: Session, user: User, body: RestaurantDetailsIn) 
 def _schedule_agents(db: Session, restaurant: Restaurant) -> None:
     """Give the agent a routine that fits the restaurant's week.
 
-    Maestro reviews the day an hour before the usual opening time, on open
+    The Assistant Manager reviews the day an hour before the usual opening time, on open
     days. (The daily stock check isn't set here: the scheduler reads it from
     the inventory settings each time it syncs, so edits apply straight away.)
     Day names, not numbers, in the cron: the scheduler numbers weekdays from

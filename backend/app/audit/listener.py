@@ -33,11 +33,12 @@ from app.audit.context import get_actor, get_note
 from app.audit.models import DELETE, INSERT, UPDATE, ChangeLog
 from app.db.session import Base
 
-#: Tables that are themselves append-only logs -- auditing them would
+#: Tables that are themselves append-only logs (stock adjustments record
+#: the same change as the item's own update) -- auditing them would
 #: double-record history and, for change_log, recurse -- and the login
 #: tables, whose rows hold password hashes and session ids that must never
 #: be copied into a history anyone signed in can read.
-EXCLUDED_TABLES = frozenset({"change_log", "agent_events", "users", "auth_sessions"})
+EXCLUDED_TABLES = frozenset({"change_log", "agent_events", "inventory_adjustments", "users", "auth_sessions"})
 
 #: Key under which half-built rows wait on `Session.info` between the two events.
 _PENDING = "_audit_pending_rows"

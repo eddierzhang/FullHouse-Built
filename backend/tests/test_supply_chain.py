@@ -165,14 +165,14 @@ def test_stock_adjustment_is_recorded_with_both_values(client, db, changes):
     supplier = _supplier(db)
     item = _item(db, supplier, qty=50.0)
 
-    client.patch(
-        f"/api/v1/restaurant/inventory-items/{item.id}",
-        json={"quantity_on_hand": 8.0},
+    client.post(
+        f"/api/v1/restaurant/inventory-items/{item.id}/adjustments",
+        json={"reason": "count", "quantity": 8.0},
     )
 
     update = changes(entity_type="inventory_items", operation="update")[-1]
-    assert update.before == {"quantity_on_hand": 50.0}
-    assert update.after == {"quantity_on_hand": 8.0}
+    assert update.before["quantity_on_hand"] == 50.0
+    assert update.after["quantity_on_hand"] == 8.0
     assert update.actor_id == TEST_USER_EMAIL
 
 
@@ -180,9 +180,12 @@ def test_negative_stock_is_rejected(client, db):
     supplier = _supplier(db)
     item = _item(db, supplier)
 
-    response = client.patch(
-        f"/api/v1/restaurant/inventory-items/{item.id}", json={"quantity_on_hand": -5}
+    response = client.post(
+        f"/api/v1/restaurant/inventory-items/{item.id}/adjustments", json={"reason": "used", "quantity": 999}
     )
-
     assert response.status_code == 422
-    assert "quantity on hand cannot be negative" in response.json()["detail"]
+    assert "is on hand" in response.json()["detail"]
+
+    # Nor can stock be overwritten around its history.
+    response = client.patch(f"/api/v1/restaurant/inventory-items/{item.id}", json={"quantity_on_hand": -5})
+    assert response.status_code == 422

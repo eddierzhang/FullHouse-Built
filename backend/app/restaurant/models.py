@@ -39,6 +39,11 @@ class InventoryItem(Base):
     __tablename__ = "inventory_items"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    #: Whose stock this is. Null only for sample data loaded before the
+    #: restaurant was set up; setup claims it. See app/restaurant/inventory.py.
+    restaurant_id: Mapped[str | None] = mapped_column(
+        ForeignKey("restaurants.id", name="fk_inventory_items_restaurant_id_restaurants"), nullable=True, index=True
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     unit: Mapped[str] = mapped_column(String(32), nullable=False)
     quantity_on_hand: Mapped[float] = mapped_column(Float, default=0, nullable=False)
@@ -46,8 +51,47 @@ class InventoryItem(Base):
     reorder_qty: Mapped[float] = mapped_column(Float, default=0, nullable=False)
     supplier_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("suppliers.id"), nullable=True)
     unit_cost: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now, onupdate=_now, nullable=False)
 
     supplier: Mapped[Supplier | None] = relationship()
+
+
+class InventoryAdjustment(Base):
+    """One change to an item's stock: how much, why, by whom, and when.
+
+    Written for every change to `quantity_on_hand`, whatever made it -- a
+    delivery logged on the Inventory page, an order drawing ingredients
+    down, an approved agent reorder, a revert -- by the listener in
+    app/restaurant/inventory.py. So the history always adds up to the
+    number on hand.
+    """
+
+    __tablename__ = "inventory_adjustments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    restaurant_id: Mapped[str | None] = mapped_column(
+        ForeignKey("restaurants.id", name="fk_inventory_adjustments_restaurant_id_restaurants"),
+        nullable=True,
+        index=True,
+    )
+    inventory_item_id: Mapped[str] = mapped_column(
+        ForeignKey("inventory_items.id", ondelete="CASCADE", name="fk_inventory_adjustments_item_id_inventory_items"),
+        nullable=False,
+        index=True,
+    )
+    #: Signed: a delivery is positive, stock used is negative.
+    change: Mapped[float] = mapped_column(Float, nullable=False)
+    quantity_after: Mapped[float] = mapped_column(Float, nullable=False)
+    #: One of app.restaurant.inventory.REASONS.
+    reason: Mapped[str] = mapped_column(String(20), nullable=False)
+    note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    #: Who, as the change history names them: human (by email), agent, or system.
+    actor_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    actor_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now, nullable=False, index=True)
+
+    # Also what makes a flush insert a new item before its first adjustment.
+    item: Mapped[InventoryItem] = relationship()
 
 
 class MenuItem(Base):

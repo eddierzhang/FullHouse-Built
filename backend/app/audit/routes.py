@@ -11,6 +11,7 @@ from app.audit.revert import RevertConflict, RevertError, revert_change
 from app.auth.deps import current_user
 from app.auth.models import User
 from app.db.session import get_db
+from app.restaurant.inventory import stock_change
 
 router = APIRouter(prefix="/api/v1/changes", tags=["changes"])
 
@@ -99,7 +100,8 @@ def revert(
     high_water = db.query(ChangeLog.id).order_by(ChangeLog.id.desc()).limit(1).scalar() or 0
 
     try:
-        with note_context(note):
+        # A revert that puts stock back shows in the item's history as undone.
+        with note_context(note), stock_change("revert", note):
             description = revert_change(db, change, force=payload.force)
             db.commit()
     except RevertConflict as exc:

@@ -1,4 +1,4 @@
-"""Seed sample restaurant data plus Maestro and its 5 specialist definitions.
+"""Seed sample restaurant data plus the agent, the Assistant Manager.
 
 Run from backend/ after applying migrations:
     alembic upgrade head
@@ -33,7 +33,7 @@ def seed():
         if db.query(AgentDefinition).count() == 0:
             db.add(AgentDefinition(role="main", model="claude-opus-5", enabled=True, **AGENT_DEF))
             db.commit()
-            print("Seeded the agent: Maestro")
+            print("Seeded the agent: Assistant Manager")
         else:
             print("Agent definitions already present, skipping")
 
@@ -61,6 +61,12 @@ def seed():
                 InventoryItem(name="Flour", unit="lb", quantity_on_hand=50, reorder_threshold=20,
                               reorder_qty=50, unit_cost=0.60, supplier_id=sysco.id),
             ]
+            # The site's restaurant's stock; before setup, unclaimed until setup claims it.
+            from app.restaurant.inventory import site_scope
+
+            restaurant_id = site_scope(db)
+            for item in inventory:
+                item.restaurant_id = restaurant_id
             db.add_all(inventory)
             db.commit()
             print("Seeded suppliers + inventory")

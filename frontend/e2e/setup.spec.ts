@@ -79,7 +79,7 @@ test('sign up, set up the restaurant, open the dashboard, and edit settings', as
 
   await page.goto('/#agents')
   await expect(page.getByText('Schedules run on America/Chicago time')).toBeVisible()
-  // Maestro reviews an hour before the usual 11:00 opening, on the six open days.
+  // The Assistant Manager reviews an hour before the usual 11:00 opening, on the six open days.
   await expect(page.getByText('Tue, Wed, Thu, Fri, Sat, Sun at 10:00').first()).toBeVisible()
 
   await page.goto('/#staff')

@@ -29,6 +29,7 @@ from app.auth.models import User
 from app.auth.security import hash_password
 from app.db.session import Base
 from app.restaurant.models import (
+    InventoryAdjustment,
     InventoryItem,
     MenuItem,
     Order,
@@ -182,9 +183,18 @@ def reset_demo_data(db: Session, now: datetime | None = None) -> dict:
     inventory = {row[0]: _id() for row in INVENTORY}
     unit_costs = {row[0]: row[5] for row in INVENTORY}
     _insert(db, InventoryItem, [
-        dict(id=inventory[name], name=name, unit=unit, quantity_on_hand=on_hand, reorder_threshold=threshold,
-             reorder_qty=reorder_qty, unit_cost=cost, supplier_id=suppliers.get(supplier))
+        dict(id=inventory[name], restaurant_id=restaurant_id, name=name, unit=unit, quantity_on_hand=on_hand,
+             reorder_threshold=threshold, reorder_qty=reorder_qty, unit_cost=cost,
+             supplier_id=suppliers.get(supplier), updated_at=now)
         for name, unit, on_hand, threshold, reorder_qty, cost, supplier in INVENTORY
+    ])
+    # Each item's stock history opens with what it has now, so it adds up.
+    _insert(db, InventoryAdjustment, [
+        dict(restaurant_id=restaurant_id, inventory_item_id=inventory[name], change=on_hand, quantity_after=on_hand,
+             reason="initial", note="On hand when the demo opened", actor_type="system", actor_id="system",
+             created_at=now)
+        for name, _unit, on_hand, *_rest in INVENTORY
+        if on_hand
     ])
 
     menu = {row[0]: _id() for row in MENU}

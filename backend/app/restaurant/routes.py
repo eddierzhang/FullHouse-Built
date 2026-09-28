@@ -1,9 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.auth.deps import current_user
+from app.auth.models import User
 from app.db.session import get_db
-from app.restaurant import crud, profile, schemas
+from app.restaurant import crud, inventory, profile, schemas
 from app.restaurant.models import (
+    InventoryAdjustment,
     InventoryItem,
     MenuItem,
     Order,
@@ -31,18 +35,140 @@ def create_menu_item(payload: schemas.MenuItemCreate, db: Session = Depends(get_
     return item
 
 
+# --- inventory ------------------------------------------------------------------------
+# Every route works on the signed-in user's own restaurant: another
+# restaurant's items read as missing. Everyone who works there can see
+# stock, add items and record stock changes; changing an item's details
+# is for owners and admins.
+
+
+def _item_or_404(db: Session, user: User, item_id: str, lock: bool = False) -> InventoryItem:
+    query = inventory.in_scope(db.query(InventoryItem), inventory.scope_for(db, user)).filter(InventoryItem.id == item_id)
+    # Locked for a stock change, so two people logging at once can't lose one's change.
+    item = (query.with_for_update() if lock else query).first()
+    if item is None:
+        raise HTTPException(404, "Inventory item not found")
+    return item
+
+
+def _name_taken(db: Session, restaurant_id: str | None, name: str, except_id: str | None = None) -> bool:
+    query = inventory.in_scope(db.query(InventoryItem), restaurant_id).filter(
+        func.lower(InventoryItem.name) == name.lower()
+    )
+    if except_id:
+        query = query.filter(InventoryItem.id != except_id)
+    return db.query(query.exists()).scalar()
+
+
+def _adjustments_out(db: Session, rows: list[InventoryAdjustment]) -> list[schemas.StockAdjustmentOut]:
+    items = {i.id: i for i in db.query(InventoryItem).filter(InventoryItem.id.in_({r.inventory_item_id for r in rows}))}
+    emails = {r.actor_id for r in rows if r.actor_type == "human" and r.actor_id}
+    names = {u.email: u.name for u in db.query(User).filter(User.email.in_(emails))} if emails else {}
+    return [
+        schemas.StockAdjustmentOut(
+            id=r.id,
+            inventory_item_id=r.inventory_item_id,
+            item_name=items[r.inventory_item_id].name,
+            unit=items[r.inventory_item_id].unit,
+            change=r.change,
+            quantity_after=r.quantity_after,
+            reason=r.reason,
+            reason_label=inventory.REASONS.get(r.reason, r.reason),
+            note=r.note,
+            actor_type=r.actor_type,
+            actor_id=r.actor_id,
+            actor_name=names.get(r.actor_id) if r.actor_type == "human" else None,
+            created_at=r.created_at,
+        )
+        for r in rows
+    ]
+
+
 @router.get("/inventory-items", response_model=list[schemas.InventoryItemOut])
-def list_inventory_items(db: Session = Depends(get_db)):
-    return crud.list_inventory_items(db)
+def list_inventory_items(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """This restaurant's stock, as the database has it now."""
+    return inventory.items_in(db, inventory.scope_for(db, user))
 
 
-@router.post("/inventory-items", response_model=schemas.InventoryItemOut)
-def create_inventory_item(payload: schemas.InventoryItemCreate, db: Session = Depends(get_db)):
-    item = InventoryItem(**payload.model_dump())
-    db.add(item)
-    db.commit()
+@router.post("/inventory-items", response_model=schemas.InventoryItemOut, status_code=201)
+def create_inventory_item(
+    payload: schemas.InventoryItemCreate, user: User = Depends(current_user), db: Session = Depends(get_db)
+):
+    """Start tracking an item. Its opening stock is the first entry in its history."""
+    restaurant_id = inventory.scope_for(db, user)
+    if _name_taken(db, restaurant_id, payload.name):
+        raise HTTPException(409, f"{payload.name} is already tracked. Record a stock change on it instead.")
+    if payload.supplier_id and not db.get(Supplier, payload.supplier_id):
+        raise HTTPException(404, "Supplier not found")
+    item = InventoryItem(**payload.model_dump(), restaurant_id=restaurant_id)
+    with inventory.stock_change("initial"):
+        db.add(item)
+        db.commit()
     db.refresh(item)
     return item
+
+
+@router.post("/inventory-items/{inventory_item_id}/adjustments", response_model=schemas.StockChangeOut)
+def record_stock_change(
+    inventory_item_id: str,
+    payload: schemas.StockChangeIn,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """A delivery, stock used or wasted, or a count. Recorded with who and why."""
+    item = _item_or_404(db, user, inventory_item_id, lock=True)
+    before = item.quantity_on_hand
+    if payload.reason == "count":
+        after = payload.quantity
+    elif payload.reason == "delivery":
+        after = before + payload.quantity
+    else:
+        after = before - payload.quantity
+    after = round(after, 6)
+    if after < 0:
+        db.rollback()  # release the row lock
+        raise HTTPException(
+            422,
+            f"Only {before:g} {item.unit} of {item.name} is on hand, so {payload.quantity:g} can't have been "
+            f"{'used' if payload.reason == 'used' else 'wasted'}. Check the amount, or record a stock count.",
+        )
+    if after > schemas.MAX_QUANTITY:
+        db.rollback()
+        raise HTTPException(422, f"That would put {item.name} over {schemas.MAX_QUANTITY:,} {item.unit}. Check the amount.")
+    if after == before:
+        db.rollback()
+        return schemas.StockChangeOut(item=schemas.InventoryItemOut.model_validate(item), adjustment=None)
+
+    with inventory.stock_change(payload.reason, payload.note):
+        item.quantity_on_hand = after
+        db.commit()
+    db.refresh(item)
+    latest = (
+        db.query(InventoryAdjustment)
+        .filter(InventoryAdjustment.inventory_item_id == item.id)
+        .order_by(InventoryAdjustment.id.desc())
+        .first()
+    )
+    return schemas.StockChangeOut(
+        item=schemas.InventoryItemOut.model_validate(item), adjustment=_adjustments_out(db, [latest])[0]
+    )
+
+
+@router.get("/inventory-adjustments", response_model=list[schemas.StockAdjustmentOut])
+def list_stock_changes(
+    inventory_item_id: str | None = None,
+    limit: int = Query(default=50, ge=1, le=500),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """This restaurant's stock history, newest first; one item's with `inventory_item_id`."""
+    query = db.query(InventoryAdjustment).filter(
+        InventoryAdjustment.restaurant_id == inventory.scope_for(db, user)
+    )
+    if inventory_item_id:
+        _item_or_404(db, user, inventory_item_id)
+        query = query.filter(InventoryAdjustment.inventory_item_id == inventory_item_id)
+    return _adjustments_out(db, query.order_by(InventoryAdjustment.id.desc()).limit(limit).all())
 
 
 @router.get("/suppliers", response_model=list[schemas.SupplierOut])
@@ -170,7 +296,9 @@ def get_recipe(menu_item_id: str, db: Session = Depends(get_db)):
 
 
 @router.put("/menu-items/{menu_item_id}/recipe", response_model=schemas.RecipeOut)
-def set_recipe(menu_item_id: str, payload: schemas.RecipeIn, db: Session = Depends(get_db)):
+def set_recipe(
+    menu_item_id: str, payload: schemas.RecipeIn, user: User = Depends(current_user), db: Session = Depends(get_db)
+):
     """Replace a dish's recipe wholesale.
 
     A replace rather than per-line edits: the UI edits the whole recipe
@@ -180,11 +308,13 @@ def set_recipe(menu_item_id: str, payload: schemas.RecipeIn, db: Session = Depen
     if not item:
         raise HTTPException(404, "Menu item not found")
 
+    # Only this restaurant's own stock can go into its dishes.
+    restaurant_id = inventory.scope_for(db, user)
     seen = set()
     for line in payload.lines:
         if line.quantity <= 0:
             raise HTTPException(422, "Each ingredient quantity must be greater than zero")
-        if not db.get(InventoryItem, line.inventory_item_id):
+        if not inventory.item_in(db, restaurant_id, line.inventory_item_id):
             raise HTTPException(404, f"Inventory item {line.inventory_item_id} not found")
         if line.inventory_item_id in seen:
             raise HTTPException(422, "The same ingredient is listed twice")
@@ -338,16 +468,18 @@ def delete_menu_item(menu_item_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/profit-summary", response_model=schemas.ProfitSummaryOut)
-def profit_summary(days: int = Query(default=30, ge=1, le=365), db: Session = Depends(get_db)):
+def profit_summary(
+    days: int = Query(default=30, ge=1, le=365), user: User = Depends(current_user), db: Session = Depends(get_db)
+):
     """Revenue, COGS and gross profit over a trailing window, with a
     continuous daily series and category/channel breakdowns."""
-    return crud.profit_summary(db, days=days)
+    return crud.profit_summary(db, days=days, restaurant_id=inventory.scope_for(db, user))
 
 
 @router.get("/supply-chain", response_model=schemas.SupplyChainOut)
-def supply_chain(db: Session = Depends(get_db)):
-    """Supplier exposure, concentration, and what needs reordering."""
-    return crud.supply_chain_summary(db)
+def supply_chain(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Supplier exposure, concentration, and what needs reordering -- in this restaurant's stock."""
+    return crud.supply_chain_summary(db, restaurant_id=inventory.scope_for(db, user))
 
 
 @router.patch("/suppliers/{supplier_id}", response_model=schemas.SupplierOut)
@@ -389,18 +521,24 @@ def delete_supplier(supplier_id: str, db: Session = Depends(get_db)):
 
 @router.patch("/inventory-items/{inventory_item_id}", response_model=schemas.InventoryItemOut)
 def update_inventory_item(
-    inventory_item_id: str, payload: schemas.InventoryItemUpdate, db: Session = Depends(get_db)
+    inventory_item_id: str,
+    payload: schemas.InventoryItemUpdate,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
 ):
-    item = db.get(InventoryItem, inventory_item_id)
-    if not item:
-        raise HTTPException(404, "Inventory item not found")
+    """An item's details -- name, unit, reorder point and quantity, cost, supplier. Owners and admins."""
+    item = _item_or_404(db, user, inventory_item_id)
+    if not user.is_manager:
+        raise HTTPException(403, "Only the owner or an admin can change an item's details. You can record stock changes.")
 
     fields = payload.model_dump(exclude_unset=True)
+    for required in ("name", "unit", "reorder_threshold", "reorder_qty", "unit_cost"):
+        if required in fields and fields[required] is None:
+            raise HTTPException(422, f"{required.replace('_', ' ').capitalize()} can't be empty.")
+    if fields.get("name") and _name_taken(db, item.restaurant_id, fields["name"], except_id=item.id):
+        raise HTTPException(409, f"Another item is already called {fields['name']}.")
     if fields.get("supplier_id") and not db.get(Supplier, fields["supplier_id"]):
         raise HTTPException(404, "Supplier not found")
-    for numeric in ("quantity_on_hand", "reorder_threshold", "reorder_qty", "unit_cost"):
-        if fields.get(numeric) is not None and fields[numeric] < 0:
-            raise HTTPException(422, f"{numeric.replace('_', ' ')} cannot be negative")
 
     for field, value in fields.items():
         setattr(item, field, value)

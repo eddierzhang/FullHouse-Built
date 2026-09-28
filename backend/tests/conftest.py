@@ -31,10 +31,12 @@ from app.auth import models as auth_models  # noqa: E402,F401
 from app.db import session as app_session  # noqa: E402
 from app.db.session import Base, get_db  # noqa: E402
 from app.restaurant import models as restaurant_models  # noqa: E402,F401
+from app.restaurant import inventory as inventory_listener  # noqa: E402
 
 # The listener is global to the Session class, so install it once for the
 # whole test session exactly as the app does at import time.
 audit_listener.install()
+inventory_listener.install()
 
 # The app-level engine needs tables even in SQLite mode, since startup
 # recovery queries it whenever a test starts the app.

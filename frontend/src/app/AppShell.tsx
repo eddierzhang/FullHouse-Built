@@ -45,7 +45,7 @@ const NAV: { label: string | null; items: NavItem[] }[] = [
     items: [
       { route: 'approvals', label: 'Approvals', icon: 'approvals' },
       { route: 'runs', label: 'Runs', icon: 'runs' },
-      { route: 'agents', label: 'Maestro', icon: 'agents' },
+      { route: 'agents', label: 'Assistant Manager', icon: 'agents' },
     ],
   },
   {
@@ -107,7 +107,7 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
     window.setTimeout(() => setToastState(null), 3200)
   }, [])
 
-  // Maestro first, then everyone else alphabetically -- the order they appear everywhere.
+  // The main agent first, then any others alphabetically -- the order they appear everywhere.
   const sortedAgents = useMemo(
     () => [...agents].sort((a, b) => (a.role === b.role ? a.name.localeCompare(b.name) : a.role === 'boss' ? -1 : 1)),
     [agents],
@@ -174,7 +174,7 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
       case 'agents':
         return <AgentsPage app={app} />
       case 'inventory':
-        return <InventoryPage app={app} />
+        return <InventoryPage app={app} user={user} />
       case 'suppliers':
         return <SuppliersPage app={app} />
       case 'menu':
@@ -265,7 +265,7 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
               <span className="hide-mobile">
                 Change anything — it all resets{runtime.demo_resets_at ? ` ${relativeTime(runtime.demo_resets_at)}` : ' daily'}. Try{' '}
                 <button className="link-button" onClick={() => app.newTask('maestro')}>
-                  a task for Maestro
+                  a task for the Assistant Manager
                 </button>
                 .
               </span>

@@ -7,7 +7,7 @@
 ![React 19](https://img.shields.io/badge/react-19-149ECA)
 [![License: MIT](https://img.shields.io/badge/license-MIT-0f766e)](LICENSE)
 
-Maestro, a single agent, runs every part of the restaurant — inventory, suppliers, staff, the menu and profit. It reads
+The Assistant Manager, a single AI agent, runs every part of the restaurant — inventory, suppliers, staff, the menu and profit. It reads
 the restaurant's real data and proposes changes: reorder stock, fill a shift, run a promotion.
 Nothing takes effect until a person approves it, every change is recorded with who made it and why, and anything can
 be undone.
@@ -15,7 +15,7 @@ be undone.
 > FullHouse started as a hackathon project — the original version is at
 > [eddierzhang/FullHouse](https://github.com/eddierzhang/FullHouse).
 
-![Asking Maestro a question, watching it delegate live, and approving what it found](docs/demo.gif)
+![Asking the agent a question, watching it work live, and approving what it found](docs/demo.gif)
 
 ## Try it
 
@@ -37,7 +37,7 @@ sleeps after 15 idle minutes and wakes in about a minute, starting from a fresh 
 and running it for real rather than as a demo, are in [DEPLOY.md](DEPLOY.md). That includes a free private instance
 for each restaurant, with its agents on Gemini's free API tier ([`render.customer.yaml`](render.customer.yaml)).
 
-| Overview | Maestro's run, live | Menu costed from recipes |
+| Overview | The agent's run, live | Menu costed from recipes |
 |---|---|---|
 | ![Overview](docs/screenshots/overview.png) | ![Runs](docs/screenshots/runs.png) | ![Menu](docs/screenshots/menu.png) |
 | **Approvals** | **Profit and forecast** | **Inventory and days of cover** |
@@ -126,7 +126,7 @@ sees the whole run. ([broker.py](backend/app/agents/broker.py))
 **Cancellation is cooperative.** Providers check between tool rounds rather than killing a thread mid-write, and runs
 orphaned by a server restart are marked failed on startup instead of claiming to be in progress forever.
 
-**One agent, every tool.** Maestro used to hand work to five specialists, each in its own run. Now it holds all their
+**One agent, every tool.** The Assistant Manager replaced a team: an orchestrator, Maestro, used to hand work to five specialists, each in its own run. Now it holds all their
 tools itself, grouped by area, and picks the ones a request needs: no delegation round-trips, one run to follow, and a
 proposal that spans stock, suppliers and shifts comes out of a single run. The owner's daily stock check is a scheduled
 job that asks the same agent a set question. ([registry.py](backend/app/agents/registry.py))

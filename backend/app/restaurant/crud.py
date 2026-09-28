@@ -19,12 +19,26 @@ def list_menu_items(db: Session) -> list[MenuItem]:
     return list(db.scalars(select(MenuItem).order_by(MenuItem.category, MenuItem.name)))
 
 
-def list_inventory_items(db: Session) -> list[InventoryItem]:
-    return list(db.scalars(select(InventoryItem).order_by(InventoryItem.name)))
+#: "The site's restaurant" -- the default scope for the agent and scheduled
+#: jobs, which work for the site rather than for a signed-in person. Routes
+#: pass the signed-in user's restaurant instead (app.restaurant.inventory).
+SITE = object()
 
 
-def get_low_stock_items(db: Session) -> list[InventoryItem]:
-    items = list_inventory_items(db)
+def _scope(db: Session, restaurant_id) -> str | None:
+    from app.restaurant.inventory import site_scope
+
+    return site_scope(db) if restaurant_id is SITE else restaurant_id
+
+
+def list_inventory_items(db: Session, restaurant_id=SITE) -> list[InventoryItem]:
+    from app.restaurant.inventory import items_in
+
+    return items_in(db, _scope(db, restaurant_id))
+
+
+def get_low_stock_items(db: Session, restaurant_id=SITE) -> list[InventoryItem]:
+    items = list_inventory_items(db, restaurant_id)
     return [i for i in items if i.quantity_on_hand <= i.reorder_threshold]
 
 
@@ -36,8 +50,10 @@ def get_supplier(db: Session, supplier_id: str) -> Supplier | None:
     return db.get(Supplier, supplier_id)
 
 
-def get_inventory_item(db: Session, inventory_item_id: str) -> InventoryItem | None:
-    return db.get(InventoryItem, inventory_item_id)
+def get_inventory_item(db: Session, inventory_item_id: str, restaurant_id=SITE) -> InventoryItem | None:
+    from app.restaurant.inventory import item_in
+
+    return item_in(db, _scope(db, restaurant_id), inventory_item_id)
 
 
 def list_staff(db: Session) -> list[Staff]:
@@ -147,7 +163,7 @@ def menu_performance(db: Session) -> list[dict]:
     return rows
 
 
-def profit_summary(db: Session, days: int = 30) -> dict:
+def profit_summary(db: Session, days: int = 30, restaurant_id=SITE) -> dict:
     """Revenue, cost of goods and gross profit over a trailing window.
 
     COGS comes from each line's menu-item cost, so gross profit here is
@@ -218,7 +234,7 @@ def profit_summary(db: Session, days: int = 30) -> dict:
             }
         )
 
-    inventory_value = sum(i.quantity_on_hand * i.unit_cost for i in list_inventory_items(db))
+    inventory_value = sum(i.quantity_on_hand * i.unit_cost for i in list_inventory_items(db, restaurant_id))
     order_count = len(order_ids)
 
     return {
@@ -252,14 +268,14 @@ def profit_summary(db: Session, days: int = 30) -> dict:
     }
 
 
-def supply_chain_summary(db: Session) -> dict:
+def supply_chain_summary(db: Session, restaurant_id=SITE) -> dict:
     """Supplier exposure and what needs reordering.
 
     "Restock cost" is each low item's `reorder_qty` at its unit cost -- what
     placing the reorder would cost, not the value of what is already there.
     """
     suppliers = {s.id: s for s in list_suppliers(db)}
-    items = list_inventory_items(db)
+    items = list_inventory_items(db, restaurant_id)
     total_value = sum(i.quantity_on_hand * i.unit_cost for i in items)
     burn = daily_consumption(db)
 
@@ -428,11 +444,17 @@ def check_and_deplete_stock(db: Session, lines: list[tuple[str, int]]) -> list[d
     if shortfalls:
         raise ValueError("Not enough stock: " + "; ".join(shortfalls))
 
+    from app.restaurant.inventory import stock_change
+
     used = []
     for item, quantity in depleted:
         item.quantity_on_hand = round(item.quantity_on_hand - quantity, 6)
         db.add(item)
         used.append({"inventory_item_id": item.id, "name": item.name, "quantity": quantity})
+    # Flushed here, while the reason applies: the stock history records
+    # each draw-down as a sale, whenever the caller commits.
+    with stock_change("sale"):
+        db.flush()
     return used
 
 

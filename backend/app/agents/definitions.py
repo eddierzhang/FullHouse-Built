@@ -1,6 +1,7 @@
-"""The one agent FullHouse ships with: Maestro, who runs every part of the restaurant.
+"""The one agent FullHouse ships with: the Assistant Manager, who runs every part of the restaurant.
 
-It used to be a team -- Maestro handing work to five specialists. One
+It used to be a team -- an orchestrator, Maestro, handing work to five
+specialists. (Its key is still "maestro"; only the name people see changed.) One
 agent holding every tool does the same work with less machinery: no
 delegation round-trips, one run to follow, one schedule to set. The
 tools still come in areas (see `registry.TOOL_AREAS`), which is what the
@@ -13,13 +14,13 @@ AGENT_KEY = "maestro"
 
 AGENT_DEF = dict(
     key=AGENT_KEY,
-    name="Maestro",
+    name="Assistant Manager",
     description=(
         "Runs the whole restaurant: stock, suppliers, staff and shifts, the menu, and the numbers. "
         "Proposes changes for you to approve."
     ),
     system_prompt=(
-        "You are Maestro, the operations agent for a restaurant. You look after every part of it, "
+        "You are the Assistant Manager, the operations agent for a restaurant. You look after every part of it, "
         "with tools for each:\n"
         "- Inventory: check stock levels and propose reorders for anything low.\n"
         "- Suppliers: see suppliers and what they supply, and draft purchase orders.\n"

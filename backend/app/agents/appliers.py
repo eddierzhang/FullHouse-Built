@@ -15,7 +15,9 @@ from datetime import date, datetime, time, timezone
 from sqlalchemy.orm import Session
 
 from app.agents.models import AgentAction
-from app.restaurant.models import InventoryItem, MenuItem, Shift, Staff
+from app.restaurant import crud as restaurant_crud
+from app.restaurant.inventory import stock_change
+from app.restaurant.models import MenuItem, Shift, Staff
 
 
 class ApplyError(Exception):
@@ -53,13 +55,17 @@ def _restock(db: Session, payload: dict, source: str) -> str:
     item_id = _require(payload, "inventory_item_id")
     quantity = _positive_quantity(payload)
 
-    item = db.get(InventoryItem, item_id)
+    # The agent works for the site's restaurant; another's stock reads as missing.
+    item = restaurant_crud.get_inventory_item(db, item_id)
     if item is None:
         raise ApplyError(f"No inventory item with id {item_id}")
 
     previous = item.quantity_on_hand
     item.quantity_on_hand = previous + quantity
     db.add(item)
+    # Flushed while the reason applies, so the stock history says why.
+    with stock_change("reorder", source):
+        db.flush()
     return (
         f"{source}: {item.name} stock {previous:g} -> {item.quantity_on_hand:g} {item.unit} "
         f"(+{quantity:g})"

@@ -1953,3 +1953,23 @@ a.sidebar-user:hover {
   color: var(--text-muted);
   font-size: 13px;
 }
+
+/* ---------- inventory -------------------------------------------------------------- */
+
+/* The stock-change and edit forms open in a full-width row under their item. */
+.table tr.panel-row td {
+  padding: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.table tr.panel-row:hover td {
+  background: none;
+}
+
+.stock-change {
+  flex: none;
+  min-width: 84px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  text-align: right;
+}

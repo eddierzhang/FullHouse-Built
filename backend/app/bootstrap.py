@@ -12,4 +12,8 @@ from app.audit import listener as audit_listener
 
 def setup() -> None:
     """Idempotent; safe to call from every entry point."""
+    from app.restaurant import inventory
+
     audit_listener.install()
+    # Stock history, for the same reason: no path may change stock unrecorded.
+    inventory.install()

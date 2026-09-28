@@ -48,6 +48,10 @@ def seed() -> None:
             restaurant = Restaurant(**DEMO_PROFILE, setup_completed_at=datetime.now(timezone.utc))
             db.add(restaurant)
             db.flush()
+            # The sample stock seed_data.py loaded is this restaurant's, as setup would make it.
+            from app.restaurant.inventory import claim_unassigned
+
+            claim_unassigned(db, restaurant)
         if not db.query(User).filter(User.email == E2E_EMAIL).first():
             db.add(User(email=E2E_EMAIL, name="E2E Manager", password_hash=hash_password(E2E_PASSWORD),
                         restaurant_id=restaurant.id if restaurant else None))

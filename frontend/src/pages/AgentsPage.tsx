@@ -124,7 +124,7 @@ export function AgentsPage({ app }: { app: AppContext }) {
     <main className="page">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Maestro</h1>
+          <h1 className="page-title">Assistant Manager</h1>
           <p className="page-subtitle">
             One agent runs the whole restaurant — stock, suppliers, staff, the menu and the numbers — and proposes changes
             for you to approve. Schedules run on {(app.runtime?.schedule_timezone ?? 'UTC').replace(/_/g, ' ')} time, and a

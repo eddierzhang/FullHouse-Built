@@ -23,7 +23,7 @@ def test_the_demo_gives_every_page_something_real_to_show(db):
     maestro = db.query(AgentDefinition).one()
     assert maestro.key == "maestro"
     assert {a.agent_definition_id for a in db.query(AgentAction)} == {maestro.id}
-    assert (maestro.name, maestro.schedule_cron) == ("Maestro", "0 9 * * *")
+    assert (maestro.name, maestro.schedule_cron) == ("Assistant Manager", "0 9 * * *")
 
     # Six weeks of trading is enough for the weekday forecast.
     assert restaurant_crud.forecast(db)["method"] == "weekday"

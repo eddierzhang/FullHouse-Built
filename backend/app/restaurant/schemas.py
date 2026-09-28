@@ -1,7 +1,8 @@
 from datetime import date, datetime, time
 from datetime import date as _date, time as _time
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
 
 class SupplierOut(BaseModel):
@@ -29,16 +30,49 @@ class InventoryItemOut(BaseModel):
     reorder_qty: float
     unit_cost: float
     supplier_id: str | None
+    updated_at: datetime
+
+    @computed_field
+    @property
+    def low_stock(self) -> bool:
+        """At or below the reorder point: the same test the dashboard and agent use."""
+        return self.quantity_on_hand <= self.reorder_threshold
+
+
+#: Largest stock figure accepted; far past any kitchen, well short of float trouble.
+MAX_QUANTITY = 1_000_000
+
+
+def _amount(**kwargs):
+    # allow_inf_nan=False: JSON can carry NaN and Infinity, and neither is stock.
+    return Field(ge=0, le=MAX_QUANTITY, allow_inf_nan=False, **kwargs)
+
+
+def _item_name(value: str) -> str:
+    value = value.strip()
+    if not value:
+        raise ValueError("Enter the item's name.")
+    return value
+
+
+def _unit(value: str) -> str:
+    from app.restaurant.inventory import normalize_unit
+
+    return normalize_unit(value)
 
 
 class InventoryItemCreate(BaseModel):
-    name: str
+    name: str = Field(max_length=255)
     unit: str
-    quantity_on_hand: float = 0
-    reorder_threshold: float = 0
-    reorder_qty: float = 0
-    unit_cost: float = 0
+    #: What's on hand now; recorded in the item's history as its starting stock.
+    quantity_on_hand: float = _amount(default=0)
+    reorder_threshold: float = _amount(default=0)
+    reorder_qty: float = _amount(default=0)
+    unit_cost: float = _amount(default=0)
     supplier_id: str | None = None
+
+    _name = field_validator("name")(_item_name)
+    _unit = field_validator("unit")(_unit)
 
 
 class MenuItemOut(BaseModel):
@@ -218,13 +252,77 @@ class SupplierUpdate(BaseModel):
 
 
 class InventoryItemUpdate(BaseModel):
-    name: str | None = None
+    """An item's details. Stock isn't one: it changes only through a recorded stock change."""
+
+    name: str | None = Field(default=None, max_length=255)
     unit: str | None = None
     quantity_on_hand: float | None = None
-    reorder_threshold: float | None = None
-    reorder_qty: float | None = None
-    unit_cost: float | None = None
+    reorder_threshold: float | None = _amount(default=None)
+    reorder_qty: float | None = _amount(default=None)
+    unit_cost: float | None = _amount(default=None)
     supplier_id: str | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, value: str | None) -> str | None:
+        return None if value is None else _item_name(value)
+
+    @field_validator("unit")
+    @classmethod
+    def _unit(cls, value: str | None) -> str | None:
+        return None if value is None else _unit(value)
+
+    @field_validator("quantity_on_hand")
+    @classmethod
+    def _no_silent_stock_edits(cls, value: float | None) -> float | None:
+        if value is not None:
+            raise ValueError(
+                "Stock can't be overwritten. Record a delivery, use, waste or stock count so the change is in its history."
+            )
+        return value
+
+
+class StockChangeIn(BaseModel):
+    reason: Literal["delivery", "used", "waste", "count"]
+    #: How much came in or went out; for a stock count, the level counted.
+    quantity: float = _amount()
+    note: str | None = Field(default=None, max_length=255)
+
+    @field_validator("note")
+    @classmethod
+    def _note(cls, value: str | None) -> str | None:
+        value = (value or "").strip()
+        return value or None
+
+    @model_validator(mode="after")
+    def _something_changes(self) -> "StockChangeIn":
+        if self.reason != "count" and self.quantity == 0:
+            raise ValueError("Enter an amount greater than zero.")
+        return self
+
+
+class StockAdjustmentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    inventory_item_id: str
+    item_name: str
+    unit: str
+    change: float
+    quantity_after: float
+    reason: str
+    reason_label: str
+    note: str | None
+    actor_type: str
+    actor_id: str | None
+    #: The person's name, for changes a signed-in person made.
+    actor_name: str | None
+    created_at: datetime
+
+
+class StockChangeOut(BaseModel):
+    item: InventoryItemOut
+    #: Null when a stock count matched what was already on hand.
+    adjustment: StockAdjustmentOut | None
 
 
 class SupplierExposureOut(BaseModel):

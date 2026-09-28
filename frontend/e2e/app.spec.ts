@@ -77,7 +77,7 @@ test.describe('navigation', () => {
       'Overview',
       'Approvals',
       'Runs',
-      'Maestro',
+      'Assistant Manager',
       'Inventory',
       'Suppliers',
       'Menu',
@@ -89,7 +89,7 @@ test.describe('navigation', () => {
     const headings: Record<string, string> = {
       Approvals: 'Approvals',
       Runs: 'Runs',
-      Maestro: 'Maestro',
+      'Assistant Manager': 'Assistant Manager',
       Inventory: 'Inventory',
       Suppliers: 'Suppliers',
       Menu: 'Menu',
@@ -163,7 +163,7 @@ test('a new task streams live and finishes', async ({ page }) => {
   await page.getByRole('button', { name: 'New task' }).click()
 
   // One agent, so there's no agent to choose.
-  const dialog = page.getByRole('dialog', { name: 'New task for Maestro' })
+  const dialog = page.getByRole('dialog', { name: 'New task for Assistant Manager' })
   await expect(dialog.getByLabel('Agent', { exact: true })).toHaveCount(0)
   await dialog.getByLabel('What should it do?').fill('Check what is running low')
   await dialog.getByRole('button', { name: 'Start task' }).click()
@@ -173,21 +173,21 @@ test('a new task streams live and finishes', async ({ page }) => {
   await expect(log).toContainText('tool call')
   await expect(log).toContainText('list_low_stock_items')
   await expect(page.getByText('Summary', { exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: /Maestro/ }).first()).toContainText('succeeded')
+  await expect(page.getByRole('button', { name: /Assistant Manager/ }).first()).toContainText('succeeded')
 })
 
 test('scheduling the agent shows its next run and survives a reload', async ({ page }) => {
   await page.goto('/#agents')
   await expect(page.getByRole('listitem').filter({ has: page.getByLabel('Schedule') })).toHaveCount(1)
   await expect(page.getByText('Also checks stock every day at 08:00')).toBeVisible()
-  const agent = page.getByRole('listitem').filter({ hasText: 'Maestro' })
+  const agent = page.getByRole('listitem').filter({ hasText: 'Assistant Manager' })
 
   await agent.getByLabel('Schedule').selectOption({ label: 'Daily at 09:00' })
-  await expect(page.getByText(/Maestro: Daily at 09:00/)).toBeVisible()
+  await expect(page.getByText(/Assistant Manager: Daily at 09:00/)).toBeVisible()
   await expect(agent).toContainText('Next run')
 
   await page.reload()
-  const reloaded = page.getByRole('listitem').filter({ hasText: 'Maestro' })
+  const reloaded = page.getByRole('listitem').filter({ hasText: 'Assistant Manager' })
   await expect(reloaded.getByLabel('Schedule')).toHaveValue('0 9 * * *')
 
   await reloaded.getByLabel('Schedule').selectOption({ label: 'Not scheduled' })

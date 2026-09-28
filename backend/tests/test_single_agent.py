@@ -1,4 +1,4 @@
-"""One agent, Maestro, runs every part of the restaurant."""
+"""One agent, the Assistant Manager, runs every part of the restaurant."""
 
 from datetime import datetime, timezone
 
@@ -144,11 +144,12 @@ def test_the_migration_merges_an_existing_team_into_maestro(tmp_path, monkeypatc
 
     with engine.connect() as conn:
         rows = conn.execute(text("SELECT id, key, name, role, schedule_cron FROM agent_definitions")).all()
-        assert [tuple(r) for r in rows] == [("id-boss", AGENT_KEY, "Maestro", "main", "0 9 * * *")]
+        assert [tuple(r) for r in rows] == [("id-boss", AGENT_KEY, "Assistant Manager", "main", "0 9 * * *")]
         assert conn.execute(text("SELECT agent_definition_id FROM agent_runs")).scalar() == "id-boss"
         assert conn.execute(text("SELECT agent_definition_id FROM agent_actions")).scalar() == "id-boss"
 
-    command.downgrade(config, "-1")
+    # By name, not "-1": later migrations sit on top of this one.
+    command.downgrade(config, "c5a91e3f7d20")
     with engine.connect() as conn:
         keys = {k for (k,) in conn.execute(text("SELECT key FROM agent_definitions"))}
     assert keys == {"boss", "inventory", "supply_chain", "employee_management", "profit", "marketing"}
