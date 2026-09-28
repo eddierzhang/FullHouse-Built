@@ -44,7 +44,7 @@ test('sign in, use stock, the agent proposes a reorder, a manager approves, and 
   const dialog = page.getByRole('dialog')
   await dialog.getByLabel('What should it do?').fill(`Reorder the ${item}, we're nearly out`)
   await dialog.getByRole('button', { name: 'Start task' }).click()
-  await expect(page.getByRole('heading', { level: 1, name: 'Runs' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Agent activity' })).toBeVisible()
   await expect(page.getByTestId('run-log')).toContainText('propose_reorder')
   await expect(page.getByText('Summary', { exact: true })).toBeVisible()
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { type InventoryItem, type Recipe, getRecipe, setRecipe } from '../api/client'
 import { byName, money, pct } from '../lib/format'
 import { Icon } from './Icon'
+import { LoadError, Loading } from './PageState'
 
 type Props = {
   menuItemId: string
@@ -17,15 +18,24 @@ export function RecipeEditor({ menuItemId, ingredients, onSaved, onClose, toast 
   const [recipe, setRecipeState] = useState<Recipe | null>(null)
   const [lines, setLines] = useState<Line[]>([])
   const [busy, setBusy] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
 
+  // Loaded once per open, not refreshed live: a refresh would wipe the lines being edited.
   useEffect(() => {
+    let current = true
+    setLoadError(null)
     getRecipe(menuItemId)
       .then((loaded) => {
+        if (!current) return
         setRecipeState(loaded)
         setLines(loaded.lines.map((l) => ({ inventory_item_id: l.inventory_item_id, quantity: String(l.quantity) })))
       })
-      .catch((err) => toast('Couldn’t load the recipe', String(err)))
-  }, [menuItemId, toast])
+      .catch((err) => current && setLoadError(err instanceof Error ? err.message : String(err)))
+    return () => {
+      current = false
+    }
+  }, [menuItemId, attempt])
 
   const byId = new Map(ingredients.map((i) => [i.id, i]))
   const sortedIngredients = [...ingredients].sort(byName)
@@ -63,7 +73,13 @@ export function RecipeEditor({ menuItemId, ingredients, onSaved, onClose, toast 
     }
   }
 
-  if (!recipe) return <div className="skeleton" style={{ height: 120 }} />
+  if (!recipe) {
+    return loadError ? (
+      <LoadError what="the recipe" error={loadError} onRetry={() => setAttempt((n) => n + 1)} />
+    ) : (
+      <Loading label="Loading the recipe…" />
+    )
+  }
 
   return (
     <div className="stack" style={{ gap: 12 }}>

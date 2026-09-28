@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
+  ApiError,
   type SupplyChain,
   createSupplier,
   deleteSupplier,
@@ -9,14 +10,16 @@ import {
 } from '../api/client'
 import type { AppContext } from '../app/context'
 import { Icon } from '../components/Icon'
+import { Empty, Freshness, Loaded } from '../components/PageState'
 import { money, qty } from '../lib/format'
+import { useLoad } from '../lib/useLoad'
 
 /** Above this share of stock value, one supplier is a single point of failure. */
 const CONCENTRATION_RISK = 60
 const BLANK = { name: '', contact_info: '', lead_time_days: '2' }
 
 export function SuppliersPage({ app }: { app: AppContext }) {
-  const [data, setData] = useState<SupplyChain | null>(null)
+  const load = useLoad(fetchSupplyChain, [])
   const [adding, setAdding] = useState(false)
   // New suppliers start from the owner's default lead time.
   const defaultLead = String(app.restaurant.inventory_settings?.default_lead_time_days ?? BLANK.lead_time_days)
@@ -26,23 +29,41 @@ export function SuppliersPage({ app }: { app: AppContext }) {
   const [editDraft, setEditDraft] = useState(BLANK)
   // The supplier as it was when editing started, so a teammate's change in the meantime isn't overwritten.
   const [editBase, setEditBase] = useState<SupplyChain['suppliers'][number] | null>(null)
+  // Why the last edit wasn't saved, shown beside the table (a teammate got there first).
+  const [editError, setEditError] = useState<string | null>(null)
+  // Set once the page has refetched after a conflict: restart the edit from what's saved now.
+  const [rebaseId, setRebaseId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const load = useCallback(() => {
-    fetchSupplyChain().then(setData).catch(() => {})
-  }, [])
-  useEffect(load, [load])
+  useEffect(() => {
+    if (!rebaseId) return
+    setRebaseId(null)
+    const fresh = load.data?.suppliers.find((s) => s.id === rebaseId)
+    if (!fresh) return setEditingId(null) // removed in the meantime
+    setEditBase(fresh)
+    setEditDraft({ name: fresh.name, contact_info: fresh.contact_info ?? '', lead_time_days: String(fresh.lead_time_days) })
+  }, [rebaseId, load.data])
 
-  const run = async (work: () => Promise<unknown>, message: string) => {
+  const run = async (work: () => Promise<unknown>, message: string, editing?: string) => {
     setBusy(true)
     try {
       await work()
       app.toast(message)
-      load()
+      setEditError(null)
+      await load.reload()
       app.refresh()
       return true
     } catch (err) {
-      app.toast('That didn’t work', err instanceof Error ? err.message : String(err))
+      const text = err instanceof Error ? err.message : String(err)
+      if (err instanceof ApiError && err.status === 409) {
+        // Someone else changed it: say so, and show their version.
+        if (editing) setEditError(text)
+        else app.toast('Not saved', text)
+        await load.reload()
+        if (editing) setRebaseId(editing)
+      } else {
+        app.toast('That didn’t work', text)
+      }
       return false
     } finally {
       setBusy(false)
@@ -54,32 +75,17 @@ export function SuppliersPage({ app }: { app: AppContext }) {
     return Number.isInteger(n) && n >= 0 ? n : null
   }
 
-  if (!data) {
-    return (
-      <main className="page">
-        <div className="skeleton" style={{ height: 320 }} />
-      </main>
-    )
+  const cancelEdit = () => {
+    setEditingId(null)
+    setEditError(null)
   }
 
-  const concentrated = data.suppliers.find((s) => s.share_pct >= CONCENTRATION_RISK)
-  const atRisk = data.cover.filter((c) => c.at_risk)
-  const pendingOrders = app.pendingActions.filter((a) => a.action_type === 'purchase_order').length
+  const board = (data: SupplyChain) => {
+    const concentrated = data.suppliers.find((s) => s.share_pct >= CONCENTRATION_RISK)
+    const atRisk = data.cover.filter((c) => c.at_risk)
+    const pendingOrders = app.pendingActions.filter((a) => a.action_type === 'purchase_order').length
 
-  return (
-    <main className="page">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Suppliers</h1>
-          <p className="page-subtitle">Who supplies what, how exposed you are, and what to reorder.</p>
-        </div>
-        {app.canManage && (
-          <button className="btn btn-primary" onClick={() => setAdding((v) => !v)}>
-            <Icon name={adding ? 'close' : 'plus'} size={16} /> {adding ? 'Cancel' : 'Add supplier'}
-          </button>
-        )}
-      </div>
-
+    return (
       <div className="stack">
         {(concentrated || atRisk.length > 0 || data.unassigned_item_count > 0 || pendingOrders > 0) && (
           <div className="stack" style={{ gap: 10 }}>
@@ -196,112 +202,137 @@ export function SuppliersPage({ app }: { app: AppContext }) {
             </div>
           )}
 
-          <div className="table-wrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Supplier</th>
-                  <th style={{ width: '28%' }}>Share of stock value</th>
-                  <th className="num">Items</th>
-                  <th className="num">Lead time</th>
-                  <th className="actions" aria-label="Actions" />
-                </tr>
-              </thead>
-              <tbody>
-                {data.suppliers.length === 0 && (
+          {editError && (
+            <div className="callout callout-warning" role="alert">
+              <Icon name="alert" />
+              <div className="callout-grow">
+                <div className="callout-title">Not saved</div>
+                <div className="callout-body">{editError} The latest version is shown below; make your change again.</div>
+              </div>
+            </div>
+          )}
+
+          {data.suppliers.length === 0 ? (
+            <Empty
+              title="No suppliers yet"
+              action={
+                app.canManage &&
+                !adding && (
+                  <button className="btn btn-secondary" onClick={() => setAdding(true)}>
+                    Add your first supplier
+                  </button>
+                )
+              }
+            >
+              {app.canManage
+                ? 'Add who you buy from, with their lead time, so reorders arrive before stock runs out.'
+                : 'An owner or admin can add the restaurant’s suppliers.'}
+            </Empty>
+          ) : (
+            <div className="table-wrap">
+              <table className="table table-cards">
+                <thead>
                   <tr>
-                    <td colSpan={5} className="empty">No suppliers yet.</td>
+                    <th>Supplier</th>
+                    <th style={{ width: '28%' }}>Share of stock value</th>
+                    <th className="num">Items</th>
+                    <th className="num">Lead time</th>
+                    <th className="actions" aria-label="Actions" />
                   </tr>
-                )}
-                {data.suppliers.map((s) =>
-                  editingId === s.id ? (
-                    <tr key={s.id}>
-                      <td>
-                        <input className="input input-sm" aria-label="Supplier name" value={editDraft.name} onChange={(e) => setEditDraft({ ...editDraft, name: e.target.value })} />
-                      </td>
-                      <td>
-                        <input className="input input-sm" aria-label="Contact" value={editDraft.contact_info} onChange={(e) => setEditDraft({ ...editDraft, contact_info: e.target.value })} />
-                      </td>
-                      <td className="num">{s.item_count}</td>
-                      <td className="num">
-                        <input className="input input-sm" aria-label="Lead time in days" style={{ width: 70, textAlign: 'right' }} value={editDraft.lead_time_days} onChange={(e) => setEditDraft({ ...editDraft, lead_time_days: e.target.value })} />
-                      </td>
-                      <td className="actions">
-                        <button className="btn btn-ghost btn-sm" onClick={() => setEditingId(null)}>
-                          Cancel
-                        </button>
-                        <button
-                          className="btn btn-primary btn-sm"
-                          disabled={busy || leadDays(editDraft.lead_time_days) === null}
-                          onClick={async () => {
-                            const ok = await run(
-                              () =>
-                                updateSupplier(
-                                  s.id,
-                                  { name: editDraft.name.trim(), contact_info: editDraft.contact_info.trim() || null, lead_time_days: leadDays(editDraft.lead_time_days)! },
-                                  editBase ? { name: editBase.name, contact_info: editBase.contact_info, lead_time_days: editBase.lead_time_days } : undefined,
-                                ),
-                              'Supplier updated',
-                            )
-                            if (ok) setEditingId(null)
-                          }}
-                        >
-                          Save
-                        </button>
-                      </td>
-                    </tr>
-                  ) : (
-                    <tr key={s.id}>
-                      <td>
-                        <div className="cell-title">{s.name}</div>
-                        <div className="cell-sub">{s.contact_info ?? 'No contact on file'}</div>
-                      </td>
-                      <td>
-                        <div className="row">
-                          <div className="meter" style={{ flex: 1 }}>
-                            <div className="meter-fill chart" style={{ width: `${s.share_pct}%` }} />
+                </thead>
+                <tbody>
+                  {data.suppliers.map((s) =>
+                    editingId === s.id ? (
+                      <tr key={s.id}>
+                        <td data-label="Supplier">
+                          <input className="input input-sm" aria-label="Supplier name" value={editDraft.name} onChange={(e) => setEditDraft({ ...editDraft, name: e.target.value })} />
+                        </td>
+                        <td data-label="Contact">
+                          <input className="input input-sm" aria-label="Contact" value={editDraft.contact_info} onChange={(e) => setEditDraft({ ...editDraft, contact_info: e.target.value })} />
+                        </td>
+                        <td className="num" data-label="Items">{s.item_count}</td>
+                        <td className="num" data-label="Lead time">
+                          <input className="input input-sm" aria-label="Lead time in days" style={{ width: 70, textAlign: 'right' }} value={editDraft.lead_time_days} onChange={(e) => setEditDraft({ ...editDraft, lead_time_days: e.target.value })} />
+                        </td>
+                        <td className="actions" data-label="Actions">
+                          <button className="btn btn-ghost btn-sm" disabled={busy} onClick={cancelEdit}>
+                            Cancel
+                          </button>
+                          <button
+                            className="btn btn-primary btn-sm"
+                            disabled={busy || leadDays(editDraft.lead_time_days) === null}
+                            onClick={async () => {
+                              const ok = await run(
+                                () =>
+                                  updateSupplier(
+                                    s.id,
+                                    { name: editDraft.name.trim(), contact_info: editDraft.contact_info.trim() || null, lead_time_days: leadDays(editDraft.lead_time_days)! },
+                                    editBase ? { name: editBase.name, contact_info: editBase.contact_info, lead_time_days: editBase.lead_time_days } : undefined,
+                                  ),
+                                'Supplier updated',
+                                s.id,
+                              )
+                              if (ok) setEditingId(null)
+                            }}
+                          >
+                            Save
+                          </button>
+                        </td>
+                      </tr>
+                    ) : (
+                      <tr key={s.id}>
+                        <td data-label="Supplier">
+                          <div className="cell-title">{s.name}</div>
+                          <div className="cell-sub">{s.contact_info ?? 'No contact on file'}</div>
+                        </td>
+                        <td data-label="Share of stock value">
+                          <div className="row">
+                            <div className="meter" style={{ flex: 1 }}>
+                              <div className="meter-fill chart" style={{ width: `${s.share_pct}%` }} />
+                            </div>
+                            <span className="tabular small" style={{ width: 96, textAlign: 'right' }}>
+                              {s.share_pct}% · {money(s.stock_value)}
+                            </span>
                           </div>
-                          <span className="tabular small" style={{ width: 96, textAlign: 'right' }}>
-                            {s.share_pct}% · {money(s.stock_value)}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="num">
-                        {s.item_count}
-                        {s.low_stock_count > 0 && <div className="negative small">{s.low_stock_count} low</div>}
-                      </td>
-                      <td className="num">{s.lead_time_days}d</td>
-                      <td className="actions">
-                        {app.canManage && (
-                          <>
-                            <button
-                              className="btn btn-ghost btn-sm"
-                              onClick={() => {
-                                setEditingId(s.id)
-                                setEditBase(s)
-                                setEditDraft({ name: s.name, contact_info: s.contact_info ?? '', lead_time_days: String(s.lead_time_days) })
-                              }}
-                            >
-                              Edit
-                            </button>
-                            {s.item_count === 0 && (
+                        </td>
+                        <td className="num" data-label="Items">
+                          {s.item_count}
+                          {s.low_stock_count > 0 && <div className="negative small">{s.low_stock_count} low</div>}
+                        </td>
+                        <td className="num" data-label="Lead time">{s.lead_time_days}d</td>
+                        <td className="actions" data-label="Actions">
+                          {app.canManage && (
+                            <>
                               <button
-                                className="btn btn-ghost btn-sm negative"
-                                disabled={busy}
-                                onClick={() => window.confirm(`Remove ${s.name}?`) && run(() => deleteSupplier(s.id), `${s.name} removed`)}
+                                className="btn btn-ghost btn-sm"
+                                onClick={() => {
+                                  setEditingId(s.id)
+                                  setEditError(null)
+                                  setEditBase(s)
+                                  setEditDraft({ name: s.name, contact_info: s.contact_info ?? '', lead_time_days: String(s.lead_time_days) })
+                                }}
                               >
-                                Remove
+                                Edit
                               </button>
-                            )}
-                          </>
-                        )}
-                      </td>
-                    </tr>
-                  ),
-                )}
-              </tbody>
-            </table>
-          </div>
+                              {s.item_count === 0 && (
+                                <button
+                                  className="btn btn-ghost btn-sm negative"
+                                  disabled={busy}
+                                  onClick={() => window.confirm(`Remove ${s.name}?`) && run(() => deleteSupplier(s.id), `${s.name} removed`)}
+                                >
+                                  Remove
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </td>
+                      </tr>
+                    ),
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
 
         <section className="card">
@@ -312,7 +343,7 @@ export function SuppliersPage({ app }: { app: AppContext }) {
             </div>
           </div>
           <div className="table-wrap">
-            <table className="table">
+            <table className="table table-cards">
               <thead>
                 <tr>
                   <th>Item</th>
@@ -330,8 +361,8 @@ export function SuppliersPage({ app }: { app: AppContext }) {
                 )}
                 {data.low_stock.map((item) => (
                   <tr key={item.id} className="highlight">
-                    <td className="cell-title">{item.name}</td>
-                    <td>
+                    <td className="cell-title" data-label="Item">{item.name}</td>
+                    <td data-label="Source">
                       {item.supplier_name || !app.canManage ? (
                         <>
                           <div>{item.supplier_name ?? <span className="faint">No supplier</span>}</div>
@@ -354,13 +385,13 @@ export function SuppliersPage({ app }: { app: AppContext }) {
                         </select>
                       )}
                     </td>
-                    <td className="num">
+                    <td className="num" data-label="On hand">
                       {qty(item.quantity_on_hand)} <span className="muted">/ {qty(item.reorder_threshold)} {item.unit}</span>
                     </td>
-                    <td className="num">
+                    <td className="num" data-label="Order">
                       {qty(item.reorder_qty)} {item.unit}
                     </td>
-                    <td className="num strong">{money(item.restock_cost)}</td>
+                    <td className="num strong" data-label="Cost">{money(item.restock_cost)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -372,6 +403,27 @@ export function SuppliersPage({ app }: { app: AppContext }) {
           </div>
         </section>
       </div>
+    )
+  }
+
+  return (
+    <main className="page">
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Suppliers</h1>
+          <p className="page-subtitle">Who supplies what, how exposed you are, and what to reorder.</p>
+        </div>
+        <Freshness loads={[load]} />
+        {app.canManage && (
+          <button className="btn btn-primary" onClick={() => setAdding((v) => !v)}>
+            <Icon name={adding ? 'close' : 'plus'} size={16} /> {adding ? 'Cancel' : 'Add supplier'}
+          </button>
+        )}
+      </div>
+
+      <Loaded load={load} what="suppliers" placeholderHeight={320}>
+        {board}
+      </Loaded>
     </main>
   )
 }

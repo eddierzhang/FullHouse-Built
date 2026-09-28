@@ -154,6 +154,8 @@ export type Runtime = {
   demo_resets_at?: string | null
   /** IANA zone agent schedules run in: the restaurant's once set up, else UTC. */
   schedule_timezone?: string
+  /** Why the AI can't run right now -- missing key, unknown provider; null when it can. */
+  ai_problem?: string | null
 }
 
 export type RunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
@@ -680,3 +682,51 @@ export const saveRestaurantDetails = (values: RestaurantDetails & RestaurantHour
     ...values,
     expected_updated_at: expectedUpdatedAt,
   })
+
+// --- change history ---------------------------------------------------------------
+
+export type Change = {
+  id: number
+  ts: string
+  entity_type: string
+  entity_id: string
+  operation: 'insert' | 'update' | 'delete'
+  /** For an update, only the fields that changed. */
+  before: Record<string, unknown> | null
+  after: Record<string, unknown> | null
+  changed_fields: string[]
+  actor_type: 'human' | 'agent' | 'system'
+  /** An email for a person, the agent's key for the agent. */
+  actor_id: string | null
+  agent_run_id: string | null
+  /** Set when the change carried out an approved proposal. */
+  agent_action_id: string | null
+  note: string | null
+  /** What it was to, in words: "Tomatoes", "Sam Patel's shift on 2026-10-06". */
+  entity_label: string | null
+}
+
+export type ChangePage = { total: number; limit: number; offset: number; items: Change[] }
+
+export const listChanges = (params: { limit?: number; offset?: number; entity_type?: string; actor_type?: string } = {}) => {
+  const query = new URLSearchParams(
+    Object.entries(params)
+      .filter(([, v]) => v !== undefined && v !== '')
+      .map(([k, v]) => [k, String(v)]),
+  )
+  return get<ChangePage>(`/api/v1/changes?${query}`)
+}
+
+/**
+ * Undo one change -- itself recorded as a change. Refused (409) if the record
+ * has changed since; `force` undoes it anyway.
+ */
+export const revertChange = (id: number, force = false) =>
+  send<{ reverted_change_id: number; description: string; resulting_change_ids: number[] }>(
+    'POST',
+    `/api/v1/changes/${id}/revert`,
+    { force },
+  )
+
+/** The newest change this person can see; it moves whenever anything they could see changes. */
+export const fetchChangeVersion = () => get<{ version: number; latest_at: string | null }>('/api/v1/changes/version')

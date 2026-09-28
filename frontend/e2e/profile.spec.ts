@@ -64,7 +64,7 @@ test('staff, menu, inventory and scheduling are linked, not edited, from the det
   await expect(panel.getByLabel('Longest shift (hours)')).toHaveCount(0)
 
   await panel.getByRole('link', { name: 'Staff & scheduling' }).click()
-  await expect(page.getByRole('heading', { name: 'Staff', level: 1 })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Schedule & staff', level: 1 })).toBeVisible()
 })
 
 test('a member sees the details but cannot change them', async ({ page }) => {

@@ -32,6 +32,7 @@ import {
 } from '../api/client'
 import type { AppContext } from '../app/context'
 import { Icon } from '../components/Icon'
+import { LoadError } from '../components/PageState'
 import { BackupCodes, MfaSetup } from '../components/MfaSetup'
 import { dateTime, relativeTime } from '../lib/format'
 import { DetailsFields, HoursFields, SECTION_META, SectionFields, initialValues, payload, timezones } from '../restaurant/sections'
@@ -471,6 +472,7 @@ const canManage = (actor: User, target: User) =>
 /** A link to hand over: shown once, with a copy button. */
 function LinkBox({ label, url, note, onDone }: { label: string; url: string; note: string; onDone: () => void }) {
   const [copied, setCopied] = useState(false)
+  const [copyFailed, setCopyFailed] = useState(false)
   return (
     <div className="callout callout-info" role="status">
       <Icon name="info" />
@@ -481,7 +483,11 @@ function LinkBox({ label, url, note, onDone }: { label: string; url: string; not
           <button
             type="button"
             className="btn btn-secondary btn-sm"
-            onClick={() => navigator.clipboard?.writeText(url).then(() => setCopied(true)).catch(() => {})}
+            onClick={() => {
+              // No clipboard (an http page, or permission refused): say so, so nobody pastes an old link.
+              if (!navigator.clipboard) return setCopyFailed(true)
+              navigator.clipboard.writeText(url).then(() => (setCopied(true), setCopyFailed(false))).catch(() => setCopyFailed(true))
+            }}
           >
             {copied ? 'Copied' : 'Copy'}
           </button>
@@ -489,6 +495,11 @@ function LinkBox({ label, url, note, onDone }: { label: string; url: string; not
             Done
           </button>
         </div>
+        {copyFailed && (
+          <div className="small negative" role="alert">
+            Couldn’t copy it. Select the link and copy it yourself.
+          </div>
+        )}
         <div className="small">{note}</div>
       </div>
     </div>
@@ -498,6 +509,7 @@ function LinkBox({ label, url, note, onDone }: { label: string; url: string; not
 function TeamTab({ app, user }: { app: AppContext; user: User }) {
   const [team, setTeam] = useState<User[] | null>(null)
   const [invites, setInvites] = useState<Invite[]>([])
+  const [invitesError, setInvitesError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [inviteRole, setInviteRole] = useState<Exclude<Role, 'owner'>>('member')
@@ -509,7 +521,9 @@ function TeamTab({ app, user }: { app: AppContext; user: User }) {
     listTeam()
       .then(setTeam)
       .catch((err) => setError(err instanceof Error ? err.message : String(err)))
-    listInvites().then(setInvites).catch(() => {})
+    listInvites()
+      .then((next) => (setInvites(next), setInvitesError(null)))
+      .catch((err) => setInvitesError(err instanceof Error ? err.message : String(err)))
   }, [])
   useEffect(load, [load])
 
@@ -576,6 +590,7 @@ function TeamTab({ app, user }: { app: AppContext; user: User }) {
             </button>
           </div>
           {shown && <LinkBox {...shown} onDone={() => setShown(null)} />}
+          {invitesError && <LoadError what="unused invites" error={invitesError} onRetry={load} />}
           {invites.length > 0 && (
             <ul className="list" aria-label="Unused invites">
               {invites.map((invite) => (
@@ -619,7 +634,7 @@ function TeamTab({ app, user }: { app: AppContext; user: User }) {
           </div>
         ) : (
           <div className="table-wrap">
-            <table className="table">
+            <table className="table table-cards">
               <thead>
                 <tr>
                   <th>Name</th>
@@ -633,13 +648,13 @@ function TeamTab({ app, user }: { app: AppContext; user: User }) {
               <tbody>
                 {team.map((person) => (
                   <tr key={person.id}>
-                    <td className="strong">
+                    <td className="strong" data-label="Name">
                       {person.name}
                       {person.id === user.id && <span className="muted"> (you)</span>}
                       {person.disabled_at && <span className="badge badge-danger" style={{ marginLeft: 6 }}>Access off</span>}
                     </td>
-                    <td className="muted">{person.email}</td>
-                    <td>
+                    <td className="muted" data-label="Email">{person.email}</td>
+                    <td data-label="Access">
                       {isOwner && person.role !== 'owner' ? (
                         <select
                           className="select input-sm"
@@ -655,7 +670,7 @@ function TeamTab({ app, user }: { app: AppContext; user: User }) {
                         ROLE_LABELS[person.role] ?? person.role
                       )}
                     </td>
-                    <td className="actions">
+                    <td className="actions" data-label="Actions">
                       {canManage(user, person) && (
                         <div className="row" style={{ justifyContent: 'flex-end' }}>
                           <button
@@ -770,7 +785,7 @@ function SecurityTab() {
         <div className="empty">Nothing recorded yet.</div>
       ) : (
         <div className="table-wrap">
-          <table className="table" aria-label="Security events">
+          <table className="table table-cards" aria-label="Security events">
             <thead>
               <tr>
                 <th>When</th>
@@ -783,16 +798,16 @@ function SecurityTab() {
             <tbody>
               {shown.map((r) => (
                 <tr key={r.id}>
-                  <td className="muted small" title={dateTime(r.ts)}>
+                  <td className="muted small" data-label="When" title={dateTime(r.ts)}>
                     {relativeTime(r.ts)}
                   </td>
-                  <td>
+                  <td data-label="What">
                     {WORRYING.has(r.type) ? <span className="badge badge-warning">{r.label}</span> : r.label}
                     {typeof r.detail?.path === 'string' && <div className="cell-sub mono">{r.detail.path}</div>}
                   </td>
-                  <td>{r.email ?? '—'}</td>
-                  <td className="muted">{r.actor_email ?? ''}</td>
-                  <td className="muted small">
+                  <td data-label="Account">{r.email ?? '—'}</td>
+                  <td className="muted" data-label="By">{r.actor_email ?? ''}</td>
+                  <td className="muted small" data-label="From">
                     {device(r.user_agent)}
                     {r.ip && <div className="cell-sub mono">{r.ip}</div>}
                   </td>
@@ -816,12 +831,13 @@ function TwoStepCard({ app, user }: { app: AppContext; user: User }) {
   const [code, setCode] = useState('')
   const [codes, setCodes] = useState<string[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [refreshError, setRefreshError] = useState<string | null>(null)
   const required = canEditRestaurant(user)
 
   const refresh = () =>
     fetchCurrentUser()
-      .then((u) => u && setMe(u))
-      .catch(() => {})
+      .then((u) => (u && setMe(u), setRefreshError(null)))
+      .catch((err) => setRefreshError(err instanceof Error ? err.message : String(err)))
   const reset = () => {
     setMode('idle')
     setCode('')
@@ -864,6 +880,7 @@ function TwoStepCard({ app, user }: { app: AppContext; user: User }) {
         </div>
       </div>
       <div className="card-body stack" style={{ gap: 10 }}>
+        {refreshError && <LoadError what="your two-step status" error={refreshError} onRetry={() => void refresh()} />}
         {mode === 'setup' ? (
           <MfaSetup
             currentCode={me.mfa_enabled ? code.trim() : undefined}

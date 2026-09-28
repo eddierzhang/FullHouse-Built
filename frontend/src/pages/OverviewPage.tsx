@@ -1,24 +1,23 @@
-import { useEffect, useState } from 'react'
-import { type AgentRun, type ProfitSummary, fetchProfitSummary, listRuns } from '../api/client'
+import { type Forecast, fetchForecast, fetchProfitSummary, listRuns } from '../api/client'
 import type { AppContext } from '../app/context'
 import { ActionList } from '../components/ActionList'
 import { ForecastCard } from '../components/ForecastCard'
 import { Icon } from '../components/Icon'
+import { Empty, Freshness, LoadError, Loaded } from '../components/PageState'
 import { RunStatusBadge } from '../components/RunStatusBadge'
 import { greeting, money, pct, relativeTime } from '../lib/format'
+import { type Load, useLoad } from '../lib/useLoad'
 import { openStatus } from '../restaurant/hours'
 
 export function OverviewPage({ app }: { app: AppContext }) {
-  const [week, setWeek] = useState<ProfitSummary | null>(null)
-  const [runs, setRuns] = useState<AgentRun[]>([])
-
-  useEffect(() => {
-    if (app.canManage) fetchProfitSummary(7).then(setWeek).catch(() => {})
-    listRuns().then(setRuns).catch(() => {})
-  }, [app.pendingActions.length, app.canManage])
+  // Money is for owners and admins only: staff never ask for it. Resolving
+  // to undefined (not null) lets their copy count as loaded.
+  const weekLoad = useLoad(() => (app.canManage ? fetchProfitSummary(7) : Promise.resolve(undefined)), [app.canManage])
+  const forecastLoad = useLoad(() => (app.canManage ? fetchForecast(7) : Promise.resolve(undefined)), [app.canManage])
+  const runsLoad = useLoad(() => listRuns(), [app.pendingActions.length])
+  const week = weekLoad.data
 
   const lowStock = app.inventory.filter((i) => i.quantity_on_hand <= i.reorder_threshold)
-  const recentRuns = runs.filter((r) => !r.parent_run_id).slice(0, 5)
   const today = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'long',
@@ -37,9 +36,13 @@ export function OverviewPage({ app }: { app: AppContext }) {
             <span className={`open-status${status.open ? ' is-open' : ''}`}>{status.label}</span>
           </p>
         </div>
+        <Freshness loads={app.canManage ? [runsLoad, weekLoad, forecastLoad] : [runsLoad]} />
       </div>
 
       <div className="stack">
+        {app.canManage && weekLoad.status === 'error' && (
+          <LoadError what="the last 7 days’ figures" error={weekLoad.error ?? ''} onRetry={weekLoad.reload} />
+        )}
         <section className="grid grid-stats" aria-label="Key figures">
           {app.canManage && (
             <>
@@ -89,37 +92,45 @@ export function OverviewPage({ app }: { app: AppContext }) {
             <section className="card">
               <div className="card-header">
                 <div>
-                  <h2 className="card-title">Recent agent runs</h2>
+                  <h2 className="card-title">Recent agent activity</h2>
                   <div className="card-subtitle">What your agents did lately</div>
                 </div>
                 <a className="btn btn-ghost btn-sm" href="#runs">
-                  All runs <Icon name="arrowRight" size={14} />
+                  All agent activity <Icon name="arrowRight" size={14} />
                 </a>
               </div>
-              {recentRuns.length === 0 ? (
-                <div className="empty">
-                  <div className="empty-title">No runs yet</div>
-                  <div className="small">Start one with “New task”.</div>
-                </div>
-              ) : (
-                <ul className="list">
-                  {recentRuns.map((run) => (
-                    <li key={run.id} className="list-item">
-                      <RunStatusBadge status={run.status} />
-                      <div className="list-item-main">
-                        <div className="strong truncate">{app.agentsById.get(run.agent_definition_id)?.name ?? 'Agent'}</div>
-                        <div className="muted small truncate">{run.output_summary || run.error || run.input}</div>
-                      </div>
-                      <span className="muted small">{relativeTime(run.created_at)}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <Loaded load={runsLoad} what="recent agent activity" placeholderHeight={200}>
+                {(runs) => {
+                  const recentRuns = runs.filter((r) => !r.parent_run_id).slice(0, 5)
+                  return recentRuns.length === 0 ? (
+                    <Empty title="No agent activity yet">
+                      {app.canManage
+                        ? 'Start the Assistant Manager on something with “New task”.'
+                        : 'What the Assistant Manager does shows up here.'}
+                    </Empty>
+                  ) : (
+                    <ul className="list">
+                      {recentRuns.map((run) => (
+                        <li key={run.id} className="list-item">
+                          <RunStatusBadge status={run.status} />
+                          <div className="list-item-main">
+                            <div className="strong truncate">
+                              {app.agentsById.get(run.agent_definition_id)?.name ?? 'Agent'}
+                            </div>
+                            <div className="muted small truncate">{run.output_summary || run.error || run.input}</div>
+                          </div>
+                          <span className="muted small">{relativeTime(run.created_at)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )
+                }}
+              </Loaded>
             </section>
           </div>
 
           <div className="stack">
-            {app.canManage && <ForecastCard />}
+            {app.canManage && <ForecastCard load={forecastLoad as Load<Forecast>} />}
 
             <section className="card">
               <div className="card-header">

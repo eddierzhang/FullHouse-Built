@@ -73,28 +73,31 @@ test.describe('navigation', () => {
     const nav = page.getByRole('navigation')
     const labels = await nav.getByRole('link').allInnerTexts()
     const names = labels.map((l) => l.replace(/\d+$/, '').trim())
+    // The day's work first, then the kitchen, the agent, the records and the restaurant.
     expect(names).toEqual([
-      'Overview',
-      'Approvals',
-      'Runs',
-      'Assistant Manager',
+      'Today',
       'Inventory',
+      'Schedule & staff',
+      'Recommendations',
       'Suppliers',
       'Menu',
-      'Staff',
+      'Assistant Manager',
+      'Agent activity',
       'Profit & forecast',
+      'History & undo',
       'Profile',
     ])
 
     const headings: Record<string, string> = {
-      Approvals: 'Approvals',
-      Runs: 'Runs',
-      'Assistant Manager': 'Assistant Manager',
       Inventory: 'Inventory',
+      'Schedule & staff': 'Schedule & staff',
+      Recommendations: 'Recommendations',
       Suppliers: 'Suppliers',
       Menu: 'Menu',
-      Staff: 'Staff',
+      'Assistant Manager': 'Assistant Manager',
+      'Agent activity': 'Agent activity',
       'Profit & forecast': 'Profit & forecast',
+      'History & undo': 'History & undo',
       Profile: 'Profile',
     }
     for (const [link, heading] of Object.entries(headings)) {
@@ -110,7 +113,9 @@ test.describe('navigation', () => {
     await page.goto('/#marketing')
     await expect(page.getByRole('heading', { level: 1, name: 'Menu' })).toBeVisible()
     await page.goto('/#employees')
-    await expect(page.getByRole('heading', { level: 1, name: 'Staff' })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 1, name: 'Schedule & staff' })).toBeVisible()
+    await page.goto('/#recommendations')
+    await expect(page.getByRole('heading', { level: 1, name: 'Recommendations' })).toBeVisible()
     await page.goto('/#settings')
     await expect(page.getByRole('heading', { level: 1, name: 'Profile' })).toBeVisible()
   })
@@ -168,7 +173,7 @@ test('a new task streams live and finishes', async ({ page }) => {
   await dialog.getByLabel('What should it do?').fill('Check what is running low')
   await dialog.getByRole('button', { name: 'Start task' }).click()
 
-  await expect(page.getByRole('heading', { level: 1, name: 'Runs' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Agent activity' })).toBeVisible()
   const log = page.getByTestId('run-log')
   await expect(log).toContainText('tool call')
   await expect(log).toContainText('list_low_stock_items')
@@ -236,6 +241,8 @@ test('adding a person and a draft shift, publishing it, then removing them', asy
   await expect(shiftRow).not.toContainText('Draft')
   await expect(page.getByRole('button', { name: /^Publish \d+ shifts?$/ })).toHaveCount(0)
 
+  // Removing a shift asks first, like removing a person.
+  page.once('dialog', (d) => d.accept())
   await shiftRow.getByRole('button', { name: 'Remove shift' }).click()
   await expect(person).toContainText('No shifts')
   page.once('dialog', (d) => d.accept())

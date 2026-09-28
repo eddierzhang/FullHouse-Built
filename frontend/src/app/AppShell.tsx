@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   type AgentAction,
   type AgentDefinition,
@@ -8,6 +8,7 @@ import {
   type User,
   approveAction,
   canEditRestaurant,
+  fetchChangeVersion,
   fetchHealth,
   fetchRuntime,
   listActions,
@@ -21,8 +22,10 @@ import { Icon, type IconName } from '../components/Icon'
 import { NewTaskModal } from '../components/NewTaskModal'
 import { Toast, type ToastState } from '../components/Toast'
 import { relativeTime } from '../lib/format'
+import { announceDataChanged } from '../lib/useLoad'
 import { type Route, useHashRoute } from '../lib/useHashRoute'
 import { AgentsPage } from '../pages/AgentsPage'
+import { HistoryPage } from '../pages/HistoryPage'
 import { ApprovalsPage } from '../pages/ApprovalsPage'
 import { InventoryPage } from '../pages/InventoryPage'
 import { MenuPage } from '../pages/MenuPage'
@@ -34,36 +37,78 @@ import { StaffPage } from '../pages/StaffPage'
 import { SuppliersPage } from '../pages/SuppliersPage'
 import type { AppContext } from './context'
 
-/** Keeps the approvals badge and schedules current without a reload. */
+/** Health, the approvals badge and the agent's status, kept current without a reload. */
 const POLL_MS = 20_000
+/** How often to ask whether anything changed, so a teammate's change shows up by itself. */
+const CHANGE_POLL_MS = 10_000
 
 type NavItem = { route: Route; label: string; icon: IconName }
 
 /** Pages only owners and admins see: the profit figures are theirs. */
 const MANAGER_ROUTES = new Set<Route>(['profit'])
 
+/**
+ * Grouped by what people come to do. The first group is the day's work --
+ * checking in, stock, the schedule, what the agent recommends -- and is
+ * also the phone's bottom bar; the rest is setup and the longer view.
+ */
 const NAV: { label: string | null; items: NavItem[] }[] = [
-  { label: null, items: [{ route: 'overview', label: 'Overview', icon: 'overview' }] },
+  {
+    label: null,
+    items: [
+      { route: 'overview', label: 'Today', icon: 'overview' },
+      { route: 'inventory', label: 'Inventory', icon: 'inventory' },
+      { route: 'staff', label: 'Schedule & staff', icon: 'staff' },
+      { route: 'approvals', label: 'Recommendations', icon: 'approvals' },
+    ],
+  },
+  {
+    label: 'Kitchen',
+    items: [
+      { route: 'suppliers', label: 'Suppliers', icon: 'suppliers' },
+      { route: 'menu', label: 'Menu', icon: 'menu' },
+    ],
+  },
   {
     label: 'Agent',
     items: [
-      { route: 'approvals', label: 'Approvals', icon: 'approvals' },
-      { route: 'runs', label: 'Runs', icon: 'runs' },
       { route: 'agents', label: 'Assistant Manager', icon: 'agents' },
+      { route: 'runs', label: 'Agent activity', icon: 'runs' },
     ],
   },
   {
-    label: 'Operations',
+    label: 'Records',
     items: [
-      { route: 'inventory', label: 'Inventory', icon: 'inventory' },
-      { route: 'suppliers', label: 'Suppliers', icon: 'suppliers' },
-      { route: 'menu', label: 'Menu', icon: 'menu' },
-      { route: 'staff', label: 'Staff', icon: 'staff' },
+      { route: 'profit', label: 'Profit & forecast', icon: 'profit' },
+      { route: 'history', label: 'History & undo', icon: 'clock' },
     ],
   },
-  { label: 'Insights', items: [{ route: 'profit', label: 'Profit & forecast', icon: 'profit' }] },
   { label: 'Restaurant', items: [{ route: 'profile', label: 'Profile', icon: 'store' }] },
 ]
+
+/** The phone's bottom bar: the day's work, and everything else behind More. */
+const TABS: NavItem[] = [
+  { route: 'overview', label: 'Today', icon: 'overview' },
+  { route: 'inventory', label: 'Inventory', icon: 'inventory' },
+  { route: 'staff', label: 'Schedule', icon: 'staff' },
+  { route: 'approvals', label: 'Recommend', icon: 'approvals' },
+]
+
+/** Whether the browser thinks it's online, kept current. */
+function useOnline(): boolean {
+  const [online, setOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine))
+  useEffect(() => {
+    const up = () => setOnline(true)
+    const down = () => setOnline(false)
+    window.addEventListener('online', up)
+    window.addEventListener('offline', down)
+    return () => {
+      window.removeEventListener('online', up)
+      window.removeEventListener('offline', down)
+    }
+  }, [])
+  return online
+}
 
 type Props = {
   user: User
@@ -75,6 +120,7 @@ type Props = {
 export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) {
   const [route, navigate] = useHashRoute()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const online = useOnline()
 
   const [apiStatus, setApiStatus] = useState<AppContext['apiStatus']>('checking')
   const [agents, setAgents] = useState<AgentDefinition[]>([])
@@ -103,6 +149,37 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
     const timer = window.setInterval(refresh, POLL_MS)
     return () => window.clearInterval(timer)
   }, [refresh])
+
+  // Live refresh: when the change history moves -- a teammate's save, an
+  // approval, the agent -- every open page refetches. Cheap to ask, and
+  // skipped while the tab is hidden.
+  const lastVersion = useRef<number | null>(null)
+  useEffect(() => {
+    const check = () => {
+      if (document.visibilityState === 'hidden') return
+      fetchChangeVersion()
+        .then(({ version }) => {
+          if (lastVersion.current !== null && version !== lastVersion.current) {
+            announceDataChanged()
+            refresh()
+          }
+          lastVersion.current = version
+        })
+        .catch(() => {})
+    }
+    check()
+    const timer = window.setInterval(check, CHANGE_POLL_MS)
+    document.addEventListener('visibilitychange', check)
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', check)
+    }
+  }, [refresh])
+
+  // Back online: catch up on anything missed while away.
+  useEffect(() => {
+    if (online) refresh()
+  }, [online, refresh])
 
   useEffect(() => setSidebarOpen(false), [route])
 
@@ -190,6 +267,8 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
         return app.canManage ? <ProfitPage app={app} /> : <OverviewPage app={app} />
       case 'profile':
         return <ProfilePage app={app} user={user} />
+      case 'history':
+        return <HistoryPage app={app} />
       default:
         return <OverviewPage app={app} />
     }
@@ -249,15 +328,20 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
           <div className="row">
             <span
               className="dot"
-              style={{ color: apiStatus === 'ok' ? 'var(--success)' : apiStatus === 'error' ? 'var(--danger)' : 'var(--text-faint)' }}
+              style={{ color: !online || apiStatus === 'error' ? 'var(--danger)' : apiStatus === 'ok' ? 'var(--success)' : 'var(--text-faint)' }}
             />
-            {apiStatus === 'ok' ? 'Connected' : apiStatus === 'error' ? 'Backend unreachable' : 'Connecting…'}
+            {!online ? 'Offline' : apiStatus === 'ok' ? 'Connected' : apiStatus === 'error' ? 'Can’t reach FullHouse' : 'Connecting…'}
           </div>
-          {runtime && (
-            <div className="faint" style={{ marginTop: 4 }}>
-              {runtime.provider} · {runtime.model}
-            </div>
-          )}
+          {runtime &&
+            (runtime.ai_problem ? (
+              <div className="faint" style={{ marginTop: 4 }} title={runtime.ai_problem}>
+                AI assistant unavailable
+              </div>
+            ) : (
+              <div className="faint" style={{ marginTop: 4 }}>
+                {runtime.provider} · {runtime.model}
+              </div>
+            ))}
         </div>
       </aside>
 
@@ -300,15 +384,19 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
           )}
         </header>
 
-        {apiStatus === 'error' && (
-          <div className="page" style={{ paddingBottom: 0 }}>
-            <div className="callout callout-danger">
-              <Icon name="alert" />
-              <div>
-                <div className="callout-title">Can’t reach the backend</div>
-                <div className="callout-body">Check the API server is running, then refresh.</div>
-              </div>
-            </div>
+        {(!online || apiStatus === 'error') && (
+          <div className="connection-banner" role="alert">
+            <Icon name="alert" size={16} />
+            <span>
+              {!online
+                ? 'You’re offline. You can look around, but changes won’t save until you’re back online.'
+                : 'Can’t reach FullHouse right now. Changes won’t save until it’s back; we’ll keep trying.'}
+            </span>
+            {online && (
+              <button className="btn btn-secondary btn-sm" onClick={refresh}>
+                Try now
+              </button>
+            )}
           </div>
         )}
 
@@ -324,10 +412,37 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
           const run = await triggerRun(agentKey, task)
           setTaskAgent(undefined)
           setFocusRunId(run.id)
-          toast('Task started', 'Following it live in Runs.')
+          toast('Task started', 'Following it live in Agent activity.')
           navigate('runs')
         }}
       />
+
+      <nav className="tabbar" aria-label="Daily tasks">
+        {TABS.map((tab) => {
+          const count = counts[tab.route]
+          return (
+            <a key={tab.route} className="tab" href={`#${tab.route}`} aria-current={route === tab.route ? 'page' : undefined}>
+              <span className="tab-icon">
+                <Icon name={tab.icon} size={20} />
+                {count && count.value > 0 && (
+                  <span className={`tab-count${count.attention ? ' attention' : ''}`} aria-hidden="true">
+                    {count.value}
+                  </span>
+                )}
+              </span>
+              {tab.label}
+              {/* Read after the name, not before it: "Recommend (1)". */}
+              {count && count.value > 0 && <span className="visually-hidden"> ({count.value})</span>}
+            </a>
+          )
+        })}
+        <button className="tab" onClick={() => setSidebarOpen(true)}>
+          <span className="tab-icon">
+            <Icon name="hamburger" size={20} />
+          </span>
+          More
+        </button>
+      </nav>
 
       <ActionDrawer app={app} action={drawerAction} onClose={() => setDrawerAction(null)} />
       <Toast toast={toastState} />

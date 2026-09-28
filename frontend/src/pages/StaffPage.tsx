@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   type Shift,
   type Staff,
@@ -16,7 +16,9 @@ import {
 } from '../api/client'
 import type { AppContext } from '../app/context'
 import { Icon } from '../components/Icon'
+import { Freshness, Loaded } from '../components/PageState'
 import { byName, initials, longDate, timeHm } from '../lib/format'
+import { useLoad } from '../lib/useLoad'
 
 const BLANK_PERSON = { name: '', role: '', email: '' }
 
@@ -146,8 +148,8 @@ const hours = (s: Pick<Shift, 'start_time' | 'end_time'>) => {
 
 export function StaffPage({ app, user }: { app: AppContext; user: User }) {
   const isManager = canEditRestaurant(user)
-  const [staff, setStaff] = useState<Staff[]>([])
-  const [shifts, setShifts] = useState<Shift[]>([])
+  const staffLoad = useLoad(listStaff, [])
+  const shiftsLoad = useLoad(listShifts, [])
   const [busy, setBusy] = useState(false)
 
   const [addingPerson, setAddingPerson] = useState(false)
@@ -159,11 +161,14 @@ export function StaffPage({ app, user }: { app: AppContext; user: User }) {
 
   const [contact, setContact] = useState<{ phone: string; emergency_contact: string } | null>(null)
 
-  const load = useCallback(() => {
-    listStaff().then(setStaff).catch(() => {})
-    listShifts().then(setShifts).catch(() => {})
-  }, [])
-  useEffect(load, [load])
+  // Until both have loaded (or if one fails) the lists below show that, not "nobody" or "no shifts".
+  const staff = useMemo(() => staffLoad.data ?? [], [staffLoad.data])
+  const shifts = useMemo(() => shiftsLoad.data ?? [], [shiftsLoad.data])
+  const ready = staffLoad.data !== null && shiftsLoad.data !== null
+  const load = () => {
+    void staffLoad.reload()
+    void shiftsLoad.reload()
+  }
 
   const run = async (work: () => Promise<unknown>, message: string) => {
     setBusy(true)
@@ -204,14 +209,17 @@ export function StaffPage({ app, user }: { app: AppContext; user: User }) {
     <main className="page">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Staff</h1>
+          <h1 className="page-title">Schedule & staff</h1>
           <p className="page-subtitle">{isManager ? 'The team and the schedule.' : 'Your shifts and the team schedule.'}</p>
         </div>
-        {isManager && drafts > 0 && (
-          <button className="btn btn-primary" disabled={busy} onClick={() => run(publishShifts, `Schedule published — staff can see ${drafts === 1 ? 'the new shift' : `all ${drafts} new shifts`}`)}>
-            <Icon name="check" size={14} /> Publish {drafts} {drafts === 1 ? 'shift' : 'shifts'}
-          </button>
-        )}
+        <div className="row wrap">
+          <Freshness loads={[staffLoad, shiftsLoad]} />
+          {isManager && drafts > 0 && (
+            <button className="btn btn-primary" disabled={busy} onClick={() => run(publishShifts, `Schedule published — staff can see ${drafts === 1 ? 'the new shift' : `all ${drafts} new shifts`}`)}>
+              <Icon name="check" size={14} /> Publish {drafts} {drafts === 1 ? 'shift' : 'shifts'}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="stack">
@@ -231,7 +239,7 @@ export function StaffPage({ app, user }: { app: AppContext; user: User }) {
             </div>
           </div>
         )}
-        {!isManager && !me && (
+        {!isManager && staffLoad.data !== null && !me && (
           <div className="callout callout-info">
             <Icon name="info" />
             <div className="callout-body">
@@ -247,24 +255,32 @@ export function StaffPage({ app, user }: { app: AppContext; user: User }) {
                 <div>
                   <h2 className="card-title">My shifts</h2>
                   <div className="card-subtitle">
-                    {myShifts.length ? `${myShifts.length} upcoming · ${myShifts.reduce((sum, s) => sum + hours(s), 0).toFixed(1)} hours` : 'Nothing scheduled yet'}
+                    {!shiftsLoad.data
+                      ? ' '
+                      : myShifts.length
+                        ? `${myShifts.length} upcoming · ${myShifts.reduce((sum, s) => sum + hours(s), 0).toFixed(1)} hours`
+                        : 'Nothing scheduled yet'}
                   </div>
                 </div>
               </div>
-              <ul className="list">
-                {myShifts.length === 0 && <li className="empty">No upcoming shifts.</li>}
-                {myShifts.map((s) => (
-                  <li key={s.id} className="list-item">
-                    <div className="list-item-main">
-                      <div className="strong">{longDate(s.date)}</div>
-                      <div className="muted small tabular">
-                        {timeHm(s.start_time)}–{timeHm(s.end_time)} · {hours(s).toFixed(1)} h
-                      </div>
-                    </div>
-                    <span className="badge">{s.role}</span>
-                  </li>
-                ))}
-              </ul>
+              <Loaded load={shiftsLoad} what="your shifts">
+                {() => (
+                  <ul className="list">
+                    {myShifts.length === 0 && <li className="empty">No upcoming shifts.</li>}
+                    {myShifts.map((s) => (
+                      <li key={s.id} className="list-item">
+                        <div className="list-item-main">
+                          <div className="strong">{longDate(s.date)}</div>
+                          <div className="muted small tabular">
+                            {timeHm(s.start_time)}–{timeHm(s.end_time)} · {hours(s).toFixed(1)} h
+                          </div>
+                        </div>
+                        <span className="badge">{s.role}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Loaded>
             </section>
 
             <section className="card">
@@ -337,20 +353,20 @@ export function StaffPage({ app, user }: { app: AppContext; user: User }) {
           <section className="grid grid-stats">
             <div className="card stat">
               <div className="stat-label">People</div>
-              <div className="stat-value">{roster.length}</div>
+              <div className="stat-value">{staffLoad.data ? roster.length : '—'}</div>
             </div>
             <div className="card stat">
               <div className="stat-label">Upcoming shifts</div>
-              <div className="stat-value">{upcomingShifts.length}</div>
+              <div className="stat-value">{shiftsLoad.data ? upcomingShifts.length : '—'}</div>
             </div>
             <div className="card stat">
               <div className="stat-label">Hours scheduled</div>
-              <div className="stat-value">{upcomingShifts.reduce((sum, s) => sum + hours(s), 0).toFixed(0)}</div>
+              <div className="stat-value">{shiftsLoad.data ? upcomingShifts.reduce((sum, s) => sum + hours(s), 0).toFixed(0) : '—'}</div>
             </div>
-            <div className={`card stat${unscheduled.length ? ' attention' : ''}`}>
+            <div className={`card stat${ready && unscheduled.length ? ' attention' : ''}`}>
               <div className="stat-label">Without a shift</div>
-              <div className="stat-value">{unscheduled.length}</div>
-              <div className="stat-meta truncate">{unscheduled.map((p) => p.name).join(', ') || 'everyone is scheduled'}</div>
+              <div className="stat-value">{ready ? unscheduled.length : '—'}</div>
+              <div className="stat-meta truncate">{ready ? unscheduled.map((p) => p.name).join(', ') || 'everyone is scheduled' : ' '}</div>
             </div>
           </section>
         )}
@@ -407,60 +423,64 @@ export function StaffPage({ app, user }: { app: AppContext; user: User }) {
               </div>
             )}
 
-            <ul className="list">
-              {roster.length === 0 && <li className="empty">Nobody on the team yet.</li>}
-              {roster.map((p) => {
-                const count = upcomingShifts.filter((s) => s.staff_id === p.id).length
-                if (isManager && editingId === p.id) {
-                  return (
-                    <ProfileEditor
-                      key={p.id}
-                      roles={app.restaurant.staff_roles}
-                      initial={toForm(p)}
-                      busy={busy}
-                      onCancel={() => setEditingId(null)}
-                      onSave={async (form) => (await run(() => updateStaff(p.id, fromForm(form)), 'Details updated')) && setEditingId(null)}
-                    />
-                  )
-                }
-                return (
-                  <li key={p.id} className="list-item">
-                    <div className="avatar">{initials(p.name)}</div>
-                    <div className="list-item-main">
-                      <div className="row wrap">
-                        <span className="strong">{p.name}</span>
-                        <span className="badge">{p.role}</span>
-                        {p.is_me && <span className="badge badge-brand">You</span>}
-                        {isManager && p.email && p.has_account === false && (
-                          <span className="badge badge-warning" title="Nobody has signed up with this email yet">
-                            No login yet
-                          </span>
+            <Loaded load={staffLoad} what="the team">
+              {() => (
+                <ul className="list">
+                  {roster.length === 0 && <li className="empty">Nobody on the team yet.</li>}
+                  {roster.map((p) => {
+                    const count = upcomingShifts.filter((s) => s.staff_id === p.id).length
+                    if (isManager && editingId === p.id) {
+                      return (
+                        <ProfileEditor
+                          key={p.id}
+                          roles={app.restaurant.staff_roles}
+                          initial={toForm(p)}
+                          busy={busy}
+                          onCancel={() => setEditingId(null)}
+                          onSave={async (form) => (await run(() => updateStaff(p.id, fromForm(form)), 'Details updated')) && setEditingId(null)}
+                        />
+                      )
+                    }
+                    return (
+                      <li key={p.id} className="list-item">
+                        <div className="avatar">{initials(p.name)}</div>
+                        <div className="list-item-main">
+                          <div className="row wrap">
+                            <span className="strong">{p.name}</span>
+                            <span className="badge">{p.role}</span>
+                            {p.is_me && <span className="badge badge-brand">You</span>}
+                            {isManager && p.email && p.has_account === false && (
+                              <span className="badge badge-warning" title="Nobody has signed up with this email yet">
+                                No login yet
+                              </span>
+                            )}
+                          </div>
+                          {isManager && (
+                            <div className="muted small truncate">{[p.email ?? 'No email on file', p.phone].filter(Boolean).join(' · ')}</div>
+                          )}
+                        </div>
+                        {isManager && (
+                          <>
+                            <span className={`small ${count ? 'muted' : 'negative strong'}`}>{count ? `${count} upcoming` : 'No shifts'}</span>
+                            <button className="btn btn-ghost btn-sm btn-icon" aria-label={`Edit ${p.name}`} onClick={() => setEditingId(p.id)}>
+                              <Icon name="edit" size={14} />
+                            </button>
+                            <button
+                              className="btn btn-ghost btn-sm btn-icon"
+                              aria-label={`Remove ${p.name}`}
+                              disabled={busy}
+                              onClick={() => window.confirm(`Remove ${p.name} from the team?`) && run(() => deleteStaff(p.id), `${p.name} removed`)}
+                            >
+                              <Icon name="trash" size={14} />
+                            </button>
+                          </>
                         )}
-                      </div>
-                      {isManager && (
-                        <div className="muted small truncate">{[p.email ?? 'No email on file', p.phone].filter(Boolean).join(' · ')}</div>
-                      )}
-                    </div>
-                    {isManager && (
-                      <>
-                        <span className={`small ${count ? 'muted' : 'negative strong'}`}>{count ? `${count} upcoming` : 'No shifts'}</span>
-                        <button className="btn btn-ghost btn-sm btn-icon" aria-label={`Edit ${p.name}`} onClick={() => setEditingId(p.id)}>
-                          <Icon name="edit" size={14} />
-                        </button>
-                        <button
-                          className="btn btn-ghost btn-sm btn-icon"
-                          aria-label={`Remove ${p.name}`}
-                          disabled={busy}
-                          onClick={() => window.confirm(`Remove ${p.name} from the team?`) && run(() => deleteStaff(p.id), `${p.name} removed`)}
-                        >
-                          <Icon name="trash" size={14} />
-                        </button>
-                      </>
-                    )}
-                  </li>
-                )
-              })}
-            </ul>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </Loaded>
           </section>
 
           <section className="card">
@@ -520,32 +540,46 @@ export function StaffPage({ app, user }: { app: AppContext; user: User }) {
               </div>
             )}
 
-            {schedule.length === 0 && <div className="empty">No upcoming shifts.</div>}
-            {schedule.map(([date, day]) => (
-              <div key={date} style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)' }}>
-                <div className="field-label" style={{ marginBottom: 8 }}>
-                  {longDate(date)}
-                </div>
-                <div className="stack" style={{ gap: 6 }}>
-                  {day.map((s) => (
-                    <div key={s.id} className="row" style={{ padding: '8px 10px', borderRadius: 8, background: 'var(--surface-muted)' }}>
-                      <span className="tabular strong small" style={{ width: 96 }}>
-                        {timeHm(s.start_time)}–{timeHm(s.end_time)}
-                      </span>
-                      <span className="list-item-main truncate">{staffById.get(s.staff_id)?.name ?? 'Unknown'}</span>
-                      {me?.id === s.staff_id && <span className="badge badge-brand">You</span>}
-                      {!s.published_at && <span className="badge badge-warning">Draft</span>}
-                      <span className="badge">{s.role}</span>
-                      {isManager && (
-                        <button className="btn btn-ghost btn-sm btn-icon" aria-label="Remove shift" disabled={busy} onClick={() => run(() => deleteShift(s.id), 'Shift removed')}>
-                          <Icon name="close" size={14} />
-                        </button>
-                      )}
+            <Loaded load={shiftsLoad} what="the schedule">
+              {() => (
+                <>
+                  {schedule.length === 0 && <div className="empty">No upcoming shifts.</div>}
+                  {schedule.map(([date, day]) => (
+                    <div key={date} style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)' }}>
+                      <div className="field-label" style={{ marginBottom: 8 }}>
+                        {longDate(date)}
+                      </div>
+                      <div className="stack" style={{ gap: 6 }}>
+                        {day.map((s) => (
+                          <div key={s.id} className="row" style={{ padding: '8px 10px', borderRadius: 8, background: 'var(--surface-muted)' }}>
+                            <span className="tabular strong small" style={{ width: 96 }}>
+                              {timeHm(s.start_time)}–{timeHm(s.end_time)}
+                            </span>
+                            <span className="list-item-main truncate">{staffById.get(s.staff_id)?.name ?? 'Unknown'}</span>
+                            {me?.id === s.staff_id && <span className="badge badge-brand">You</span>}
+                            {!s.published_at && <span className="badge badge-warning">Draft</span>}
+                            <span className="badge">{s.role}</span>
+                            {isManager && (
+                              <button
+                                className="btn btn-ghost btn-sm btn-icon"
+                                aria-label="Remove shift"
+                                disabled={busy}
+                                onClick={() => {
+                                  const who = staffById.get(s.staff_id)?.name
+                                  if (window.confirm(`Remove ${who ? `${who}’s` : 'this'} shift on ${longDate(s.date)}?`)) void run(() => deleteShift(s.id), 'Shift removed')
+                                }}
+                              >
+                                <Icon name="close" size={14} />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   ))}
-                </div>
-              </div>
-            ))}
+                </>
+              )}
+            </Loaded>
           </section>
         </div>
       </div>

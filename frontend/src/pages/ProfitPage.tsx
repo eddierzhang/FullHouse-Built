@@ -1,22 +1,20 @@
-import { useEffect, useState } from 'react'
-import { type ProfitSummary, fetchProfitSummary } from '../api/client'
+import { useState } from 'react'
+import { fetchProfitSummary } from '../api/client'
 import type { AppContext } from '../app/context'
 import { LineChart } from '../components/Charts'
 import { ForecastCard } from '../components/ForecastCard'
+import { Freshness, Loaded } from '../components/PageState'
 import { money, pct, shortDate, titleCase } from '../lib/format'
+import { useLoad } from '../lib/useLoad'
 
 const WINDOWS = [7, 30, 90] as const
 
-export function ProfitPage({ app }: { app: AppContext }) {
+// `app` stays in the props so every page is called the same way; load errors show inline now, not as toasts.
+export function ProfitPage(_props: { app: AppContext }) {
   const [days, setDays] = useState<(typeof WINDOWS)[number]>(30)
-  const [data, setData] = useState<ProfitSummary | null>(null)
   const [view, setView] = useState<'chart' | 'table'>('chart')
-
-  useEffect(() => {
-    fetchProfitSummary(days)
-      .then(setData)
-      .catch((err) => app.toast('Couldn’t load profit data', String(err)))
-  }, [days, app.toast])
+  const load = useLoad(() => fetchProfitSummary(days), [days])
+  const data = load.data
 
   const maxCategory = Math.max(1, ...(data?.by_category ?? []).map((c) => c.revenue))
   const maxChannel = Math.max(1, ...(data?.by_channel ?? []).map((c) => c.revenue))
@@ -26,14 +24,19 @@ export function ProfitPage({ app }: { app: AppContext }) {
       <div className="page-header">
         <div>
           <h1 className="page-title">Profit & forecast</h1>
-          <p className="page-subtitle">{data ? `${shortDate(data.start)} – ${shortDate(data.end)} · ${data.orders} orders` : 'Loading…'}</p>
+          <p className="page-subtitle">
+            {data ? `${shortDate(data.start)} – ${shortDate(data.end)} · ${data.orders} orders` : load.status === 'error' ? 'Couldn’t load' : 'Loading…'}
+          </p>
         </div>
-        <div className="segmented" role="group" aria-label="Time window">
-          {WINDOWS.map((w) => (
-            <button key={w} aria-pressed={days === w} onClick={() => setDays(w)}>
-              {w} days
-            </button>
-          ))}
+        <div className="row wrap">
+          <Freshness loads={[load]} />
+          <div className="segmented" role="group" aria-label="Time window">
+            {WINDOWS.map((w) => (
+              <button key={w} aria-pressed={days === w} onClick={() => setDays(w)}>
+                {w} days
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -92,60 +95,56 @@ export function ProfitPage({ app }: { app: AppContext }) {
               </div>
             </div>
 
-            {!data && (
-              <div className="card-body">
-                <div className="skeleton" style={{ height: 220 }} />
-              </div>
-            )}
-
-            {data && view === 'chart' && (
-              <div className="card-body">
-                <LineChart
-                  dates={data.daily.map((d) => d.date)}
-                  series={[
-                    { key: 'revenue', label: 'Revenue', color: 'var(--chart-1)', values: data.daily.map((d) => d.revenue) },
-                    { key: 'profit', label: 'Gross profit', color: 'var(--chart-2)', values: data.daily.map((d) => d.profit) },
-                  ]}
-                />
-              </div>
-            )}
-
-            {data && view === 'table' && (
-              <div className="table-wrap" style={{ maxHeight: 320, overflowY: 'auto' }}>
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Date</th>
-                      <th className="num">Orders</th>
-                      <th className="num">Revenue</th>
-                      <th className="num">Cost</th>
-                      <th className="num">Gross profit</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[...data.daily]
-                      .filter((d) => d.orders > 0)
-                      .reverse()
-                      .map((d) => (
-                        <tr key={d.date}>
-                          <td>{shortDate(d.date)}</td>
-                          <td className="num">{d.orders}</td>
-                          <td className="num">{money(d.revenue, true)}</td>
-                          <td className="num">{money(d.cogs, true)}</td>
-                          <td className="num strong">{money(d.profit, true)}</td>
+            <Loaded load={load} what="profit data" placeholderHeight={220}>
+              {(data) =>
+                view === 'chart' ? (
+                  <div className="card-body">
+                    <LineChart
+                      dates={data.daily.map((d) => d.date)}
+                      series={[
+                        { key: 'revenue', label: 'Revenue', color: 'var(--chart-1)', values: data.daily.map((d) => d.revenue) },
+                        { key: 'profit', label: 'Gross profit', color: 'var(--chart-2)', values: data.daily.map((d) => d.profit) },
+                      ]}
+                    />
+                  </div>
+                ) : (
+                  <div className="table-wrap" style={{ maxHeight: 320, overflowY: 'auto' }}>
+                    <table className="table table-cards">
+                      <thead>
+                        <tr>
+                          <th>Date</th>
+                          <th className="num">Orders</th>
+                          <th className="num">Revenue</th>
+                          <th className="num">Cost</th>
+                          <th className="num">Gross profit</th>
                         </tr>
-                      ))}
-                    {data.orders === 0 && (
-                      <tr>
-                        <td colSpan={5} className="empty">
-                          No trade in this window.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                      </thead>
+                      <tbody>
+                        {[...data.daily]
+                          .filter((d) => d.orders > 0)
+                          .reverse()
+                          .map((d) => (
+                            <tr key={d.date}>
+                              <td data-label="Date">{shortDate(d.date)}</td>
+                              <td className="num" data-label="Orders">{d.orders}</td>
+                              <td className="num" data-label="Revenue">{money(d.revenue, true)}</td>
+                              <td className="num" data-label="Cost">{money(d.cogs, true)}</td>
+                              <td className="num strong" data-label="Gross profit">{money(d.profit, true)}</td>
+                            </tr>
+                          ))}
+                        {data.orders === 0 && (
+                          <tr>
+                            <td colSpan={5} className="empty">
+                              No trade in this window.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              }
+            </Loaded>
           </section>
 
           <ForecastCard />

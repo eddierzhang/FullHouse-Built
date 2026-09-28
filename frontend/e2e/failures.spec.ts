@@ -87,4 +87,7 @@ test('an expired login goes back to the sign-in page instead of failing silently
 
   await logDelivery(page, item.name, '2')
   await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible()
+  // And says why, so nobody thinks they signed themselves out or lost work.
+  await expect(page.getByText('You’ve been signed out')).toBeVisible()
+  await expect(page.getByText('Everything you’d already saved is kept.')).toBeVisible()
 })

@@ -1,12 +1,14 @@
 import { useState } from 'react'
-import { type AgentDefinition, updateAgentDefinition } from '../api/client'
+import { type AgentDefinition, listAgentDefinitions, updateAgentDefinition } from '../api/client'
 import type { AppContext } from '../app/context'
 import { Icon } from '../components/Icon'
+import { Empty, Freshness, Loaded } from '../components/PageState'
 import { SCHEDULE_PRESETS, dateTime, initials, relativeTime, scheduleLabel } from '../lib/format'
+import { useLoad } from '../lib/useLoad'
 
 const CUSTOM = '__custom__'
 
-function AgentRow({ agent, app }: { agent: AgentDefinition; app: AppContext }) {
+function AgentRow({ agent, app, onSaved }: { agent: AgentDefinition; app: AppContext; onSaved: () => void }) {
   const isPreset = SCHEDULE_PRESETS.some((p) => p.cron === agent.schedule_cron)
   const [mode, setMode] = useState(isPreset ? agent.schedule_cron ?? '' : CUSTOM)
   const [custom, setCustom] = useState(isPreset ? '' : agent.schedule_cron ?? '')
@@ -18,6 +20,7 @@ function AgentRow({ agent, app }: { agent: AgentDefinition; app: AppContext }) {
     try {
       await updateAgentDefinition(agent.key, patch)
       app.toast(message)
+      onSaved()
       app.refresh()
     } catch (err) {
       app.toast('Couldn’t update the schedule', err instanceof Error ? err.message : String(err))
@@ -119,7 +122,12 @@ function AgentRow({ agent, app }: { agent: AgentDefinition; app: AppContext }) {
   )
 }
 
+// The main agent first, then any others alphabetically -- the order the shell uses.
+const byRole = (a: AgentDefinition, b: AgentDefinition) =>
+  a.role === b.role ? a.name.localeCompare(b.name) : a.role === 'boss' ? -1 : 1
+
 export function AgentsPage({ app }: { app: AppContext }) {
+  const load = useLoad(() => listAgentDefinitions().then((agents) => [...agents].sort(byRole)), [])
   const stockCheck = app.restaurant.inventory_settings?.daily_stock_check ?? null
 
   return (
@@ -133,6 +141,7 @@ export function AgentsPage({ app }: { app: AppContext }) {
             scheduled run is skipped if the previous one is still going.
           </p>
         </div>
+        <Freshness loads={[load]} />
       </div>
 
       {app.runtime && !app.runtime.scheduler_running && (
@@ -148,11 +157,27 @@ export function AgentsPage({ app }: { app: AppContext }) {
       )}
 
       <section className="card">
-        <ul className="list">
-          {app.agents.map((agent) => (
-            <AgentRow key={`${agent.id}-${agent.schedule_cron}-${agent.enabled}`} agent={agent} app={app} />
-          ))}
-        </ul>
+        <Loaded load={load} what="the agent" placeholderHeight={160}>
+          {(agents) =>
+            agents.length === 0 ? (
+              <Empty title="No agent set up yet">
+                The Assistant Manager is added when the restaurant is set up. If it’s missing, ask an owner or admin to
+                check the setup.
+              </Empty>
+            ) : (
+              <ul className="list">
+                {agents.map((agent) => (
+                  <AgentRow
+                    key={`${agent.id}-${agent.schedule_cron}-${agent.enabled}`}
+                    agent={agent}
+                    app={app}
+                    onSaved={load.reload}
+                  />
+                ))}
+              </ul>
+            )
+          }
+        </Loaded>
         <div className="card-footer stock-check-note">
           <Icon name="clock" size={14} />
           {stockCheck ? (

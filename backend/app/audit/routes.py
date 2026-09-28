@@ -1,10 +1,12 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.audit import crud, schemas
+from app.audit.labels import labels_for
 from app.audit.context import note_context
 from app.audit.models import ChangeLog
 from app.audit.revert import RevertConflict, RevertError, revert_change
@@ -56,7 +58,23 @@ def list_changes(
         offset=offset,
         visibility=_visibility(user),
     )
-    return schemas.ChangePage(total=total, limit=limit, offset=offset, items=rows)
+    return schemas.ChangePage(total=total, limit=limit, offset=offset, items=_labelled(db, rows))
+
+
+def _labelled(db: Session, rows: list[ChangeLog]) -> list[schemas.ChangeOut]:
+    labels = labels_for(db, rows)
+    return [schemas.ChangeOut.model_validate(row).model_copy(update={"entity_label": labels[row.id]}) for row in rows]
+
+
+@router.get("/version", response_model=schemas.ChangeVersion)
+def change_version(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """The newest change this person can see, for live refresh: open pages poll
+    this and reload only when it moves, so a teammate's change shows up
+    without anyone pressing refresh."""
+    newest = db.execute(
+        select(func.max(ChangeLog.id), func.max(ChangeLog.ts)).where(_visibility(user))
+    ).one()
+    return schemas.ChangeVersion(version=newest[0] or 0, latest_at=newest[1])
 
 
 @router.get("/entity/{entity_type}/{entity_id}", response_model=list[schemas.ChangeOut])
@@ -64,7 +82,7 @@ def entity_history(
     entity_type: str, entity_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)
 ):
     """One entity's full timeline, oldest first."""
-    return crud.entity_history(db, entity_type, entity_id, visibility=_visibility(user))
+    return _labelled(db, crud.entity_history(db, entity_type, entity_id, visibility=_visibility(user)))
 
 
 @router.get("/{change_id}", response_model=schemas.ChangeOut)
@@ -72,7 +90,7 @@ def get_change(change_id: int, db: Session = Depends(get_db), user: User = Depen
     change = crud.get_change(db, change_id, visibility=_visibility(user))
     if change is None:
         raise HTTPException(404, "Change not found")
-    return change
+    return _labelled(db, [change])[0]
 
 
 @router.post("/{change_id}/revert", response_model=schemas.RevertOut)

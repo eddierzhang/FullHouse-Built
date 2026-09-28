@@ -1,9 +1,11 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
-import { type MenuPerformance, createMenuItem, deleteMenuItem, listMenuPerformance, updateMenuItem } from '../api/client'
+import { Fragment, useEffect, useState } from 'react'
+import { ApiError, type MenuPerformance, createMenuItem, deleteMenuItem, listMenuPerformance, updateMenuItem } from '../api/client'
 import type { AppContext } from '../app/context'
 import { Icon } from '../components/Icon'
+import { Empty, Freshness, Loaded } from '../components/PageState'
 import { RecipeEditor } from '../components/RecipeEditor'
 import { dateTime, money, pct } from '../lib/format'
+import { useLoad } from '../lib/useLoad'
 
 type SortKey = 'units_sold' | 'profit' | 'margin_pct' | 'name'
 const SORTS: { key: SortKey; label: string }[] = [
@@ -18,7 +20,7 @@ const SLOW_FRACTION = 0.25
 const BLANK = { name: '', category: '', price: '', cost: '' }
 
 export function MenuPage({ app }: { app: AppContext }) {
-  const [rows, setRows] = useState<MenuPerformance[]>([])
+  const load = useLoad(listMenuPerformance, [])
   const [sort, setSort] = useState<SortKey>('units_sold')
   const [adding, setAdding] = useState(false)
   const [draft, setDraft] = useState(BLANK)
@@ -26,58 +28,65 @@ export function MenuPage({ app }: { app: AppContext }) {
   const [editDraft, setEditDraft] = useState({ price: '', description: '' })
   // The price when editing started, so a teammate's change in the meantime isn't overwritten.
   const [editBasePrice, setEditBasePrice] = useState<number | null>(null)
+  // Why the last price edit wasn't saved (a teammate got there first).
+  const [editError, setEditError] = useState<string | null>(null)
+  // Set once the page has refetched after a conflict: restart the edit from the price saved now.
+  const [rebaseId, setRebaseId] = useState<string | null>(null)
   const [recipeFor, setRecipeFor] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const load = useCallback(() => {
-    listMenuPerformance().then(setRows).catch(() => {})
-  }, [])
-  useEffect(load, [load])
+  useEffect(() => {
+    if (!rebaseId) return
+    setRebaseId(null)
+    const fresh = load.data?.find((r) => r.id === rebaseId)
+    if (!fresh) return setEditingId(null) // deleted in the meantime
+    setEditBasePrice(fresh.price)
+    setEditDraft({ price: String(fresh.price), description: fresh.description ?? '' })
+  }, [rebaseId, load.data])
 
-  const run = async (work: () => Promise<unknown>, message: string) => {
+  const run = async (work: () => Promise<unknown>, message: string, editing?: string) => {
     setBusy(true)
     try {
       await work()
       app.toast(message)
-      load()
+      setEditError(null)
+      await load.reload()
       return true
     } catch (err) {
-      app.toast('That didn’t work', err instanceof Error ? err.message : String(err))
+      const text = err instanceof Error ? err.message : String(err)
+      if (err instanceof ApiError && err.status === 409) {
+        // Someone else changed it: say so, and show their version.
+        if (editing) setEditError(text)
+        else app.toast('Not saved', text)
+        await load.reload()
+        if (editing) setRebaseId(editing)
+      } else {
+        app.toast('That didn’t work', text)
+      }
       return false
     } finally {
       setBusy(false)
     }
   }
 
-  const sorted = useMemo(
-    () =>
-      [...rows].sort((a, b) =>
-        sort === 'name' ? a.name.localeCompare(b.name) : b[sort] - a[sort] || a.name.localeCompare(b.name),
-      ),
-    [rows, sort],
-  )
+  const cancelEdit = () => {
+    setEditingId(null)
+    setEditError(null)
+  }
 
-  const best = Math.max(0, ...rows.map((r) => r.units_sold))
-  const slow = rows.filter((r) => r.is_available && r.units_sold <= best * SLOW_FRACTION)
-  const revenue = rows.reduce((s, r) => s + r.revenue, 0)
-  const profit = rows.reduce((s, r) => s + r.profit, 0)
-  const costed = rows.filter((r) => r.cost_source === 'recipe').length
-  const proposals = app.pendingActions.filter((a) => a.action_type === 'menu_change').length
+  const board = (rows: MenuPerformance[]) => {
+    const sorted = [...rows].sort((a, b) =>
+      sort === 'name' ? a.name.localeCompare(b.name) : b[sort] - a[sort] || a.name.localeCompare(b.name),
+    )
 
-  return (
-    <main className="page">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Menu</h1>
-          <p className="page-subtitle">What each dish sells and earns, and what it costs to make.</p>
-        </div>
-        {app.canManage && (
-          <button className="btn btn-primary" onClick={() => setAdding((v) => !v)}>
-            <Icon name={adding ? 'close' : 'plus'} size={16} /> {adding ? 'Cancel' : 'Add dish'}
-          </button>
-        )}
-      </div>
+    const best = Math.max(0, ...rows.map((r) => r.units_sold))
+    const slow = rows.filter((r) => r.is_available && r.units_sold <= best * SLOW_FRACTION)
+    const revenue = rows.reduce((s, r) => s + r.revenue, 0)
+    const profit = rows.reduce((s, r) => s + r.profit, 0)
+    const costed = rows.filter((r) => r.cost_source === 'recipe').length
+    const proposals = app.pendingActions.filter((a) => a.action_type === 'menu_change').length
 
+    return (
       <div className="stack">
         {(slow.length > 0 || proposals > 0) && (
           <div className="stack" style={{ gap: 10 }}>
@@ -183,150 +192,195 @@ export function MenuPage({ app }: { app: AppContext }) {
             </div>
           )}
 
-          <div className="table-wrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Dish</th>
-                  <th className="num">Price</th>
-                  <th className="num">Cost</th>
-                  <th className="num">Sold</th>
-                  <th className="num">Revenue</th>
-                  <th style={{ width: '14%' }}>Margin</th>
-                  <th className="actions" aria-label="Actions" />
-                </tr>
-              </thead>
-              <tbody>
-                {sorted.length === 0 && (
+          {editError && (
+            <div className="callout callout-warning" role="alert">
+              <Icon name="alert" />
+              <div className="callout-grow">
+                <div className="callout-title">Not saved</div>
+                <div className="callout-body">{editError} The latest price is shown below; change it again if you still need to.</div>
+              </div>
+            </div>
+          )}
+
+          {rows.length === 0 ? (
+            <Empty
+              title="No dishes yet"
+              action={
+                app.canManage &&
+                !adding && (
+                  <button className="btn btn-secondary" onClick={() => setAdding(true)}>
+                    Add your first dish
+                  </button>
+                )
+              }
+            >
+              {app.canManage
+                ? 'Add what you sell, then give each dish a recipe to see what it really costs.'
+                : 'An owner or admin can add the menu.'}
+            </Empty>
+          ) : (
+            <div className="table-wrap">
+              <table className="table table-cards">
+                <thead>
                   <tr>
-                    <td colSpan={7} className="empty">No dishes yet.</td>
+                    <th>Dish</th>
+                    <th className="num">Price</th>
+                    <th className="num">Cost</th>
+                    <th className="num">Sold</th>
+                    <th className="num">Revenue</th>
+                    <th style={{ width: '14%' }}>Margin</th>
+                    <th className="actions" aria-label="Actions" />
                   </tr>
-                )}
-                {sorted.map((row) => {
-                  const onPromo = row.regular_price !== null
-                  return (
-                    <Fragment key={row.id}>
-                      <tr style={row.is_available ? undefined : { opacity: 0.6 }}>
-                        <td>
-                          <div className="row wrap">
-                            <span className="cell-title">{row.name}</span>
-                            {!row.is_available && <span className="badge">Off menu</span>}
-                            {onPromo && (
-                              <span className="badge badge-brand" title={row.promo_ends_at ? `Ends ${dateTime(row.promo_ends_at)}` : 'No end date'}>
-                                Promo{row.promo_ends_at ? ` · ends ${dateTime(row.promo_ends_at)}` : ''}
-                              </span>
-                            )}
-                          </div>
-                          <div className="cell-sub clamp-2" title={row.description ?? undefined}>
-                            {row.category}
-                            {row.description ? ` · ${row.description}` : ''}
-                          </div>
-                        </td>
-                        <td className="num">
-                          {editingId === row.id ? (
-                            <input
-                              className="input input-sm"
-                              style={{ width: 80, textAlign: 'right' }}
-                              aria-label={`Price for ${row.name}`}
-                              autoFocus
-                              inputMode="decimal"
-                              value={editDraft.price}
-                              onChange={(e) => setEditDraft({ ...editDraft, price: e.target.value })}
-                            />
-                          ) : (
-                            <>
-                              <span className="strong">{money(row.price, true)}</span>
-                              {onPromo && <div className="cell-sub" style={{ textDecoration: 'line-through' }}>{money(row.regular_price!, true)}</div>}
-                            </>
-                          )}
-                        </td>
-                        <td className="num">
-                          {money(row.cost, true)}
-                          <div className="cell-sub">{row.cost_source === 'recipe' ? 'from recipe' : 'estimated'}</div>
-                        </td>
-                        <td className="num">{row.units_sold}</td>
-                        <td className="num">
-                          {money(row.revenue)}
-                          <div className="cell-sub">{money(row.profit)} profit</div>
-                        </td>
-                        <td>
-                          <div className="row">
-                            <div className="meter" style={{ flex: 1 }}>
-                              <div className="meter-fill chart" style={{ width: `${Math.max(0, Math.min(100, row.margin_pct))}%` }} />
-                            </div>
-                            <span className="tabular small" style={{ width: 44, textAlign: 'right' }}>
-                              {pct(row.margin_pct, 0)}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="actions">
-                          {!app.canManage ? null : editingId === row.id ? (
-                            <div className="row" style={{ justifyContent: 'flex-end' }}>
-                              <button className="btn btn-ghost btn-sm" onClick={() => setEditingId(null)}>
-                                Cancel
-                              </button>
-                              <button
-                                className="btn btn-primary btn-sm"
-                                disabled={busy || !(Number(editDraft.price) >= 0)}
-                                onClick={async () => (await run(() => updateMenuItem(row.id, { price: Number(editDraft.price) }, editBasePrice === null ? undefined : { price: editBasePrice }), 'Price updated')) && setEditingId(null)}
-                              >
-                                Save
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="row" style={{ justifyContent: 'flex-end' }}>
-                              <button
-                                className="btn btn-ghost btn-sm"
-                                onClick={() => {
-                                  setEditingId(row.id)
-                                  setEditBasePrice(row.price)
-                                  setEditDraft({ price: String(row.price), description: row.description ?? '' })
-                                }}
-                              >
-                                Price
-                              </button>
-                              <button className="btn btn-ghost btn-sm" aria-expanded={recipeFor === row.id} onClick={() => setRecipeFor(recipeFor === row.id ? null : row.id)}>
-                                Recipe
-                              </button>
-                              <button
-                                className="btn btn-ghost btn-sm"
-                                disabled={busy}
-                                onClick={() => run(() => updateMenuItem(row.id, { is_available: !row.is_available }), row.is_available ? `${row.name} taken off the menu` : `${row.name} is back on`)}
-                              >
-                                {row.is_available ? 'Take off' : 'Put back'}
-                              </button>
-                              {row.units_sold === 0 && (
-                                <button
-                                  className="btn btn-ghost btn-sm negative"
-                                  disabled={busy}
-                                  onClick={() => window.confirm(`Delete ${row.name}? It has never sold.`) && run(() => deleteMenuItem(row.id), `${row.name} deleted`)}
-                                >
-                                  Delete
-                                </button>
+                </thead>
+                <tbody>
+                  {sorted.map((row) => {
+                    const onPromo = row.regular_price !== null
+                    return (
+                      <Fragment key={row.id}>
+                        <tr style={row.is_available ? undefined : { opacity: 0.6 }}>
+                          <td data-label="Dish">
+                            <div className="row wrap">
+                              <span className="cell-title">{row.name}</span>
+                              {!row.is_available && <span className="badge">Off menu</span>}
+                              {onPromo && (
+                                <span className="badge badge-brand" title={row.promo_ends_at ? `Ends ${dateTime(row.promo_ends_at)}` : 'No end date'}>
+                                  Promo{row.promo_ends_at ? ` · ends ${dateTime(row.promo_ends_at)}` : ''}
+                                </span>
                               )}
                             </div>
-                          )}
-                        </td>
-                      </tr>
-                      {recipeFor === row.id && (
-                        <tr>
-                          <td colSpan={7} style={{ background: 'var(--surface-muted)' }}>
-                            <RecipeEditor menuItemId={row.id} ingredients={app.inventory} toast={app.toast} onSaved={load} onClose={() => setRecipeFor(null)} />
+                            <div className="cell-sub clamp-2" title={row.description ?? undefined}>
+                              {row.category}
+                              {row.description ? ` · ${row.description}` : ''}
+                            </div>
+                          </td>
+                          <td className="num" data-label="Price">
+                            {editingId === row.id ? (
+                              <input
+                                className="input input-sm"
+                                style={{ width: 80, textAlign: 'right' }}
+                                aria-label={`Price for ${row.name}`}
+                                autoFocus
+                                inputMode="decimal"
+                                value={editDraft.price}
+                                onChange={(e) => setEditDraft({ ...editDraft, price: e.target.value })}
+                              />
+                            ) : (
+                              <>
+                                <span className="strong">{money(row.price, true)}</span>
+                                {onPromo && <div className="cell-sub" style={{ textDecoration: 'line-through' }}>{money(row.regular_price!, true)}</div>}
+                              </>
+                            )}
+                          </td>
+                          <td className="num" data-label="Cost">
+                            {money(row.cost, true)}
+                            <div className="cell-sub">{row.cost_source === 'recipe' ? 'from recipe' : 'estimated'}</div>
+                          </td>
+                          <td className="num" data-label="Sold">{row.units_sold}</td>
+                          <td className="num" data-label="Revenue">
+                            {money(row.revenue)}
+                            <div className="cell-sub">{money(row.profit)} profit</div>
+                          </td>
+                          <td data-label="Margin">
+                            <div className="row">
+                              <div className="meter" style={{ flex: 1 }}>
+                                <div className="meter-fill chart" style={{ width: `${Math.max(0, Math.min(100, row.margin_pct))}%` }} />
+                              </div>
+                              <span className="tabular small" style={{ width: 44, textAlign: 'right' }}>
+                                {pct(row.margin_pct, 0)}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="actions" data-label="Actions">
+                            {!app.canManage ? null : editingId === row.id ? (
+                              <div className="row" style={{ justifyContent: 'flex-end' }}>
+                                <button className="btn btn-ghost btn-sm" disabled={busy} onClick={cancelEdit}>
+                                  Cancel
+                                </button>
+                                <button
+                                  className="btn btn-primary btn-sm"
+                                  disabled={busy || !(Number(editDraft.price) >= 0)}
+                                  onClick={async () => (await run(() => updateMenuItem(row.id, { price: Number(editDraft.price) }, editBasePrice === null ? undefined : { price: editBasePrice }), `${row.name} price updated`, row.id)) && setEditingId(null)}
+                                >
+                                  Save
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="row" style={{ justifyContent: 'flex-end' }}>
+                                <button
+                                  className="btn btn-ghost btn-sm"
+                                  onClick={() => {
+                                    setEditingId(row.id)
+                                    setEditError(null)
+                                    setEditBasePrice(row.price)
+                                    setEditDraft({ price: String(row.price), description: row.description ?? '' })
+                                  }}
+                                >
+                                  Price
+                                </button>
+                                <button className="btn btn-ghost btn-sm" aria-expanded={recipeFor === row.id} onClick={() => setRecipeFor(recipeFor === row.id ? null : row.id)}>
+                                  Recipe
+                                </button>
+                                <button
+                                  className="btn btn-ghost btn-sm"
+                                  disabled={busy}
+                                  onClick={() => run(() => updateMenuItem(row.id, { is_available: !row.is_available }), row.is_available ? `${row.name} taken off the menu` : `${row.name} is back on`)}
+                                >
+                                  {row.is_available ? 'Take off' : 'Put back'}
+                                </button>
+                                {row.units_sold === 0 && (
+                                  <button
+                                    className="btn btn-ghost btn-sm negative"
+                                    disabled={busy}
+                                    onClick={() => window.confirm(`Delete ${row.name}? It has never sold.`) && run(() => deleteMenuItem(row.id), `${row.name} deleted`)}
+                                  >
+                                    Delete
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </td>
                         </tr>
-                      )}
-                    </Fragment>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+                        {recipeFor === row.id && (
+                          <tr>
+                            <td colSpan={7} style={{ background: 'var(--surface-muted)' }}>
+                              <RecipeEditor menuItemId={row.id} ingredients={app.inventory} toast={app.toast} onSaved={() => void load.reload()} onClose={() => setRecipeFor(null)} />
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
           <div className="card-footer">
             Dishes with a recipe are costed from their ingredients and draw them from stock when sold. Dishes that have sold
             can’t be deleted — take them off the menu instead, so their sales history stays intact.
           </div>
         </section>
       </div>
+    )
+  }
+
+  return (
+    <main className="page">
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Menu</h1>
+          <p className="page-subtitle">What each dish sells and earns, and what it costs to make.</p>
+        </div>
+        <Freshness loads={[load]} />
+        {app.canManage && (
+          <button className="btn btn-primary" onClick={() => setAdding((v) => !v)}>
+            <Icon name={adding ? 'close' : 'plus'} size={16} /> {adding ? 'Cancel' : 'Add dish'}
+          </button>
+        )}
+      </div>
+
+      <Loaded load={load} what="the menu" placeholderHeight={320}>
+        {board}
+      </Loaded>
     </main>
   )
 }

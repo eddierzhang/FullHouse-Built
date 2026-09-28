@@ -3,6 +3,7 @@ import type { AgentAction } from '../api/client'
 import type { AppContext } from '../app/context'
 import { relativeTime } from '../lib/format'
 import { Icon } from './Icon'
+import { Empty } from './PageState'
 import { actionDetail, actionMeta, actionTitle, isPromotion } from './actions'
 
 type Props = {
@@ -10,6 +11,8 @@ type Props = {
   actions: AgentAction[]
   /** Compact rows for the overview; the approvals page shows everything. */
   compact?: boolean
+  /** Called after an approval or rejection goes through, so the page can reload. */
+  onChanged?: () => void
 }
 
 type Draft = { price: string; endsAt: string }
@@ -21,16 +24,11 @@ type Draft = { price: string; endsAt: string }
  * in words but never priced -- before Approve is enabled, instead of letting
  * the approval fail afterwards.
  */
-export function ActionList({ app, actions, compact = false }: Props) {
+export function ActionList({ app, actions, compact = false, onChanged }: Props) {
   const [drafts, setDrafts] = useState<Record<string, Draft>>({})
 
   if (actions.length === 0) {
-    return (
-      <div className="empty">
-        <div className="empty-title">Nothing to review</div>
-        <div className="small">New proposals from your agents appear here.</div>
-      </div>
-    )
+    return <Empty title="Nothing to review">New recommendations from the Assistant Manager appear here.</Empty>
   }
 
   return (
@@ -112,7 +110,13 @@ export function ActionList({ app, actions, compact = false }: Props) {
               )}
               {app.canManage && (
                 <>
-                  <button className="btn btn-danger btn-sm" disabled={busy} onClick={() => app.reject(action)}>
+                  <button
+                    className="btn btn-danger btn-sm"
+                    disabled={busy}
+                    onClick={async () => {
+                      if (await app.reject(action)) onChanged?.()
+                    }}
+                  >
                     Reject
                   </button>
                   <button
@@ -126,6 +130,7 @@ export function ActionList({ app, actions, compact = false }: Props) {
                           delete next[action.id]
                           return next
                         })
+                        onChanged?.()
                       }
                     }}
                   >

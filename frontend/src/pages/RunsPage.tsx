@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { type AgentRun, type RunEvent, cancelRun, getRun, listRuns, runStreamUrl } from '../api/client'
 import type { AppContext } from '../app/context'
 import { Icon } from '../components/Icon'
+import { Empty, Freshness, LoadError, Loaded } from '../components/PageState'
 import { RunStatusBadge } from '../components/RunStatusBadge'
 import { duration, relativeTime } from '../lib/format'
+import { useLoad } from '../lib/useLoad'
 
 const TERMINAL = '__end__'
-const isLive = (run: AgentRun | null) => !!run && (run.status === 'queued' || run.status === 'running')
+const isLive = (run: AgentRun | null | undefined) => !!run && (run.status === 'queued' || run.status === 'running')
 
 function describe(event: RunEvent): string {
   const p = event.payload ?? {}
@@ -25,23 +27,27 @@ function describe(event: RunEvent): string {
 }
 
 export function RunsPage({ app }: { app: AppContext }) {
-  const [runs, setRuns] = useState<AgentRun[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(app.focusRunId)
-  const [selected, setSelected] = useState<AgentRun | null>(null)
   const [events, setEvents] = useState<RunEvent[]>([])
   const [streaming, setStreaming] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
 
-  const refreshRuns = useCallback(() => {
-    listRuns()
-      .then((all) => {
-        setRuns(all)
-        setSelectedId((current) => current ?? all.find((r) => !r.parent_run_id)?.id ?? null)
-      })
-      .catch(() => {})
-  }, [])
+  const runsLoad = useLoad(() => listRuns(), [])
+  const detailLoad = useLoad(() => (selectedId ? getRun(selectedId) : Promise.resolve(undefined)), [selectedId])
+  const runs = runsLoad.data ?? []
+  // A load keeps its last data while the next one is fetched; don't show one
+  // run's details under another's log.
+  const selected = detailLoad.data?.id === selectedId ? detailLoad.data : null
 
-  useEffect(refreshRuns, [refreshRuns])
+  // The stream below outlives renders, so it reaches the latest reloads through a ref.
+  const reloads = useRef({ runs: runsLoad.reload, detail: detailLoad.reload })
+  reloads.current = { runs: runsLoad.reload, detail: detailLoad.reload }
+
+  useEffect(() => {
+    const all = runsLoad.data
+    if (all) setSelectedId((current) => current ?? all.find((r) => !r.parent_run_id)?.id ?? null)
+  }, [runsLoad.data])
   useEffect(() => {
     if (app.focusRunId) setSelectedId(app.focusRunId)
   }, [app.focusRunId])
@@ -52,7 +58,6 @@ export function RunsPage({ app }: { app: AppContext }) {
     if (!selectedId) return
     setEvents([])
     setStreaming(true)
-    getRun(selectedId).then(setSelected).catch(() => {})
 
     const source = new EventSource(runStreamUrl(selectedId), { withCredentials: true })
     source.onmessage = (message) => {
@@ -60,15 +65,15 @@ export function RunsPage({ app }: { app: AppContext }) {
       if (event.type === TERMINAL) {
         setStreaming(false)
         source.close()
-        getRun(selectedId).then(setSelected).catch(() => {})
-        refreshRuns()
+        void reloads.current.detail()
+        void reloads.current.runs()
         app.refresh()
         return
       }
       setEvents((previous) => [...previous, event])
       if (event.type === 'status_change') {
-        getRun(selectedId).then(setSelected).catch(() => {})
-        refreshRuns()
+        void reloads.current.detail()
+        void reloads.current.runs()
       }
     }
     source.onerror = () => {
@@ -81,7 +86,7 @@ export function RunsPage({ app }: { app: AppContext }) {
     }
     // Deliberately keyed on the run alone: re-subscribing whenever the parent
     // re-renders would restart the stream and replay every event.
-  }, [selectedId, refreshRuns])
+  }, [selectedId])
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight })
@@ -120,11 +125,13 @@ export function RunsPage({ app }: { app: AppContext }) {
     <main className="page">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Runs</h1>
+          <h1 className="page-title">Agent activity</h1>
           <p className="page-subtitle">
-            {runs.length} runs{active ? ` · ${active} in progress` : ''}. Select one to watch it live.
+            {runsLoad.data ? `${runs.length} runs${active ? ` · ${active} in progress` : ''}. ` : 'Everything the Assistant Manager has worked on. '}
+            Select one to watch it live.
           </p>
         </div>
+        <Freshness loads={[runsLoad]} />
         {app.canManage && (
           <button className="btn btn-secondary" onClick={() => app.newTask()}>
             <Icon name="play" size={14} /> Start a run
@@ -138,13 +145,24 @@ export function RunsPage({ app }: { app: AppContext }) {
             <h2 className="card-title">History</h2>
           </div>
           <div style={{ maxHeight: 620, overflowY: 'auto' }}>
-            {roots.length === 0 && <div className="empty">No runs yet.</div>}
-            {roots.map((run) => (
-              <div key={run.id}>
-                {row(run)}
-                {childrenOf(run.id).map((child) => row(child, true))}
-              </div>
-            ))}
+            <Loaded load={runsLoad} what="agent activity" placeholderHeight={240}>
+              {() =>
+                roots.length === 0 ? (
+                  <Empty title="No agent activity yet">
+                    {app.canManage
+                      ? 'Give the Assistant Manager a task with “Start a run”. Scheduled runs show up here too.'
+                      : 'When the Assistant Manager works on something, it shows up here.'}
+                  </Empty>
+                ) : (
+                  roots.map((run) => (
+                    <div key={run.id}>
+                      {row(run)}
+                      {childrenOf(run.id).map((child) => row(child, true))}
+                    </div>
+                  ))
+                )
+              }
+            </Loaded>
           </div>
         </section>
 
@@ -159,17 +177,25 @@ export function RunsPage({ app }: { app: AppContext }) {
                   </span>
                 )}
               </h2>
-              <div className="card-subtitle truncate">{selected ? `${agentName(selected)} · ${selected.status}` : 'No run selected'}</div>
+              <div className="card-subtitle truncate">
+                {selected ? `${agentName(selected)} · ${selected.status}` : selectedId ? 'Loading…' : 'No run selected'}
+              </div>
             </div>
             {isLive(selected) && app.canManage && (
               <button
                 className="btn btn-danger btn-sm"
+                disabled={cancelling}
                 onClick={async () => {
+                  setCancelling(true)
                   try {
                     await cancelRun(selected!.id)
                     app.toast('Cancelling', 'The run stops at its next checkpoint.')
+                    void detailLoad.reload()
+                    void runsLoad.reload()
                   } catch (err) {
                     app.toast('Couldn’t cancel', err instanceof Error ? err.message : String(err))
+                  } finally {
+                    setCancelling(false)
                   }
                 }}
               >
@@ -177,6 +203,10 @@ export function RunsPage({ app }: { app: AppContext }) {
               </button>
             )}
           </div>
+
+          {selectedId && detailLoad.error && (
+            <LoadError what="this run’s details" error={detailLoad.error} onRetry={detailLoad.reload} />
+          )}
 
           <div className="run-log" ref={logRef} data-testid="run-log">
             {!selectedId && <div className="empty">Select a run.</div>}

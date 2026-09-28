@@ -18,6 +18,8 @@ class ChangeOut(BaseModel):
     agent_run_id: str | None
     agent_action_id: str | None
     note: str | None
+    #: What the change was to, in words ("Tomatoes"); see app/audit/labels.py.
+    entity_label: str | None = None
 
 
 class ChangePage(BaseModel):
@@ -45,3 +47,11 @@ class RevertOut(BaseModel):
     operation: str
     description: str
     resulting_change_ids: list[int]
+
+
+class ChangeVersion(BaseModel):
+    """The newest change this person can see. Polled cheaply: when it moves,
+    something changed and open pages refresh."""
+
+    version: int
+    latest_at: datetime | None

@@ -21,7 +21,7 @@ test('staff see the restaurant but not the controls that are for owners and admi
 
   // The seeded proposals are visible, but deciding them is for managers.
   await page.goto('/#approvals')
-  await expect(page.getByRole('heading', { level: 1, name: 'Approvals' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Recommendations' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Details' }).first()).toBeVisible()
   await expect(page.getByRole('button', { name: 'Approve' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Reject' })).toHaveCount(0)

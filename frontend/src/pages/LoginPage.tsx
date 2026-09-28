@@ -7,11 +7,13 @@ type Mode = 'sign-in' | 'sign-up'
 type Props = {
   /** The session check itself failed: the API is down, not the password wrong. */
   unreachable: boolean
+  /** Signed out by the session ending, not by choice. */
+  expired?: boolean
   onRetry: () => void
   onSignedIn: (user: User) => void
 }
 
-export function LoginPage({ unreachable, onRetry, onSignedIn }: Props) {
+export function LoginPage({ unreachable, expired = false, onRetry, onSignedIn }: Props) {
   const [mode, setMode] = useState<Mode>('sign-in')
   const [options, setOptions] = useState<AuthOptions | null>(null)
   const [name, setName] = useState('')
@@ -141,13 +143,25 @@ export function LoginPage({ unreachable, onRetry, onSignedIn }: Props) {
           {signingUp ? 'Start running your restaurant with FullHouse.' : 'Welcome back. Sign in to your dashboard.'}
         </p>
 
+        {expired && !unreachable && (
+          <div className="callout callout-warning auth-callout" role="status">
+            <Icon name="clock" />
+            <div>
+              <div className="callout-title">You’ve been signed out</div>
+              <div className="callout-body">
+                Your session ended. Sign in again to carry on. Everything you’d already saved is kept.
+              </div>
+            </div>
+          </div>
+        )}
+
         {unreachable && (
           <div className="callout callout-danger auth-callout">
             <Icon name="alert" />
             <div>
-              <div className="callout-title">Can’t reach the backend</div>
+              <div className="callout-title">Can’t reach FullHouse</div>
               <div className="callout-body">
-                Check the API server is running, then{' '}
+                Check your internet connection, then{' '}
                 <button type="button" className="link-button" onClick={onRetry}>
                   try again
                 </button>

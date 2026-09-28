@@ -17,7 +17,8 @@ import { SetupPage } from './pages/SetupPage'
 type AuthState =
   | { status: 'checking' }
   | { status: 'error' }
-  | { status: 'signed-out' }
+  /** `expired`: the session ended by itself -- say so, rather than just showing the login page. */
+  | { status: 'signed-out'; expired?: boolean }
   | { status: 'signed-in'; user: User; restaurant: Restaurant | null }
 
 /**
@@ -64,7 +65,8 @@ export default function App() {
   useEffect(check, [check])
 
   useEffect(() => {
-    const onSignedOut = () => setAuth({ status: 'signed-out' })
+    // A data request found the session gone: it expired, or access was turned off.
+    const onSignedOut = () => setAuth((a) => ({ status: 'signed-out', expired: a.status === 'signed-in' }))
     window.addEventListener(SIGNED_OUT_EVENT, onSignedOut)
     return () => window.removeEventListener(SIGNED_OUT_EVENT, onSignedOut)
   }, [])
@@ -153,7 +155,12 @@ export default function App() {
       return <AppShell user={auth.user} restaurant={auth.restaurant} setRestaurant={setRestaurant} onSignOut={signOut} />
     default:
       return (
-        <LoginPage unreachable={auth.status === 'error'} onRetry={check} onSignedIn={(user) => void enter(user)} />
+        <LoginPage
+          unreachable={auth.status === 'error'}
+          expired={auth.status === 'signed-out' && Boolean(auth.expired)}
+          onRetry={check}
+          onSignedIn={(user) => void enter(user)}
+        />
       )
   }
 }

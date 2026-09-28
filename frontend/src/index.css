@@ -169,7 +169,7 @@ a:hover {
 .nav-label {
   padding: 8px 10px 4px;
   color: var(--text-faint);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -212,7 +212,7 @@ a:hover {
   background: var(--surface-muted);
   border: 1px solid var(--border);
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 18px;
   text-align: center;
@@ -621,7 +621,7 @@ a:hover {
   background: var(--surface-muted);
   border-bottom: 1px solid var(--border);
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-align: left;
@@ -966,12 +966,12 @@ code {
 
 .chart-axis {
   fill: var(--text-faint);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .chart-label {
   fill: var(--text);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -1202,7 +1202,7 @@ code {
 
 .run-log-type {
   color: var(--text-faint);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
 }
@@ -1383,7 +1383,7 @@ code {
 
 .auth-demo-creds code {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .auth-form {
@@ -1478,7 +1478,7 @@ code {
 
 .brand-sub {
   color: var(--text-faint);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0;
 }
@@ -1720,7 +1720,7 @@ code {
   border-radius: 50%;
   background: var(--surface-muted);
   border: 1px solid var(--border-strong);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -1993,4 +1993,276 @@ a.sidebar-user:hover {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface-muted);
+}
+
+/* ---------- everyday use: page states, live refresh, phones -------------------- */
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.callout-grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.callout > .btn {
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.stale-note {
+  margin-bottom: 12px;
+}
+
+.empty-action {
+  margin-top: 12px;
+}
+
+.freshness {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.connection-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 24px;
+  border-bottom: 1px solid #f5cdbc;
+  background: var(--danger-soft);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.connection-banner .icon {
+  flex-shrink: 0;
+  color: var(--danger);
+}
+
+.connection-banner span {
+  flex: 1;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.filters .field {
+  min-width: 180px;
+}
+
+.change-row {
+  align-items: flex-start;
+}
+
+.change-details {
+  margin: 4px 0;
+  padding-left: 18px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.change-conflict {
+  margin-top: 8px;
+}
+
+/* The phone's bottom bar: hidden on wider screens, where the sidebar shows. */
+.tabbar {
+  display: none;
+}
+
+@media (max-width: 860px) {
+  .tabbar {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 24;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    padding-bottom: env(safe-area-inset-bottom);
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    box-shadow: 0 -2px 8px rgba(16, 24, 40, 0.06);
+  }
+
+  .tab {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    min-height: 56px;
+    padding: 6px 2px;
+    border: 0;
+    background: none;
+    color: var(--text-muted);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  .tab:hover {
+    text-decoration: none;
+  }
+
+  .tab[aria-current='page'] {
+    color: var(--brand);
+  }
+
+  .tab-icon {
+    position: relative;
+    display: inline-flex;
+  }
+
+  .tab-count {
+    position: absolute;
+    top: -6px;
+    right: -12px;
+    min-width: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--text-muted);
+    color: #fff;
+    font-size: 12px;
+    line-height: 18px;
+    text-align: center;
+  }
+
+  .tab-count.attention {
+    background: var(--danger);
+  }
+
+  /* Room for the bar, so it never covers the end of a page. */
+  .page {
+    padding-bottom: calc(88px + env(safe-area-inset-bottom));
+  }
+
+  .connection-banner {
+    padding: 10px 16px;
+  }
+
+  /* Fingers, not cursors: every control at least 44px tall. */
+  .btn,
+  .btn-sm,
+  .input,
+  .select,
+  .input-sm {
+    min-height: 44px;
+  }
+
+  .btn-icon,
+  .btn-sm.btn-icon {
+    min-width: 44px;
+  }
+
+  .segmented button {
+    min-height: 44px;
+    padding: 0 14px;
+  }
+
+  /* 16px inputs: smaller makes iPhones zoom the page on focus. */
+  .input,
+  .select,
+  .textarea {
+    font-size: 16px;
+  }
+
+  .page-header {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+}
+
+/* Tables become one card per row on phones: each cell labelled, nothing to scroll sideways. */
+@media (max-width: 640px) {
+  .table-wrap {
+    overflow: visible;
+  }
+
+  table.table-cards,
+  table.table-cards tbody,
+  table.table-cards tr,
+  table.table-cards td {
+    display: block;
+    width: 100%;
+  }
+
+  table.table-cards thead {
+    display: none;
+  }
+
+  table.table-cards tr {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  table.table-cards td {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    padding: 4px 0;
+    border: 0;
+    text-align: right;
+  }
+
+  table.table-cards td::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    /* The label on the left; the value's parts ("3", "bunch") together on the right. */
+    margin-right: auto;
+    padding-right: 12px;
+    color: var(--text-muted);
+    font-size: 13px;
+    font-weight: 500;
+    text-align: left;
+  }
+
+  /* The first cell names the row: full width, no label. */
+  table.table-cards td:first-child {
+    display: block;
+    padding-bottom: 6px;
+    font-weight: 600;
+    text-align: left;
+  }
+
+  table.table-cards td:first-child::before,
+  table.table-cards td[colspan]::before,
+  table.table-cards td.actions::before {
+    content: none;
+  }
+
+  table.table-cards td.actions {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    padding-top: 8px;
+  }
+
+  table.table-cards td[colspan] {
+    display: block;
+    text-align: center;
+  }
+
+  .filters .field {
+    flex: 1 1 100%;
+  }
+
+  .freshness {
+    width: 100%;
+  }
 }
