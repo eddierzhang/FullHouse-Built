@@ -85,6 +85,32 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Restaurant Ops API", lifespan=lifespan)
 
 app.add_middleware(AuditActorMiddleware)
+
+#: Sent on every response. The policy allows only this site's own scripts,
+#: plus the Google Fonts stylesheet and font files the page loads; inline
+#: styles (React's style props) and data: images (the two-step QR code).
+SECURITY_HEADERS = {
+    "Content-Security-Policy": (
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; "
+        "frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+    ),
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "same-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+}
+
+
+@app.middleware("http")
+async def security_headers(request, call_next):
+    response = await call_next(request)
+    for name, value in SECURITY_HEADERS.items():
+        response.headers.setdefault(name, value)
+    # Browsers remember to use HTTPS only once they've reached the site over it.
+    if request.url.scheme == "https" or request.headers.get("x-forwarded-proto", "").startswith("https"):
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    return response
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.frontend_origins,

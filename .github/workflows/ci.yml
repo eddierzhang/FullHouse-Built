@@ -58,6 +58,21 @@ jobs:
       # The Postgres migration test only runs here, where a server exists.
       - run: python -m pytest -q
 
+  audit:
+    name: Known vulnerabilities in dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pip-audit && pip-audit -r backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm audit --omit=dev
+        working-directory: frontend
+
   frontend:
     name: Frontend type-check and build
     runs-on: ubuntu-latest

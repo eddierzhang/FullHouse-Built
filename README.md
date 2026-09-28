@@ -232,9 +232,9 @@ dev.py              developer tasks
 
 ## Limitations
 
-- **Everyone signed in can do everything.** Accounts have no roles yet: any signed-in user can approve, edit or
-  revert, and sign-up is open by default. Set `ALLOW_SIGNUP=false` once your team has accounts (see
-  [DEPLOY.md](DEPLOY.md)).
+- **One restaurant per site in practice.** Data is separated by restaurant throughout, but signing up still
+  creates the site's one restaurant; there is no self-serve way to add a second. See [DEPLOY.md](DEPLOY.md) for
+  running one site per restaurant, and its Security section for roles, invites and two-step sign-in.
 - **Single process.** The event broker and scheduler live in the API process, so it can't be scaled horizontally without
   moving them to something like Redis.
 - **Gross, not net.** Profit excludes labour and overheads.

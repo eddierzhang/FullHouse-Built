@@ -1,0 +1,88 @@
+name: Nightly backup
+
+# Dumps the live database, proves the dump restores, and keeps it -- encrypted --
+# as a workflow artifact for 30 days. Off until two repository secrets exist
+# (Settings -> Secrets and variables -> Actions):
+#
+#   BACKUP_DATABASE_URL  the Neon connection string (a read-only role is enough)
+#   BACKUP_PASSPHRASE    a long random passphrase; keep a copy somewhere safe,
+#                        because without it the backups can't be opened
+#
+# DEPLOY.md, "Backups", covers restoring one.
+
+on:
+  schedule:
+    - cron: "15 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+      PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+    services:
+      scratch:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: scratch
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Check the secrets are set
+        id: ready
+        run: |
+          if [ -z "$DATABASE_URL" ] || [ -z "$PASSPHRASE" ]; then
+            echo "::notice::Backups are off: set BACKUP_DATABASE_URL and BACKUP_PASSPHRASE to turn them on."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The newest client: pg_dump reads servers of its own version and older.
+      - name: Dump
+        if: steps.ready.outputs.ok == 'true'
+        run: |
+          docker run --rm --network host -e DATABASE_URL postgres:18 \
+            sh -c 'pg_dump --format=custom --no-owner --no-privileges "$DATABASE_URL"' > backup.dump
+          ls -l backup.dump
+
+      - name: Prove it restores
+        if: steps.ready.outputs.ok == 'true'
+        env:
+          SCRATCH: postgresql://postgres:scratch@localhost:5432/postgres
+        run: |
+          docker run --rm --network host -v "$PWD:/work" -e SCRATCH postgres:18 \
+            sh -c 'pg_restore --no-owner --no-privileges --exit-on-error -d "$SCRATCH" /work/backup.dump'
+          docker run --rm --network host -e SCRATCH postgres:18 psql "$SCRATCH" -v ON_ERROR_STOP=1 -At -c "
+            SELECT 'migration ' || version_num FROM alembic_version;
+            SELECT 'restaurants ' || count(*) FROM restaurants;
+            SELECT 'accounts ' || count(*) FROM users;
+            SELECT 'inventory items ' || count(*) FROM inventory_items;
+            SELECT 'orders ' || count(*) FROM orders;
+            DO \$\$ BEGIN
+              IF (SELECT count(*) FROM restaurants) = 0 THEN RAISE EXCEPTION 'restored copy has no restaurant'; END IF;
+            END \$\$;"
+
+      - name: Encrypt
+        if: steps.ready.outputs.ok == 'true'
+        run: |
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$PASSPHRASE" \
+            --symmetric --cipher-algo AES256 --output "fullhouse-$(date -u +%Y-%m-%d).dump.gpg" backup.dump
+          rm backup.dump
+
+      - name: Keep for 30 days
+        if: steps.ready.outputs.ok == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: fullhouse-backup-${{ github.run_id }}
+          path: fullhouse-*.dump.gpg
+          retention-days: 30
+          if-no-files-found: error

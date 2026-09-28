@@ -109,3 +109,13 @@ def test_staff_can_still_read_what_they_work_with(client, db):
         assert member.get(f"/api/v1/restaurant{path}").status_code == 200, path
     for path in ("/agents/definitions", "/agents/runs", "/agents/actions", "/changes"):
         assert member.get(f"/api/v1{path}").status_code == 200, path
+
+
+def test_every_response_carries_the_security_headers(anon_client):
+    plain = anon_client.get("/health")
+    assert plain.headers["x-frame-options"] == "DENY"
+    assert plain.headers["x-content-type-options"] == "nosniff"
+    assert "frame-ancestors 'none'" in plain.headers["content-security-policy"]
+    assert "strict-transport-security" not in plain.headers  # only once reached over HTTPS
+    behind_render = anon_client.get("/health", headers={"x-forwarded-proto": "https"})
+    assert behind_render.headers["strict-transport-security"].startswith("max-age=")

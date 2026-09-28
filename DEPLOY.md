@@ -63,11 +63,13 @@ database, so restaurants never see each other's data. The agents run on Google G
 2. **Model key.** At [aistudio.google.com/apikey](https://aistudio.google.com/apikey), **Create API key**.
 3. **App.** At [render.com](https://render.com): **New → Blueprint**, pick this repository, and set **Blueprint
    Path** to `render.customer.yaml`. Rename the service (e.g. `fullhouse-joes`). Paste the Neon string into
-   `DATABASE_URL` and the key into `LLM_API_KEY`. Apply. The first build takes a few minutes.
-4. **Hand-over.** Open the service URL and have the restaurant owner **sign up before anyone else**. Every account
-   created before setup is finished is an owner. The owner then goes through setup and invites the team.
-5. **Close signups.** Once the team is in, set `ALLOW_SIGNUP=false` in the service's **Environment** tab. Saving
-   it redeploys the service.
+   `DATABASE_URL` and the key into `LLM_API_KEY`. Apply. Render also generates `SECRET_KEY`, which encrypts
+   two-step sign-in secrets: never change it. The first build takes a few minutes.
+4. **Hand-over.** Open the service URL and have the restaurant owner **sign up straight away**. Until the
+   restaurant is set up, anyone who signs up becomes an owner; after that, nobody can sign up without an invite.
+   The owner sets up two-step sign-in (an authenticator app on their phone), goes through setup, then invites
+   the team from **Profile → Team access**.
+5. **Backups.** See [Backups](#backups) below: two repository secrets turn on a nightly, restore-tested backup.
 
 Repeat for each restaurant. Every push to `main` redeploys all of them, and migrations run automatically.
 
@@ -176,14 +178,9 @@ One free ARM VM runs the entire compose stack, model included.
 
 ### Before you share the link: lock it down
 
-Every page and API route needs a signed-in account, but the login page lets anyone create
-one, and every account can approve proposals, delete staff, change prices and revert history.
-Once your team has signed up, close the door behind them by setting this in `backend/.env`
-(or the host's environment) and restarting:
-
-```
-ALLOW_SIGNUP=false
-```
+Every page and API route needs a signed-in account, and once the restaurant is set up, nobody can
+create one without an invite link (see [Security](#security)). Set a long random `SECRET_KEY` in
+`backend/.env` (or the host's environment) before anyone sets up two-step sign-in, and never change it.
 
 Sign-in cookies are marked secure automatically when the site is served over HTTPS. Serve it
 over HTTPS whenever it's reachable from the internet; on plain HTTP a password crosses the
@@ -230,3 +227,80 @@ of charging you when the credits run out. Keep it to one instance whatever you u
 and ECS both default to settings that will run two copies of the backend, which splits agent
 runs from their live streams and gives you two schedulers. A GPU instance for Ollama
 (`g5.xlarge`, about $1/hour) would exhaust the credits in under a week.
+
+---
+
+## Security
+
+What the app enforces, and what's left to you.
+
+**Accounts and access**
+
+- Everyone has their own account. After setup, new people join only through an invite link an owner or admin
+  creates (Profile → Team access); `ALLOW_SIGNUP=true` would let anyone who finds the site join instead.
+- Roles, checked by the server on every request (agent tools included):
+
+  | | Owner / admin | Member |
+  |---|---|---|
+  | Agent: run, approve, reject, edit | yes | view only |
+  | Menu, recipes, suppliers | edit | view |
+  | Profit figures and forecast | yes | no |
+  | Staff profiles and the schedule | manage | own profile, published shifts |
+  | Inventory | everything | add items, record stock changes |
+  | Undo from the change history | yes | no |
+  | Team, invites, security log | yes (admins manage members only) | no |
+
+- Owners and admins must use **two-step sign-in** (`REQUIRE_MFA`, never in demo mode); members may turn it on.
+- **Turning access off** (Team access) signs someone out everywhere at once. **Reset password** makes a one-time
+  link, valid for an hour, for you to hand them; **Reset two-step** is for a lost phone.
+- Ten failed sign-ins in 15 minutes block that address, and separately that account, for 15 minutes.
+- **Profile → Security log** records sign-ins, failures, lockouts, sign-ins from new devices, refused actions,
+  invites, resets and access changes.
+
+**Data**
+
+- Every record belongs to a restaurant, and the server only ever looks things up inside the signed-in person's
+  own, so another restaurant's ids read as missing. `tests/test_restaurant_separation.py` has a second
+  restaurant try every route against the first's ids.
+- The change history records who (or which agent run) changed what, before and after, when, and for which restaurant.
+- Passwords are hashed with scrypt; session, invite and reset tokens are stored as hashes; two-step secrets are
+  encrypted with `SECRET_KEY`.
+- Security headers on every response: a content security policy, no framing, no content sniffing, and HSTS over HTTPS.
+
+**If an owner is locked out**
+
+From a machine with the site's `DATABASE_URL` (and `SECRET_KEY`), in `backend/`:
+
+```bash
+python scripts/reset_link.py owner@example.com https://your-site.onrender.com   # prints a one-hour reset link
+python scripts/reset_mfa.py owner@example.com                                  # clears two-step sign-in
+```
+
+**Left to you**
+
+- **Secrets** live only in Render's Environment tab: never in the repository or the frontend.
+- **The database**: Neon databases are reachable from the internet with the connection string, which is the
+  password. Keep it only in Render and GitHub secrets. A Neon role with fewer rights can run the backups.
+- **Updates**: Dependabot opens weekly update PRs; CI fails if a dependency has a known vulnerability.
+
+## Backups
+
+`.github/workflows/backup.yml` runs every night: it dumps the database, **restores the dump into a scratch
+Postgres and checks the restaurant is there**, then keeps it, encrypted, as a workflow artifact for 30 days.
+Turn it on with two repository secrets (Settings → Secrets and variables → Actions):
+
+- `BACKUP_DATABASE_URL`: the Neon connection string.
+- `BACKUP_PASSPHRASE`: a long random passphrase. Keep a copy somewhere safe: without it, no backup can be opened.
+
+Run it once by hand (Actions → Nightly backup → Run workflow) to check it works.
+
+To restore one: download the artifact from its run, then
+
+```bash
+gpg --decrypt fullhouse-2026-10-01.dump.gpg > backup.dump
+pg_restore --no-owner --no-privileges --clean --if-exists -d "postgresql://...new-or-emptied-database..." backup.dump
+```
+
+Point `DATABASE_URL` at the restored database. Neon also keeps a short point-in-time history of its own
+(Neon console → Branches → Restore); the nightly dump covers anything older.
+
