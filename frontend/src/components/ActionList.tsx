@@ -110,25 +110,29 @@ export function ActionList({ app, actions, compact = false }: Props) {
                   Details
                 </button>
               )}
-              <button className="btn btn-danger btn-sm" disabled={busy} onClick={() => app.reject(action)}>
-                Reject
-              </button>
-              <button
-                className="btn btn-primary btn-sm"
-                disabled={busy || blocked || !priceOk}
-                title={needsPrice && !priceOk ? 'Enter the new price first' : undefined}
-                onClick={async () => {
-                  if (await app.approve(action, Object.keys(overrides).length ? overrides : undefined)) {
-                    setDrafts((current) => {
-                      const next = { ...current }
-                      delete next[action.id]
-                      return next
-                    })
-                  }
-                }}
-              >
-                {busy ? 'Working…' : 'Approve'}
-              </button>
+              {app.canManage && (
+                <>
+                  <button className="btn btn-danger btn-sm" disabled={busy} onClick={() => app.reject(action)}>
+                    Reject
+                  </button>
+                  <button
+                    className="btn btn-primary btn-sm"
+                    disabled={busy || blocked || !priceOk}
+                    title={needsPrice && !priceOk ? 'Enter the new price first' : undefined}
+                    onClick={async () => {
+                      if (await app.approve(action, Object.keys(overrides).length ? overrides : undefined)) {
+                        setDrafts((current) => {
+                          const next = { ...current }
+                          delete next[action.id]
+                          return next
+                        })
+                      }
+                    }}
+                  >
+                    {busy ? 'Working…' : 'Approve'}
+                  </button>
+                </>
+              )}
             </div>
           </li>
         )

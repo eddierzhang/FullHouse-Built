@@ -7,6 +7,7 @@ import {
   type Runtime,
   type User,
   approveAction,
+  canEditRestaurant,
   fetchHealth,
   fetchRuntime,
   listActions,
@@ -37,6 +38,9 @@ import type { AppContext } from './context'
 const POLL_MS = 20_000
 
 type NavItem = { route: Route; label: string; icon: IconName }
+
+/** Pages only owners and admins see: the profit figures are theirs. */
+const MANAGER_ROUTES = new Set<Route>(['profit'])
 
 const NAV: { label: string | null; items: NavItem[] }[] = [
   { label: null, items: [{ route: 'overview', label: 'Overview', icon: 'overview' }] },
@@ -122,6 +126,7 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
     restaurant,
     setRestaurant,
     apiStatus,
+    canManage: canEditRestaurant(user),
     navigate,
     refresh,
     toast,
@@ -182,13 +187,17 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
       case 'staff':
         return <StaffPage app={app} user={user} />
       case 'profit':
-        return <ProfitPage app={app} />
+        return app.canManage ? <ProfitPage app={app} /> : <OverviewPage app={app} />
       case 'profile':
         return <ProfilePage app={app} user={user} />
       default:
         return <OverviewPage app={app} />
     }
   })()
+
+  const nav = NAV.map((group) => ({ ...group, items: group.items.filter((item) => app.canManage || !MANAGER_ROUTES.has(item.route)) })).filter(
+    (group) => group.items.length > 0,
+  )
 
   return (
     <div className="app">
@@ -201,7 +210,7 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
           </span>
         </a>
 
-        {NAV.map((group) => (
+        {nav.map((group) => (
           <nav key={group.label ?? 'home'} className="nav-group" aria-label={group.label ?? 'Home'}>
             {group.label && <div className="nav-label">{group.label}</div>}
             {group.items.map((item) => {
@@ -263,11 +272,16 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
             <div className="demo-banner" role="note">
               <span className="demo-pill">Live demo</span>
               <span className="hide-mobile">
-                Change anything — it all resets{runtime.demo_resets_at ? ` ${relativeTime(runtime.demo_resets_at)}` : ' daily'}. Try{' '}
-                <button className="link-button" onClick={() => app.newTask('maestro')}>
-                  a task for the Assistant Manager
-                </button>
-                .
+                Change anything — it all resets{runtime.demo_resets_at ? ` ${relativeTime(runtime.demo_resets_at)}` : ' daily'}.
+                {app.canManage && (
+                  <>
+                    {' '}Try{' '}
+                    <button className="link-button" onClick={() => app.newTask('maestro')}>
+                      a task for the Assistant Manager
+                    </button>
+                    .
+                  </>
+                )}
               </span>
             </div>
           )}
@@ -278,10 +292,12 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
               {pendingActions.length} to review
             </a>
           )}
-          <button className="btn btn-primary" onClick={() => app.newTask()}>
-            <Icon name="plus" size={16} />
-            New task
-          </button>
+          {app.canManage && (
+            <button className="btn btn-primary" onClick={() => app.newTask()}>
+              <Icon name="plus" size={16} />
+              New task
+            </button>
+          )}
         </header>
 
         {apiStatus === 'error' && (

@@ -13,9 +13,9 @@ export function OverviewPage({ app }: { app: AppContext }) {
   const [runs, setRuns] = useState<AgentRun[]>([])
 
   useEffect(() => {
-    fetchProfitSummary(7).then(setWeek).catch(() => {})
+    if (app.canManage) fetchProfitSummary(7).then(setWeek).catch(() => {})
     listRuns().then(setRuns).catch(() => {})
-  }, [app.pendingActions.length])
+  }, [app.pendingActions.length, app.canManage])
 
   const lowStock = app.inventory.filter((i) => i.quantity_on_hand <= i.reorder_threshold)
   const recentRuns = runs.filter((r) => !r.parent_run_id).slice(0, 5)
@@ -41,16 +41,20 @@ export function OverviewPage({ app }: { app: AppContext }) {
 
       <div className="stack">
         <section className="grid grid-stats" aria-label="Key figures">
-          <div className="card stat">
-            <div className="stat-label">Revenue, last 7 days</div>
-            <div className="stat-value">{week ? money(week.revenue) : '—'}</div>
-            <div className="stat-meta">{week ? `${week.orders} orders` : ' '}</div>
-          </div>
-          <div className="card stat">
-            <div className="stat-label">Gross margin</div>
-            <div className="stat-value">{week ? pct(week.margin_pct) : '—'}</div>
-            <div className="stat-meta">{week ? `${money(week.gross_profit)} gross profit` : ' '}</div>
-          </div>
+          {app.canManage && (
+            <>
+              <div className="card stat">
+                <div className="stat-label">Revenue, last 7 days</div>
+                <div className="stat-value">{week ? money(week.revenue) : '—'}</div>
+                <div className="stat-meta">{week ? `${week.orders} orders` : ' '}</div>
+              </div>
+              <div className="card stat">
+                <div className="stat-label">Gross margin</div>
+                <div className="stat-value">{week ? pct(week.margin_pct) : '—'}</div>
+                <div className="stat-meta">{week ? `${money(week.gross_profit)} gross profit` : ' '}</div>
+              </div>
+            </>
+          )}
           <a className={`card stat${app.pendingActions.length ? ' attention' : ''}`} href="#approvals" style={{ color: 'inherit', textDecoration: 'none' }}>
             <div className="stat-label">Needs review</div>
             <div className="stat-value">{app.pendingActions.length}</div>

@@ -64,7 +64,7 @@ export function ActionDrawer({ app, action, onClose }: { app: AppContext; action
           )}
         </div>
 
-        {action.status === 'pending' && (
+        {action.status === 'pending' && app.canManage && (
           <div className="drawer-footer">
             <button
               className="btn btn-danger"

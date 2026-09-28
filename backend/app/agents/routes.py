@@ -9,6 +9,8 @@ from app.agents import crud, executor, scheduler, schemas
 from app.agents.appliers import ApplyError, apply_action, is_appliable, missing_inputs
 from app.agents.broker import TERMINAL, broker
 from app.audit.context import Actor, actor_context, get_actor
+from app.auth.deps import manager
+from app.auth.models import User
 from app.db.session import get_db
 
 #: How long an idle stream waits before sending a comment to keep the
@@ -56,7 +58,7 @@ def list_definitions(db: Session = Depends(get_db)):
 
 @router.patch("/definitions/{agent_key}", response_model=schemas.AgentDefinitionOut)
 def update_definition(
-    agent_key: str, payload: schemas.AgentDefinitionUpdate, db: Session = Depends(get_db)
+    agent_key: str, payload: schemas.AgentDefinitionUpdate, _: User = Depends(manager), db: Session = Depends(get_db)
 ):
     """Schedule, reschedule, pause or resume an agent."""
     defn = crud.get_definition_by_key(db, agent_key)
@@ -83,7 +85,7 @@ def update_definition(
 
 
 @router.post("/runs", response_model=schemas.AgentRunOut, status_code=202)
-def trigger_run(payload: schemas.TriggerRunRequest, db: Session = Depends(get_db)):
+def trigger_run(payload: schemas.TriggerRunRequest, _: User = Depends(manager), db: Session = Depends(get_db)):
     """Queue an agent run and return straight away.
 
     The run executes on a worker thread; follow it on
@@ -103,7 +105,7 @@ def trigger_run(payload: schemas.TriggerRunRequest, db: Session = Depends(get_db
 
 
 @router.post("/runs/{run_id}/cancel", response_model=schemas.AgentRunOut)
-def cancel_run(run_id: str, db: Session = Depends(get_db)):
+def cancel_run(run_id: str, _: User = Depends(manager), db: Session = Depends(get_db)):
     """Ask a run to stop at its next checkpoint.
 
     Cooperative: the provider checks between tool rounds, so a model call
@@ -209,6 +211,7 @@ def list_actions(status: str | None = None, db: Session = Depends(get_db)):
 def approve_action(
     action_id: str,
     payload: schemas.ApproveRequest | None = None,
+    _: User = Depends(manager),
     db: Session = Depends(get_db),
 ):
     """Approve a proposal and carry out its effect.
@@ -257,7 +260,7 @@ def approve_action(
 
 
 @router.post("/actions/{action_id}/reject", response_model=schemas.AgentActionOut)
-def reject_action(action_id: str, db: Session = Depends(get_db)):
+def reject_action(action_id: str, _: User = Depends(manager), db: Session = Depends(get_db)):
     action = crud.get_action(db, action_id)
     if action is None:
         raise HTTPException(404, "Action not found")

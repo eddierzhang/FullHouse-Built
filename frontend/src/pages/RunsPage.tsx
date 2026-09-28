@@ -125,9 +125,11 @@ export function RunsPage({ app }: { app: AppContext }) {
             {runs.length} runs{active ? ` · ${active} in progress` : ''}. Select one to watch it live.
           </p>
         </div>
-        <button className="btn btn-secondary" onClick={() => app.newTask()}>
-          <Icon name="play" size={14} /> Start a run
-        </button>
+        {app.canManage && (
+          <button className="btn btn-secondary" onClick={() => app.newTask()}>
+            <Icon name="play" size={14} /> Start a run
+          </button>
+        )}
       </div>
 
       <div className="grid grid-2" style={{ alignItems: 'start' }}>
@@ -159,7 +161,7 @@ export function RunsPage({ app }: { app: AppContext }) {
               </h2>
               <div className="card-subtitle truncate">{selected ? `${agentName(selected)} · ${selected.status}` : 'No run selected'}</div>
             </div>
-            {isLive(selected) && (
+            {isLive(selected) && app.canManage && (
               <button
                 className="btn btn-danger btn-sm"
                 onClick={async () => {

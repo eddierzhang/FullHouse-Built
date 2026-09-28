@@ -12,6 +12,8 @@ export type AppContext = {
   restaurant: Restaurant
   setRestaurant: (restaurant: Restaurant) => void
   apiStatus: 'checking' | 'ok' | 'error'
+  /** Owner or admin: may run and approve the agent, edit the menu and suppliers, and see profit. */
+  canManage: boolean
 
   navigate: (route: Route) => void
   refresh: () => void

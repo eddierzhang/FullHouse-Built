@@ -71,9 +71,11 @@ export function SuppliersPage({ app }: { app: AppContext }) {
           <h1 className="page-title">Suppliers</h1>
           <p className="page-subtitle">Who supplies what, how exposed you are, and what to reorder.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setAdding((v) => !v)}>
-          <Icon name={adding ? 'close' : 'plus'} size={16} /> {adding ? 'Cancel' : 'Add supplier'}
-        </button>
+        {app.canManage && (
+          <button className="btn btn-primary" onClick={() => setAdding((v) => !v)}>
+            <Icon name={adding ? 'close' : 'plus'} size={16} /> {adding ? 'Cancel' : 'Add supplier'}
+          </button>
+        )}
       </div>
 
       <div className="stack">
@@ -263,23 +265,27 @@ export function SuppliersPage({ app }: { app: AppContext }) {
                       </td>
                       <td className="num">{s.lead_time_days}d</td>
                       <td className="actions">
-                        <button
-                          className="btn btn-ghost btn-sm"
-                          onClick={() => {
-                            setEditingId(s.id)
-                            setEditDraft({ name: s.name, contact_info: s.contact_info ?? '', lead_time_days: String(s.lead_time_days) })
-                          }}
-                        >
-                          Edit
-                        </button>
-                        {s.item_count === 0 && (
-                          <button
-                            className="btn btn-ghost btn-sm negative"
-                            disabled={busy}
-                            onClick={() => window.confirm(`Remove ${s.name}?`) && run(() => deleteSupplier(s.id), `${s.name} removed`)}
-                          >
-                            Remove
-                          </button>
+                        {app.canManage && (
+                          <>
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              onClick={() => {
+                                setEditingId(s.id)
+                                setEditDraft({ name: s.name, contact_info: s.contact_info ?? '', lead_time_days: String(s.lead_time_days) })
+                              }}
+                            >
+                              Edit
+                            </button>
+                            {s.item_count === 0 && (
+                              <button
+                                className="btn btn-ghost btn-sm negative"
+                                disabled={busy}
+                                onClick={() => window.confirm(`Remove ${s.name}?`) && run(() => deleteSupplier(s.id), `${s.name} removed`)}
+                              >
+                                Remove
+                              </button>
+                            )}
+                          </>
                         )}
                       </td>
                     </tr>
@@ -318,10 +324,10 @@ export function SuppliersPage({ app }: { app: AppContext }) {
                   <tr key={item.id} className="highlight">
                     <td className="cell-title">{item.name}</td>
                     <td>
-                      {item.supplier_name ? (
+                      {item.supplier_name || !app.canManage ? (
                         <>
-                          <div>{item.supplier_name}</div>
-                          <div className="cell-sub">{item.lead_time_days}d lead time</div>
+                          <div>{item.supplier_name ?? <span className="faint">No supplier</span>}</div>
+                          {item.supplier_name && <div className="cell-sub">{item.lead_time_days}d lead time</div>}
                         </>
                       ) : (
                         <select

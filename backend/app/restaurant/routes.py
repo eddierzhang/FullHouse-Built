@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.auth.deps import current_user
+from app.auth.deps import current_user, manager
 from app.auth.models import User
 from app.db.session import get_db
 from app.hr import staff as hr
@@ -49,7 +49,7 @@ def list_menu_items(db: Session = Depends(get_db)):
 
 
 @router.post("/menu-items", response_model=schemas.MenuItemOut)
-def create_menu_item(payload: schemas.MenuItemCreate, db: Session = Depends(get_db)):
+def create_menu_item(payload: schemas.MenuItemCreate, _: User = Depends(manager), db: Session = Depends(get_db)):
     item = MenuItem(**payload.model_dump())
     db.add(item)
     db.commit()
@@ -199,7 +199,7 @@ def list_suppliers(db: Session = Depends(get_db)):
 
 
 @router.post("/suppliers", response_model=schemas.SupplierOut)
-def create_supplier(payload: schemas.SupplierCreate, db: Session = Depends(get_db)):
+def create_supplier(payload: schemas.SupplierCreate, _: User = Depends(manager), db: Session = Depends(get_db)):
     supplier = Supplier(**payload.model_dump())
     if payload.lead_time_days is None:
         prefs = profile.inventory_settings(db)
@@ -339,7 +339,7 @@ def get_recipe(menu_item_id: str, db: Session = Depends(get_db)):
 
 @router.put("/menu-items/{menu_item_id}/recipe", response_model=schemas.RecipeOut)
 def set_recipe(
-    menu_item_id: str, payload: schemas.RecipeIn, user: User = Depends(current_user), db: Session = Depends(get_db)
+    menu_item_id: str, payload: schemas.RecipeIn, user: User = Depends(manager), db: Session = Depends(get_db)
 ):
     """Replace a dish's recipe wholesale.
 
@@ -473,7 +473,9 @@ def menu_performance(db: Session = Depends(get_db)):
 
 
 @router.patch("/menu-items/{menu_item_id}", response_model=schemas.MenuItemOut)
-def update_menu_item(menu_item_id: str, payload: schemas.MenuItemUpdate, db: Session = Depends(get_db)):
+def update_menu_item(
+    menu_item_id: str, payload: schemas.MenuItemUpdate, _: User = Depends(manager), db: Session = Depends(get_db)
+):
     item = db.get(MenuItem, menu_item_id)
     if not item:
         raise HTTPException(404, "Menu item not found")
@@ -498,7 +500,7 @@ def update_menu_item(menu_item_id: str, payload: schemas.MenuItemUpdate, db: Ses
 
 
 @router.delete("/menu-items/{menu_item_id}", status_code=204)
-def delete_menu_item(menu_item_id: str, db: Session = Depends(get_db)):
+def delete_menu_item(menu_item_id: str, _: User = Depends(manager), db: Session = Depends(get_db)):
     """Hard-delete, allowed only for an item that has never sold.
 
     Once a dish appears on an order its row is part of the sales history
@@ -525,7 +527,7 @@ def delete_menu_item(menu_item_id: str, db: Session = Depends(get_db)):
 
 @router.get("/profit-summary", response_model=schemas.ProfitSummaryOut)
 def profit_summary(
-    days: int = Query(default=30, ge=1, le=365), user: User = Depends(current_user), db: Session = Depends(get_db)
+    days: int = Query(default=30, ge=1, le=365), user: User = Depends(manager), db: Session = Depends(get_db)
 ):
     """Revenue, COGS and gross profit over a trailing window, with a
     continuous daily series and category/channel breakdowns."""
@@ -539,7 +541,9 @@ def supply_chain(user: User = Depends(current_user), db: Session = Depends(get_d
 
 
 @router.patch("/suppliers/{supplier_id}", response_model=schemas.SupplierOut)
-def update_supplier(supplier_id: str, payload: schemas.SupplierUpdate, db: Session = Depends(get_db)):
+def update_supplier(
+    supplier_id: str, payload: schemas.SupplierUpdate, _: User = Depends(manager), db: Session = Depends(get_db)
+):
     supplier = db.get(Supplier, supplier_id)
     if not supplier:
         raise HTTPException(404, "Supplier not found")
@@ -557,7 +561,7 @@ def update_supplier(supplier_id: str, payload: schemas.SupplierUpdate, db: Sessi
 
 
 @router.delete("/suppliers/{supplier_id}", status_code=204)
-def delete_supplier(supplier_id: str, db: Session = Depends(get_db)):
+def delete_supplier(supplier_id: str, _: User = Depends(manager), db: Session = Depends(get_db)):
     supplier = db.get(Supplier, supplier_id)
     if not supplier:
         raise HTTPException(404, "Supplier not found")

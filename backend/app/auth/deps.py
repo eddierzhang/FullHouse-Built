@@ -40,3 +40,11 @@ async def current_user(request: Request, db: Session = Depends(get_db)) -> User:
     # Change history records who did it by email: unique, and readable.
     set_actor(Actor(type=HUMAN, id=user.email[:64]))
     return user
+
+
+def manager(user: User = Depends(current_user)) -> User:
+    """Owners and admins only: editing the menu and suppliers, running and
+    approving the agent, undoing changes, and the profit figures."""
+    if not user.is_manager:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the owner or an admin can do that.")
+    return user

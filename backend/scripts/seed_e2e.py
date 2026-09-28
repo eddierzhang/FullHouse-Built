@@ -48,10 +48,12 @@ def seed() -> None:
             restaurant = Restaurant(**DEMO_PROFILE, setup_completed_at=datetime.now(timezone.utc))
             db.add(restaurant)
             db.flush()
-            # The sample stock seed_data.py loaded is this restaurant's, as setup would make it.
+            # The sample stock and team seed_data.py loaded are this restaurant's, as setup would make them.
+            from app.hr import staff as hr
             from app.restaurant.inventory import claim_unassigned
 
             claim_unassigned(db, restaurant)
+            hr.claim_unassigned(db, restaurant)
         if not db.query(User).filter(User.email == E2E_EMAIL).first():
             db.add(User(email=E2E_EMAIL, name="E2E Manager", password_hash=hash_password(E2E_PASSWORD),
                         restaurant_id=restaurant.id if restaurant else None))
@@ -74,6 +76,13 @@ def seed() -> None:
         _proposal(db, AGENT_KEY, "menu_change", {
             "menu_item_id": bread.id, "item_name": "Garlic Bread", "change_type": "promotion",
             "details": "Buy one get one free to lift a slow seller.", "new_price": None,
+        })
+
+        # Never decided by a test: the staff-view test needs one still waiting.
+        flour = db.query(InventoryItem).filter(InventoryItem.name == "Flour").one()
+        _proposal(db, AGENT_KEY, "inventory_reorder", {
+            "inventory_item_id": flour.id, "item_name": "Flour", "quantity": 10,
+            "note": "Left pending for e2e/permissions.spec.ts.",
         })
 
         db.commit()

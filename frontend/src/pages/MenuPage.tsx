@@ -69,9 +69,11 @@ export function MenuPage({ app }: { app: AppContext }) {
           <h1 className="page-title">Menu</h1>
           <p className="page-subtitle">What each dish sells and earns, and what it costs to make.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setAdding((v) => !v)}>
-          <Icon name={adding ? 'close' : 'plus'} size={16} /> {adding ? 'Cancel' : 'Add dish'}
-        </button>
+        {app.canManage && (
+          <button className="btn btn-primary" onClick={() => setAdding((v) => !v)}>
+            <Icon name={adding ? 'close' : 'plus'} size={16} /> {adding ? 'Cancel' : 'Add dish'}
+          </button>
+        )}
       </div>
 
       <div className="stack">
@@ -256,7 +258,7 @@ export function MenuPage({ app }: { app: AppContext }) {
                           </div>
                         </td>
                         <td className="actions">
-                          {editingId === row.id ? (
+                          {!app.canManage ? null : editingId === row.id ? (
                             <div className="row" style={{ justifyContent: 'flex-end' }}>
                               <button className="btn btn-ghost btn-sm" onClick={() => setEditingId(null)}>
                                 Cancel

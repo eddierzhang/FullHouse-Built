@@ -336,7 +336,7 @@ def test_details_cant_be_reverted_around_the_profile_page(client, db):
     member = _member(client, db)
     latest = client.get("/api/v1/changes", params={"entity_type": "restaurants"}).json()["items"][0]
 
-    assert member.post(f"/api/v1/changes/{latest['id']}/revert").status_code == 404
+    assert member.post(f"/api/v1/changes/{latest['id']}/revert").status_code == 403  # members can't undo anything
     response = client.post(f"/api/v1/changes/{latest['id']}/revert")
     assert response.status_code == 422
     assert "Profile page" in response.json()["detail"]

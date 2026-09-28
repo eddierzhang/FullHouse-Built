@@ -8,7 +8,7 @@ from app.audit import crud, schemas
 from app.audit.context import note_context
 from app.audit.models import ChangeLog
 from app.audit.revert import RevertConflict, RevertError, revert_change
-from app.auth.deps import current_user
+from app.auth.deps import current_user, manager
 from app.auth.models import User
 from app.db.session import get_db
 from app.restaurant.inventory import stock_change
@@ -80,7 +80,7 @@ def revert(
     change_id: int,
     payload: schemas.RevertRequest | None = None,
     db: Session = Depends(get_db),
-    user: User = Depends(current_user),
+    user: User = Depends(manager),
 ):
     """Undo a recorded change.
 

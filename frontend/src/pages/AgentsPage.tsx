@@ -55,7 +55,7 @@ function AgentRow({ agent, app }: { agent: AgentDefinition; app: AppContext }) {
       <div className="stack" style={{ gap: 8, width: 280 }}>
         <label className="field">
           <span className="field-label">Schedule</span>
-          <select className="select" value={mode} disabled={busy} onChange={(e) => chooseSchedule(e.target.value)}>
+          <select className="select" value={mode} disabled={busy || !app.canManage} onChange={(e) => chooseSchedule(e.target.value)}>
             {SCHEDULE_PRESETS.map((p) => (
               <option key={p.label} value={p.cron ?? ''}>
                 {p.label}
@@ -101,18 +101,20 @@ function AgentRow({ agent, app }: { agent: AgentDefinition; app: AppContext }) {
         </div>
       </div>
 
-      <div className="row" style={{ alignSelf: 'center' }}>
-        <button
-          className="btn btn-secondary btn-sm"
-          disabled={busy}
-          onClick={() => save({ enabled: !agent.enabled }, agent.enabled ? `${agent.name} paused` : `${agent.name} resumed`)}
-        >
-          {agent.enabled ? 'Pause' : 'Resume'}
-        </button>
-        <button className="btn btn-primary btn-sm" disabled={!agent.enabled} onClick={() => app.newTask(agent.key)}>
-          <Icon name="play" size={12} /> Run now
-        </button>
-      </div>
+      {app.canManage && (
+        <div className="row" style={{ alignSelf: 'center' }}>
+          <button
+            className="btn btn-secondary btn-sm"
+            disabled={busy}
+            onClick={() => save({ enabled: !agent.enabled }, agent.enabled ? `${agent.name} paused` : `${agent.name} resumed`)}
+          >
+            {agent.enabled ? 'Pause' : 'Resume'}
+          </button>
+          <button className="btn btn-primary btn-sm" disabled={!agent.enabled} onClick={() => app.newTask(agent.key)}>
+            <Icon name="play" size={12} /> Run now
+          </button>
+        </div>
+      )}
     </li>
   )
 }
