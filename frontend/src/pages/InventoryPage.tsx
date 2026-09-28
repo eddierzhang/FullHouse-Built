@@ -14,11 +14,13 @@ import {
   listStockChanges,
   listSuppliers,
   newRequestKey,
+  plural,
   recordStockChange,
   updateInventoryItem,
 } from '../api/client'
 import type { AppContext } from '../app/context'
 import { Icon } from '../components/Icon'
+import { ImportInventory } from '../components/ImportInventory'
 import { Empty, Freshness, LoadError, Loaded } from '../components/PageState'
 import { dateTime, money, qty, relativeTime } from '../lib/format'
 import { useLoad } from '../lib/useLoad'
@@ -56,6 +58,7 @@ export function InventoryPage({ app, user }: { app: AppContext; user: User }) {
   const [historyItem, setHistoryItem] = useState<string | null>(null)
   const [panel, setPanel] = useState<Panel>(null)
   const [adding, setAdding] = useState(false)
+  const [importing, setImporting] = useState(false)
 
   // Each refetches on its own when a coworker changes something, so their
   // changes show up without a reload.
@@ -106,6 +109,11 @@ export function InventoryPage({ app, user }: { app: AppContext; user: User }) {
           <p className="page-subtitle">Stock on hand, what’s running low, and every change to it.</p>
         </div>
         <Freshness loads={[itemsLoad, chainLoad, historyLoad, suppliersLoad]} />
+        {canEditDetails && (
+          <button className="btn btn-secondary" onClick={() => setImporting((v) => !v)}>
+            <Icon name={importing ? 'close' : 'inventory'} size={16} /> {importing ? 'Close import' : 'Import'}
+          </button>
+        )}
         <button className="btn btn-primary" onClick={() => setAdding((v) => !v)}>
           <Icon name={adding ? 'close' : 'plus'} size={16} /> {adding ? 'Cancel' : 'Add item'}
         </button>
@@ -117,6 +125,30 @@ export function InventoryPage({ app, user }: { app: AppContext; user: User }) {
         )}
         {chainLoad.status === 'error' && (
           <LoadError what="days of cover" error={chainLoad.error ?? ''} onRetry={chainLoad.reload} />
+        )}
+        {importing && canEditDetails && (
+          <section className="card" aria-labelledby="import-title">
+            <div className="card-header">
+              <div>
+                <h2 className="card-title" id="import-title">
+                  Import from a spreadsheet
+                </h2>
+                <div className="card-subtitle">Bring your existing stock list in at once.</div>
+              </div>
+            </div>
+            <div className="card-body">
+              <ImportInventory
+                onImported={async (result) => {
+                  setImporting(false)
+                  app.toast(
+                    'Inventory imported',
+                    `${result.new} added${result.updated ? `, ${result.updated} updated` : ''}${result.skipped ? `, ${result.skipped} already tracked` : ''}`,
+                  )
+                  await saved()
+                }}
+              />
+            </div>
+          </section>
         )}
         {adding && (
           <AddItemForm
@@ -231,6 +263,12 @@ export function InventoryPage({ app, user }: { app: AppContext; user: User }) {
                               <td className="num" data-label="On hand" title={`Updated ${dateTime(item.updated_at)}`}>
                                 <span className="strong">{qty(item.quantity_on_hand)}</span>{' '}
                                 <span className="muted">{item.unit}</span>
+                                {item.pack_unit && item.pack_size ? (
+                                  <div className="faint small">
+                                    {qty(Math.round((item.quantity_on_hand / item.pack_size) * 10) / 10)}{' '}
+                                    {plural(item.pack_unit, item.quantity_on_hand / item.pack_size)}
+                                  </div>
+                                ) : null}
                               </td>
                               <td className="num muted" data-label="Reorder at">{qty(item.reorder_threshold)}</td>
                               <td className="num" data-label="Days of cover">
@@ -394,21 +432,27 @@ function StockChangeForm({
   const [reason, setReason] = useState<StockReason>('delivery')
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
+  // Items bought by the case can be entered by the case; stock is still kept in units.
+  const packSize = item.pack_unit && item.pack_size ? item.pack_size : null
+  const [inPacks, setInPacks] = useState(false)
+  const entryUnit = inPacks && item.pack_unit ? plural(item.pack_unit, 2) : item.unit
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const meta = REASONS.find((r) => r.id === reason)!
   // One id per entry, kept across retries so a resend after a dropped
   // connection can't record it twice; editing the entry makes it a new one.
-  const requestKey = useMemo(() => newRequestKey(), [reason, amount, note])
+  const requestKey = useMemo(() => newRequestKey(), [reason, amount, note, inPacks])
 
   const parsed = parseAmount(amount, { allowZero: reason === 'count' })
+  // What the entry comes to in the item's own unit.
+  const units = typeof parsed === 'number' ? (inPacks && packSize ? parsed * packSize : parsed) : null
   const after =
-    typeof parsed === 'number'
+    units !== null
       ? reason === 'count'
-        ? parsed
+        ? units
         : reason === 'delivery'
-          ? item.quantity_on_hand + parsed
-          : item.quantity_on_hand - parsed
+          ? item.quantity_on_hand + units
+          : item.quantity_on_hand - units
       : null
 
   const onSubmit = async (event: FormEvent) => {
@@ -420,7 +464,7 @@ function StockChangeForm({
     setBusy(true)
     setError(null)
     try {
-      const result = await recordStockChange(item.id, reason, parsed, note.trim() || undefined, requestKey)
+      const result = await recordStockChange(item.id, reason, parsed, note.trim() || undefined, requestKey, inPacks)
       await onSaved(
         result.adjustment
           ? `${item.name}: ${qty(result.item.quantity_on_hand)} ${item.unit} on hand`
@@ -441,10 +485,20 @@ function StockChangeForm({
           </button>
         ))}
       </div>
+      {packSize && item.pack_unit && (
+        <div className="segmented" role="group" aria-label="Enter the amount in">
+          <button type="button" aria-pressed={!inPacks} onClick={() => setInPacks(false)}>
+            In {item.unit}
+          </button>
+          <button type="button" aria-pressed={inPacks} onClick={() => setInPacks(true)}>
+            In {plural(item.pack_unit, 2)} of {qty(packSize)}
+          </button>
+        </div>
+      )}
       <div className="form-row">
         <label className="field">
           <span className="field-label">
-            {meta.amountLabel} ({item.unit})
+            {meta.amountLabel} ({entryUnit})
           </span>
           <input
             className="input"
@@ -471,6 +525,7 @@ function StockChangeForm({
       <div className="muted small" aria-live="polite">
         {qty(item.quantity_on_hand)} {item.unit} on hand now
         {after !== null && after >= 0 && ` → ${qty(Math.round(after * 1e6) / 1e6)} ${item.unit} after this`}
+        {inPacks && units !== null && typeof parsed === 'number' && packSize && ` (${qty(parsed)} × ${qty(packSize)} = ${qty(units)} ${item.unit})`}
       </div>
       <FormError message={error} />
       <div className="row">
@@ -485,6 +540,9 @@ function StockChangeForm({
   )
 }
 
+/** What an item can be bought by: containers, not measurements. */
+const PACK_UNITS = ['case', 'box', 'pack', 'bag', 'tray', 'dozen', 'bottle', 'can', 'jar', 'bunch'] as const
+
 type ItemDraft = {
   name: string
   unit: string
@@ -493,6 +551,9 @@ type ItemDraft = {
   reorder_qty: string
   unit_cost: string
   supplier_id: string
+  /** '' when not bought in packs. */
+  pack_unit: string
+  pack_size: string
 }
 
 /** Checks a draft the way the server will; returns the values to send, or the first problem. */
@@ -511,11 +572,19 @@ function checkDraft(draft: ItemDraft, withStock: boolean) {
     if (typeof parsed === 'string') return `${label}: ${parsed}`
     numbers[field] = parsed
   }
+  let pack: { pack_unit: string | null; pack_size: number | null } = { pack_unit: null, pack_size: null }
+  if (draft.pack_unit) {
+    if (draft.pack_unit === draft.unit) return `A pack can’t be counted in ${draft.unit}, the unit stock is kept in.`
+    const size = parseAmount(draft.pack_size, { allowZero: false })
+    if (typeof size === 'string') return `How many in a ${draft.pack_unit}: ${size}`
+    pack = { pack_unit: draft.pack_unit, pack_size: size }
+  }
   return {
     name: draft.name.trim(),
     unit: draft.unit,
     ...numbers,
     supplier_id: draft.supplier_id || null,
+    ...pack,
   }
 }
 
@@ -578,6 +647,27 @@ function ItemFields({
           ))}
         </select>
       </label>
+      <label className="field">
+        <span className="field-label">
+          Bought by the <span className="field-optional">(optional)</span>
+        </span>
+        <select className="select" value={draft.pack_unit} onChange={set('pack_unit')}>
+          <option value="">Not in packs</option>
+          {PACK_UNITS.filter((u) => u !== draft.unit).map((u) => (
+            <option key={u} value={u}>
+              {u}
+            </option>
+          ))}
+        </select>
+      </label>
+      {draft.pack_unit && (
+        <label className="field">
+          <span className="field-label">
+            {draft.unit} per {draft.pack_unit}
+          </span>
+          <input className="input" inputMode="decimal" value={draft.pack_size} onChange={set('pack_size')} />
+        </label>
+      )}
     </div>
   )
 }
@@ -599,6 +689,8 @@ function AddItemForm({
     reorder_qty: '0',
     unit_cost: '0',
     supplier_id: '',
+    pack_unit: '',
+    pack_size: '',
   })
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -651,6 +743,8 @@ const draftOf = (item: InventoryItem): ItemDraft => ({
   reorder_qty: String(item.reorder_qty),
   unit_cost: String(item.unit_cost),
   supplier_id: item.supplier_id ?? '',
+  pack_unit: item.pack_unit ?? '',
+  pack_size: item.pack_size == null ? '' : String(item.pack_size),
 })
 
 function EditItemForm({

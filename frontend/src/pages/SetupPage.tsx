@@ -1,10 +1,38 @@
 import { type FormEvent, useState } from 'react'
-import { type Restaurant, SECTIONS, type Section, type SectionValues, type User, completeSetup, saveSection } from '../api/client'
+import {
+  type Restaurant,
+  SECTIONS,
+  type Section,
+  type SectionValues,
+  type User,
+  completeSetup,
+  createInvite,
+  linkFor,
+  saveSection,
+} from '../api/client'
 import { Icon } from '../components/Icon'
+import { ImportInventory } from '../components/ImportInventory'
 import { SECTION_META, SectionFields, initialValues, payload, summarize } from '../restaurant/sections'
 
-type Step = Section | 'review'
-const STEPS: Step[] = [...SECTIONS, 'review']
+/** Steps that save nothing of their own and can be skipped: done now, or later from Profile and Inventory. */
+type Extra = 'team' | 'import'
+type Step = Section | Extra | 'review'
+// After the restaurant's details, so it exists by the time invites are made.
+const STEPS: Step[] = [...SECTIONS, 'team', 'import', 'review']
+
+const EXTRA: Record<Extra, { title: string; description: string }> = {
+  team: {
+    title: 'Invite your team',
+    description: 'Make a link for each person. They open it, choose a password, and they’re in. Optional: you can do this later from Profile › Team access.',
+  },
+  import: {
+    title: 'Import inventory',
+    description: 'Already keep a stock spreadsheet? Bring it in now. Optional: you can add items one by one, or import later, from Inventory.',
+  },
+}
+
+const isExtra = (step: Step): step is Extra => step === 'team' || step === 'import'
+const titleOf = (step: Step) => (step === 'review' ? 'Review' : isExtra(step) ? EXTRA[step].title : SECTION_META[step].title)
 
 type Props = {
   user: User
@@ -29,6 +57,9 @@ export function SetupPage({ user, restaurant, onSaved, onFinished, onSignOut }: 
   const [values, setValues] = useState<SectionValues>(() => initialValues(restaurant))
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // What the optional steps got done this session, for their button and the review.
+  const [invited, setInvited] = useState<{ link: string; role: string; email: string | null }[]>([])
+  const [imported, setImported] = useState<string | null>(null)
 
   const completed = new Set(restaurant?.completed_steps ?? [])
   const index = STEPS.indexOf(step)
@@ -57,7 +88,7 @@ export function SetupPage({ user, restaurant, onSaved, onFinished, onSignOut }: 
   const onContinue = async (event: FormEvent) => {
     event.preventDefault()
     if (step === 'review') return
-    if (await save(step)) go(STEPS[index + 1])
+    if (isExtra(step) || (await save(step))) go(STEPS[index + 1])
   }
 
   const finish = async () => {
@@ -72,7 +103,7 @@ export function SetupPage({ user, restaurant, onSaved, onFinished, onSignOut }: 
   }
 
   const saveAndLeave = async () => {
-    if (step !== 'review' && !(await save(step))) return
+    if (step !== 'review' && !isExtra(step) && !(await save(step))) return
     onSignOut()
   }
 
@@ -94,9 +125,9 @@ export function SetupPage({ user, restaurant, onSaved, onFinished, onSignOut }: 
 
         <ol className="setup-steps" aria-label="Setup steps">
           {STEPS.map((s, i) => {
-            const done = s !== 'review' && completed.has(s)
+            const done = s === 'team' ? invited.length > 0 : s === 'import' ? imported !== null : s !== 'review' && completed.has(s as Section)
             const current = s === step
-            const label = s === 'review' ? 'Review' : SECTION_META[s].title
+            const label = titleOf(s)
             return (
               <li key={s} className={`setup-step${current ? ' current' : ''}${done ? ' done' : ''}`}>
                 <button
@@ -124,9 +155,13 @@ export function SetupPage({ user, restaurant, onSaved, onFinished, onSignOut }: 
               <div className="setup-step-count">
                 Step {index + 1} of {STEPS.length}
               </div>
-              <h2 className="card-title">{step === 'review' ? 'Review and finish' : SECTION_META[step].title}</h2>
+              <h2 className="card-title">{step === 'review' ? 'Review and finish' : titleOf(step)}</h2>
               <p className="card-subtitle">
-                {step === 'review' ? 'Check everything over. You can change any of it later on the Profile page.' : SECTION_META[step].description}
+                {step === 'review'
+                  ? 'Check everything over. You can change any of it later on the Profile page.'
+                  : isExtra(step)
+                    ? EXTRA[step].description
+                    : SECTION_META[step].description}
               </p>
             </div>
           </div>
@@ -138,7 +173,27 @@ export function SetupPage({ user, restaurant, onSaved, onFinished, onSignOut }: 
               </div>
             )}
 
-            {step === 'review' ? (
+            {step === 'team' ? (
+              <InviteTeam user={user} invited={invited} onInvited={(invite) => setInvited((all) => [...all, invite])} />
+            ) : step === 'import' ? (
+              imported ? (
+                <div className="callout callout-info" role="status">
+                  <Icon name="check" />
+                  <div className="callout-grow">
+                    <div className="callout-title">Inventory imported</div>
+                    <div className="callout-body">{imported}</div>
+                  </div>
+                </div>
+              ) : (
+                <ImportInventory
+                  onImported={(result) =>
+                    setImported(
+                      `${result.new} ${result.new === 1 ? 'item' : 'items'} added${result.updated ? `, ${result.updated} updated` : ''}.`,
+                    )
+                  }
+                />
+              )
+            ) : step === 'review' ? (
               <div className="review">
                 {SECTIONS.map((section) => (
                   <section className="review-section" key={section} aria-label={SECTION_META[section].title}>
@@ -158,6 +213,19 @@ export function SetupPage({ user, restaurant, onSaved, onFinished, onSignOut }: 
                     </dl>
                   </section>
                 ))}
+                <section className="review-section" aria-label="Team and inventory">
+                  <h3 className="review-title">Team and inventory</h3>
+                  <dl className="review-rows">
+                    <div className="review-row">
+                      <dt>Invites</dt>
+                      <dd>{invited.length ? `${invited.length} link${invited.length === 1 ? '' : 's'} made` : 'None yet: Profile › Team access, any time'}</dd>
+                    </div>
+                    <div className="review-row">
+                      <dt>Inventory</dt>
+                      <dd>{imported ?? 'Not imported: add or import it from Inventory, any time'}</dd>
+                    </div>
+                  </dl>
+                </section>
               </div>
             ) : (
               <SectionFields
@@ -182,7 +250,13 @@ export function SetupPage({ user, restaurant, onSaved, onFinished, onSignOut }: 
                 </button>
               ) : (
                 <button type="submit" className="btn btn-primary" disabled={busy}>
-                  {busy ? 'Saving…' : 'Save and continue'}
+                  {busy
+                    ? 'Saving…'
+                    : step === 'team'
+                      ? invited.length ? 'Continue' : 'Skip for now'
+                      : step === 'import'
+                        ? imported ? 'Continue' : 'Skip for now'
+                        : 'Save and continue'}
                 </button>
               )}
             </div>
@@ -190,5 +264,95 @@ export function SetupPage({ user, restaurant, onSaved, onFinished, onSignOut }: 
         </form>
       </div>
     </main>
+  )
+}
+
+/** One invite link at a time; the person opens it and chooses their own password. */
+function InviteTeam({
+  user,
+  invited,
+  onInvited,
+}: {
+  user: User
+  invited: { link: string; role: string; email: string | null }[]
+  onInvited: (invite: { link: string; role: string; email: string | null }) => void
+}) {
+  // Only an owner can make someone an admin; everyone invited here is otherwise staff.
+  const [role, setRole] = useState<'member' | 'admin'>('member')
+  const [email, setEmail] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [copied, setCopied] = useState<string | null>(null)
+
+  const make = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      const invite = await createInvite(role, email.trim() || null)
+      onInvited({ link: linkFor('invite', invite.token), role, email: invite.email })
+      setEmail('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const copy = async (link: string) => {
+    try {
+      await navigator.clipboard.writeText(link)
+      setCopied(link)
+    } catch {
+      setError('Couldn’t copy it. Select the link and copy it yourself.')
+    }
+  }
+
+  return (
+    <div className="stack-sm">
+      <div className="form-grid">
+        <label className="field">
+          <span className="field-label">
+            Their email <span className="field-optional">(optional)</span>
+          </span>
+          <input className="input" type="email" maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} />
+          <span className="field-hint">If given, only this email can use the link.</span>
+        </label>
+        <label className="field">
+          <span className="field-label">They’ll be</span>
+          <select className="select" value={role} onChange={(e) => setRole(e.target.value as 'member' | 'admin')}>
+            <option value="member">Staff: stock, schedule, recommendations</option>
+            {user.role === 'owner' && <option value="admin">Admin: everything but ownership</option>}
+          </select>
+        </label>
+      </div>
+      <div className="row">
+        <button type="button" className="btn btn-secondary" disabled={busy} onClick={make}>
+          <Icon name="plus" size={16} /> {busy ? 'Making a link…' : 'Make an invite link'}
+        </button>
+      </div>
+      {error && (
+        <div className="auth-error" role="alert">
+          {error}
+        </div>
+      )}
+      {invited.length > 0 && (
+        <ul className="list invite-links" aria-label="Invite links">
+          {invited.map((invite) => (
+            <li className="list-item" key={invite.link}>
+              <div className="list-item-main">
+                <div className="strong">
+                  {invite.email ?? 'Anyone with the link'} · {invite.role === 'admin' ? 'Admin' : 'Staff'}
+                </div>
+                <input className="input input-sm" readOnly value={invite.link} aria-label="Invite link" onFocus={(e) => e.target.select()} />
+              </div>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => copy(invite.link)}>
+                {copied === invite.link ? 'Copied' : 'Copy'}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="faint small">Links work once and expire after a week. Send them however you like: text, email, WhatsApp.</p>
+    </div>
   )
 }

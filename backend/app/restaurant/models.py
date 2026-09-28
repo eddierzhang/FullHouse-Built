@@ -55,6 +55,11 @@ class InventoryItem(Base):
     reorder_qty: Mapped[float] = mapped_column(Float, default=0, nullable=False)
     supplier_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("suppliers.id"), nullable=True)
     unit_cost: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    #: Bought in packs: one `pack_unit` (a case, a box) holds `pack_size` of `unit`.
+    #: Only for entering deliveries and counts; stock, recipes, reorder points and
+    #: cost all stay in `unit`, so nothing downstream has to convert. Both or neither.
+    pack_unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    pack_size: Mapped[float | None] = mapped_column(Float, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now, onupdate=_now, nullable=False)
 
     supplier: Mapped[Supplier | None] = relationship()

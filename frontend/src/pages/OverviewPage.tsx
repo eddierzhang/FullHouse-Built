@@ -2,6 +2,7 @@ import { type Forecast, fetchForecast, fetchProfitSummary, listRuns } from '../a
 import type { AppContext } from '../app/context'
 import { ActionList } from '../components/ActionList'
 import { ForecastCard } from '../components/ForecastCard'
+import { GettingStarted } from '../components/GettingStarted'
 import { Icon } from '../components/Icon'
 import { Empty, Freshness, LoadError, Loaded } from '../components/PageState'
 import { RunStatusBadge } from '../components/RunStatusBadge'
@@ -40,6 +41,7 @@ export function OverviewPage({ app }: { app: AppContext }) {
       </div>
 
       <div className="stack">
+        <GettingStarted app={app} />
         {app.canManage && weekLoad.status === 'error' && (
           <LoadError what="the last 7 days’ figures" error={weekLoad.error ?? ''} onRetry={weekLoad.reload} />
         )}

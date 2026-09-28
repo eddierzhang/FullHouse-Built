@@ -49,6 +49,21 @@ UNITS = (
 _UNITS_BY_KEY = {unit.lower(): unit for unit in UNITS}
 
 
+#: Units spelled the same however many there are.
+_NO_PLURAL = {"g", "kg", "oz", "lb", "ml", "L", "fl oz", "qt", "gal", "each"}
+
+
+def plural(unit: str | None, count: float) -> str:
+    """ "case" -> "cases" when there's more than one; measurements stay as they are."""
+    if not unit or count == 1 or unit in _NO_PLURAL:
+        return unit or ""
+    if unit.endswith(("x", "ch", "sh", "s")):
+        return unit + "es"
+    if unit == "loaf":
+        return "loaves"
+    return unit + "s"
+
+
 def normalize_unit(value: str) -> str:
     """The canonical spelling of `value`, e.g. "LB" -> "lb". Raises ValueError for anything else."""
     unit = _UNITS_BY_KEY.get(value.strip().lower())

@@ -30,6 +30,9 @@ class InventoryItemOut(BaseModel):
     reorder_qty: float
     unit_cost: float
     supplier_id: str | None
+    #: Bought in packs: one `pack_unit` holds `pack_size` of `unit`; both null otherwise.
+    pack_unit: str | None = None
+    pack_size: float | None = None
     updated_at: datetime
 
     @computed_field
@@ -61,6 +64,22 @@ def _unit(value: str) -> str:
     return normalize_unit(value)
 
 
+#: Largest pack: a pallet of small things, not a warehouse.
+MAX_PACK_SIZE = 100_000
+
+
+def _pack_unit(value: str | None) -> str | None:
+    return None if value in (None, "") else _unit(value)
+
+
+def check_pack(unit: str | None, pack_unit: str | None, pack_size: float | None) -> None:
+    """Both or neither, and a pack can't be counted in the item's own unit."""
+    if (pack_unit is None) != (pack_size is None):
+        raise ValueError("Give both how it's packed (e.g. case) and how many come in one, or neither.")
+    if pack_unit is not None and unit is not None and pack_unit == unit:
+        raise ValueError(f"A pack can't be measured in {unit}, the unit stock is counted in.")
+
+
 class InventoryItemCreate(BaseModel):
     name: str = Field(max_length=255)
     unit: str
@@ -70,9 +89,17 @@ class InventoryItemCreate(BaseModel):
     reorder_qty: float = _amount(default=0)
     unit_cost: float = _amount(default=0)
     supplier_id: str | None = None
+    pack_unit: str | None = None
+    pack_size: float | None = Field(default=None, gt=0, le=MAX_PACK_SIZE, allow_inf_nan=False)
 
     _name = field_validator("name")(_item_name)
     _unit = field_validator("unit")(_unit)
+    _pack = field_validator("pack_unit")(_pack_unit)
+
+    @model_validator(mode="after")
+    def _packs(self) -> "InventoryItemCreate":
+        check_pack(self.unit, self.pack_unit, self.pack_size)
+        return self
 
 
 class MenuItemOut(BaseModel):
@@ -296,6 +323,11 @@ class InventoryItemUpdate(BaseModel):
     reorder_qty: float | None = _amount(default=None)
     unit_cost: float | None = _amount(default=None)
     supplier_id: str | None = None
+    #: Set both to buy in packs; set both to null to stop.
+    pack_unit: str | None = None
+    pack_size: float | None = Field(default=None, gt=0, le=MAX_PACK_SIZE, allow_inf_nan=False)
+
+    _pack = field_validator("pack_unit")(_pack_unit)
 
     @field_validator("name")
     @classmethod
@@ -321,6 +353,8 @@ class StockChangeIn(BaseModel):
     reason: Literal["delivery", "used", "waste", "count"]
     #: How much came in or went out; for a stock count, the level counted.
     quantity: float = _amount()
+    #: `quantity` is in the item's packs (cases, boxes) rather than its unit.
+    in_packs: bool = False
     note: str | None = Field(default=None, max_length=255)
 
     @field_validator("note")
@@ -456,3 +490,36 @@ class ForecastOut(BaseModel):
     days: list[ForecastDayOut]
     total_revenue: float
     total_profit: float
+
+
+class InventoryImportIn(BaseModel):
+    """A spreadsheet of stock, as CSV text (the browser reads the file)."""
+
+    csv: str = Field(max_length=1_000_000)
+    #: Items already tracked: update their details and count, rather than skip them.
+    update_existing: bool = False
+    #: Check and preview only; nothing is saved.
+    dry_run: bool = True
+
+
+class ImportRowOut(BaseModel):
+    line: int
+    name: str | None
+    #: new | update | skip | error
+    status: str
+    messages: list[str]
+    unit: str | None = None
+    quantity_on_hand: float | None = None
+    supplier: str | None = None
+
+
+class InventoryImportOut(BaseModel):
+    rows: list[ImportRowOut]
+    new: int
+    updated: int
+    skipped: int
+    errors: int
+    #: Suppliers named in the file that don't exist yet, and will be added.
+    new_suppliers: list[str]
+    #: True when the import was carried out (not a dry run, and no errors).
+    saved: bool

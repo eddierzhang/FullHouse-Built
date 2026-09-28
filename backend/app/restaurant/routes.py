@@ -171,18 +171,27 @@ def record_stock_change(
     if key and (replay := _replay_stock_change(db, item, key)):
         return replay
     before = item.quantity_on_hand
+    amount, note = payload.quantity, payload.note
+    if payload.in_packs:
+        if not item.pack_size:
+            db.rollback()
+            raise HTTPException(422, f"{item.name} isn't bought in packs. Enter the amount in {item.unit}.")
+        amount = round(payload.quantity * item.pack_size, 6)
+        # The history keeps the base amount; the note says how it was entered.
+        entered = f"{payload.quantity:g} {inventory.plural(item.pack_unit, payload.quantity)} of {item.pack_size:g} {item.unit}"
+        note = f"{entered}. {note}" if note else entered
     if payload.reason == "count":
-        after = payload.quantity
+        after = amount
     elif payload.reason == "delivery":
-        after = before + payload.quantity
+        after = before + amount
     else:
-        after = before - payload.quantity
+        after = before - amount
     after = round(after, 6)
     if after < 0:
         db.rollback()  # release the row lock
         raise HTTPException(
             422,
-            f"Only {before:g} {item.unit} of {item.name} is on hand, so {payload.quantity:g} can't have been "
+            f"Only {before:g} {item.unit} of {item.name} is on hand, so {amount:g} can't have been "
             f"{'used' if payload.reason == 'used' else 'wasted'}. Check the amount, or record a stock count.",
         )
     if after > schemas.MAX_QUANTITY:
@@ -193,7 +202,7 @@ def record_stock_change(
         return schemas.StockChangeOut(item=schemas.InventoryItemOut.model_validate(item), adjustment=None)
 
     try:
-        with inventory.stock_change(payload.reason, payload.note, request_id=key):
+        with inventory.stock_change(payload.reason, note, request_id=key):
             item.quantity_on_hand = after
             db.commit()
     except IntegrityError:
@@ -230,6 +239,44 @@ def _replay_stock_change(db: Session, item: InventoryItem, key: str) -> schemas.
     db.refresh(item)
     return schemas.StockChangeOut(
         item=schemas.InventoryItemOut.model_validate(item), adjustment=_adjustments_out(db, [earlier])[0]
+    )
+
+
+@router.post("/inventory-items/import", response_model=schemas.InventoryImportOut)
+def import_inventory(payload: schemas.InventoryImportIn, user: User = Depends(manager), db: Session = Depends(get_db)):
+    """Bring stock in from a spreadsheet (CSV text). A dry run previews; a real run
+    saves every row or, if any row has a problem, none -- the preview says which."""
+    from app.restaurant import importer
+
+    restaurant_id = inventory.scope_for(db, user)
+    try:
+        plan = importer.plan(db, restaurant_id, payload.csv, payload.update_existing)
+    except importer.ImportRejected as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+    saved = False
+    if not payload.dry_run and plan.count("error") == 0:
+        try:
+            importer.carry_out(db, restaurant_id, plan)
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        saved = True
+    return schemas.InventoryImportOut(
+        rows=[
+            schemas.ImportRowOut(
+                line=row.line, name=row.name, status=row.status, messages=row.messages,
+                unit=row.values.get("unit"), quantity_on_hand=row.values.get("quantity_on_hand"), supplier=row.supplier,
+            )
+            for row in plan.rows
+        ],
+        new=plan.count("new"),
+        updated=plan.count("update"),
+        skipped=plan.count("skip"),
+        errors=plan.count("error"),
+        new_suppliers=plan.new_suppliers,
+        saved=saved,
     )
 
 
@@ -676,6 +723,31 @@ def update_inventory_item(
         raise HTTPException(409, f"Another item is already called {fields['name']}.")
     if fields.get("supplier_id") and not crud.get_supplier(db, fields["supplier_id"], item.restaurant_id):
         raise HTTPException(404, "Supplier not found")
+    if "unit" in fields and fields["unit"] != item.unit:
+        # A new unit would silently relabel what's there: 12 lb would become 12 kg.
+        if item.quantity_on_hand:
+            raise HTTPException(
+                409,
+                f"{item.name} has {item.quantity_on_hand:g} {item.unit} on hand. Changing the unit would relabel that "
+                f"as {item.quantity_on_hand:g} {fields['unit']}. Record a stock count of 0 first, then change the unit "
+                f"and count it again.",
+            )
+        if db.query(RecipeItem).filter(RecipeItem.inventory_item_id == item.id).count():
+            raise HTTPException(
+                409, f"Recipes use {item.name} in {item.unit}. Update those recipes, or add a new item in the new unit."
+            )
+    # Packing is set or cleared as a pair: sending null for either clears both.
+    if "pack_unit" in fields or "pack_size" in fields:
+        if ("pack_unit" in fields and fields["pack_unit"] is None) or ("pack_size" in fields and fields["pack_size"] is None):
+            fields["pack_unit"] = fields["pack_size"] = None
+        try:
+            schemas.check_pack(
+                fields.get("unit", item.unit),
+                fields.get("pack_unit", item.pack_unit),
+                fields.get("pack_size", item.pack_size),
+            )
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
 
     for field, value in fields.items():
         setattr(item, field, value)

@@ -1672,7 +1672,7 @@ code {
 
 .setup-steps {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(8, minmax(0, 1fr));
   gap: 6px;
   margin: 0 0 16px;
   padding: 0;
@@ -1742,7 +1742,7 @@ code {
   }
 
   .setup-steps {
-    grid-template-columns: repeat(6, auto);
+    grid-template-columns: repeat(8, auto);
     justify-content: start;
     gap: 10px;
   }
@@ -2264,5 +2264,82 @@ a.sidebar-user:hover {
 
   .freshness {
     width: 100%;
+  }
+}
+
+/* ---------- onboarding: importing stock, inviting the team ------------------------- */
+
+.file-button {
+  position: relative;
+  cursor: pointer;
+}
+
+.import-table {
+  max-height: 360px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.import-table tr.row-error td {
+  background: var(--danger-soft);
+}
+
+.import-message {
+  margin-top: 4px;
+  color: var(--text-secondary);
+}
+
+.invite-links .input {
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.getting-started ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.getting-started li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.getting-started li:last-child {
+  border-bottom: 0;
+}
+
+.getting-started .done {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.step-dot {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  font-size: 12px;
+}
+
+.step-dot.done {
+  border-color: var(--success);
+  background: var(--success);
+  color: #fff;
+  text-decoration: none;
+}
+
+@media (max-width: 640px) {
+  .import-table {
+    max-height: none;
+    border: 0;
   }
 }

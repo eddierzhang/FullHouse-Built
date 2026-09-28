@@ -240,9 +240,10 @@ def test_only_owners_and_admins_edit_details(client, db):
     mo = db.query(User).filter_by(email="mo@example.com").one()
     mo.role = ADMIN
     db.commit()
-    edited = member.patch(f"{ITEMS}/{item['id']}", json={"reorder_threshold": 50, "unit": "KG", "name": "Bread flour"})
+    # (Not the unit: with stock on hand that's refused -- see test_units_and_import.py.)
+    edited = member.patch(f"{ITEMS}/{item['id']}", json={"reorder_threshold": 50, "name": "Bread flour"})
     assert edited.status_code == 200
-    assert (edited.json()["reorder_threshold"], edited.json()["unit"], edited.json()["name"]) == (50, "kg", "Bread flour")
+    assert (edited.json()["reorder_threshold"], edited.json()["name"]) == (50, "Bread flour")
 
 
 @pytest.mark.parametrize(

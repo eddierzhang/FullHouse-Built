@@ -16,7 +16,7 @@ test('sign up, set up the restaurant, open the dashboard, and edit settings', as
 
   await expect(page.getByRole('heading', { name: 'Set up your restaurant' })).toBeVisible()
   await expect(page.getByRole('navigation')).toHaveCount(0)
-  await expect(page.getByText('Step 1 of 6')).toBeVisible()
+  await expect(page.getByText('Step 1 of 8')).toBeVisible()
 
   // --- step 1: details, with a mistake caught first
   await page.getByLabel('Restaurant name').fill('Harbor House')
@@ -29,14 +29,14 @@ test('sign up, set up the restaurant, open the dashboard, and edit settings', as
   await page.getByRole('button', { name: 'Save and continue' }).click()
 
   // --- step 2: timezone and hours
-  await expect(page.getByText('Step 2 of 6')).toBeVisible()
+  await expect(page.getByText('Step 2 of 8')).toBeVisible()
   await page.getByRole('combobox', { name: /^Timezone/ }).selectOption('America/Chicago')
   await page.locator('.hours-row', { hasText: 'Monday' }).getByRole('checkbox').uncheck()
   await page.getByLabel('Friday closes').fill('23:30')
   await page.getByRole('button', { name: 'Save and continue' }).click()
 
   // --- step 3: inventory, then leave partway through
-  await expect(page.getByText('Step 3 of 6')).toBeVisible()
+  await expect(page.getByText('Step 3 of 8')).toBeVisible()
   await page.getByLabel('Safety stock (days)').fill('3')
   await page.getByRole('button', { name: 'Save and finish later' }).click()
   await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible()
@@ -45,7 +45,7 @@ test('sign up, set up the restaurant, open the dashboard, and edit settings', as
   await page.getByLabel('Email').fill(OWNER.email)
   await page.getByLabel('Password').fill(OWNER.password)
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.getByText('Step 4 of 6')).toBeVisible()
+  await expect(page.getByText('Step 4 of 8')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Staff roles', level: 2 })).toBeVisible()
   await page.getByRole('button', { name: 'Back' }).click()
   await expect(page.getByLabel('Safety stock (days)')).toHaveValue('3')
@@ -58,9 +58,28 @@ test('sign up, set up the restaurant, open the dashboard, and edit settings', as
   await page.getByRole('button', { name: 'Save and continue' }).click()
 
   // --- step 5: scheduling rules
-  await expect(page.getByText('Step 5 of 6')).toBeVisible()
+  await expect(page.getByText('Step 5 of 8')).toBeVisible()
   await page.getByLabel('Longest shift (hours)').fill('9')
   await page.getByRole('button', { name: 'Save and continue' }).click()
+
+  // --- step 6 (optional): invite the team
+  await expect(page.getByText('Step 6 of 8')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Skip for now' })).toBeVisible()
+  await page.getByRole('button', { name: 'Make an invite link' }).click()
+  await expect(page.getByRole('textbox', { name: 'Invite link' })).toHaveValue(/#invite\//)
+  await page.getByRole('button', { name: 'Continue' }).click()
+
+  // --- step 7 (optional): import inventory from a spreadsheet
+  await expect(page.getByText('Step 7 of 8')).toBeVisible()
+  await page.getByLabel('Spreadsheet (CSV)').setInputFiles({
+    name: 'stock.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from('Item,Qty,UOM,Par,Case,Units per case\nSaffron threads,12,g,4,,\nOat milk,18,each,12,case,6\n'),
+  })
+  await expect(page.getByText('Ready to import 2 items')).toBeVisible()
+  await page.getByRole('button', { name: 'Import 2 items' }).click()
+  await expect(page.getByText('Inventory imported')).toBeVisible()
+  await page.getByRole('button', { name: 'Continue' }).click()
 
   // --- review, then finish
   await expect(page.getByRole('heading', { name: 'Review and finish' })).toBeVisible()
@@ -70,6 +89,8 @@ test('sign up, set up the restaurant, open the dashboard, and edit settings', as
   await expect(review.locator('.review-row', { hasText: 'Friday' })).toContainText('23:30')
   await expect(review.locator('.review-row', { hasText: 'Roles' })).toContainText('Sommelier')
   await expect(review.locator('.review-row', { hasText: 'Longest shift' })).toContainText('9 hours')
+  await expect(review.locator('.review-row', { hasText: 'Invites' })).toContainText('1 link made')
+  await expect(review.locator('.review-row', { hasText: 'Inventory' }).last()).toContainText('2 items added')
   await page.getByRole('button', { name: 'Finish setup' }).click()
 
   // --- the dashboard, initialised from setup

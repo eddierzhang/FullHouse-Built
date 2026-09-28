@@ -231,6 +231,9 @@ export type InventoryItem = {
   reorder_qty: number
   unit_cost: number
   supplier_id: string | null
+  /** Bought in packs: one `pack_unit` (a case) holds `pack_size` of `unit`. Both null otherwise. */
+  pack_unit: string | null
+  pack_size: number | null
   /** When the item or its stock last changed. */
   updated_at: string
   /** At or below the reorder point. */
@@ -253,6 +256,15 @@ export type InventoryItemInput = {
   reorder_qty?: number
   unit_cost?: number
   supplier_id?: string | null
+  pack_unit?: string | null
+  pack_size?: number | null
+}
+
+/** "case" -> "cases"; measurements (lb, g, each) read the same either way. Mirrors the server. */
+export function plural(unit: string, count: number): string {
+  if (count === 1 || ['g', 'kg', 'oz', 'lb', 'ml', 'L', 'fl oz', 'qt', 'gal', 'each'].includes(unit)) return unit
+  if (unit === 'loaf') return 'loaves'
+  return /(x|ch|sh|s)$/.test(unit) ? `${unit}es` : `${unit}s`
 }
 
 /** What staff record by hand; sales, approved reorders and undos are recorded for them. */
@@ -346,13 +358,49 @@ export const recordStockChange = (
   note?: string,
   /** From `newRequestKey()`: the same one for every attempt at this change. */
   requestKey?: string,
+  /** `quantity` is in the item's packs (cases) rather than its unit. */
+  inPacks = false,
 ) =>
   send<{ item: InventoryItem; adjustment: StockAdjustment | null }>(
     'POST',
     `/api/v1/restaurant/inventory-items/${id}/adjustments`,
-    { reason, quantity, note: note || null },
+    { reason, quantity, note: note || null, in_packs: inPacks },
     requestKey,
   )
+
+export type ImportRow = {
+  /** The spreadsheet's own line number, headings being line 1. */
+  line: number
+  name: string | null
+  status: 'new' | 'update' | 'skip' | 'error'
+  messages: string[]
+  unit: string | null
+  quantity_on_hand: number | null
+  supplier: string | null
+}
+
+export type ImportResult = {
+  rows: ImportRow[]
+  new: number
+  updated: number
+  skipped: number
+  errors: number
+  /** Suppliers named in the file that don't exist yet, and will be added. */
+  new_suppliers: string[]
+  /** Carried out: not a preview, and no row had a problem. */
+  saved: boolean
+}
+
+/**
+ * Stock from a spreadsheet, as CSV text. A dry run previews; a real run saves
+ * every row, or none if any has a problem. Owners and admins.
+ */
+export const importInventory = (csv: string, options: { dryRun: boolean; updateExisting: boolean }) =>
+  send<ImportResult>('POST', '/api/v1/restaurant/inventory-items/import', {
+    csv,
+    dry_run: options.dryRun,
+    update_existing: options.updateExisting,
+  })
 /** Newest first; one item's with `itemId`. */
 export const listStockChanges = (itemId?: string, limit = 25) =>
   get<StockAdjustment[]>(
