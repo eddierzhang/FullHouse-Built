@@ -14,6 +14,10 @@ services:
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
       # Same-origin through nginx, so this only matters for direct API calls.
       FRONTEND_ORIGIN: ${PUBLIC_URL:-http://localhost:8080}
+      # Encrypts two-step sign-in secrets: set it once in .env, never change it.
+      SECRET_KEY: ${SECRET_KEY:-}
+      REQUIRE_MFA: ${REQUIRE_MFA:-true}
+      ALLOW_SIGNUP: ${ALLOW_SIGNUP:-false}
     volumes:
       - app-data:/data
     # Not published: only nginx talks to it. Uncomment to hit the API directly.

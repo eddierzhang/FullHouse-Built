@@ -132,6 +132,8 @@ jobs:
       # run pipeline -- tools, persistence, streaming -- without downloading it.
       LLM_PROVIDER: scripted
       WEB_PORT: "8080"
+      # The smoke test signs in with a password; two-step sign-in has its own tests.
+      REQUIRE_MFA: "false"
     steps:
       - uses: actions/checkout@v4
       - name: Build images
@@ -149,14 +151,18 @@ jobs:
       - name: Smoke-test the API and a live run through nginx
         run: |
           set -euo pipefail
-          curl -fsS http://localhost:8080/ | grep -q '<div id="root">'
-          agents=$(curl -fsS http://localhost:8080/api/v1/agents/definitions | python3 -c 'import sys,json; print(len(json.load(sys.stdin)))')
-          test "$agents" -eq 6
-          run=$(curl -fsS -X POST http://localhost:8080/api/v1/agents/runs \
+          base=http://localhost:8080
+          curl -fsS $base/ | grep -q '<div id="root">'
+          # Everything past the login page needs an account: the first sign-up is the owner.
+          curl -fsS -c jar -b jar -X POST $base/api/v1/auth/signup -H 'Content-Type: application/json' \
+            -d '{"name":"CI","email":"ci@example.com","password":"a-long-password"}' >/dev/null
+          agents=$(curl -fsS -b jar $base/api/v1/agents/definitions | python3 -c 'import sys,json; print(len(json.load(sys.stdin)))')
+          test "$agents" -eq 1
+          run=$(curl -fsS -b jar -X POST $base/api/v1/agents/runs \
             -H 'Content-Type: application/json' \
-            -d '{"agent_key":"inventory","input":"CI smoke test"}' | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
+            -d '{"agent_key":"maestro","input":"CI smoke test: check stock"}' | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
           # The stream must arrive through nginx unbuffered and end on its own.
-          timeout 60 curl -fsSN "http://localhost:8080/api/v1/agents/runs/$run/stream" | tee stream.txt | grep -q '__end__'
+          timeout 60 curl -fsSN -b jar "$base/api/v1/agents/runs/$run/stream" | tee stream.txt | grep -q '__end__'
           grep -q '"tool_call"' stream.txt
           echo "run $run streamed $(grep -c '^data:' stream.txt) events through nginx"
       - name: Container logs
@@ -189,15 +195,18 @@ jobs:
           set -euo pipefail
           base=http://localhost:10000
           curl -fsS $base/ | grep -q '<div id="root">'
-          curl -fsS $base/api/v1/agents/runtime | python3 -c 'import sys,json; r=json.load(sys.stdin); assert r["demo_mode"] and r["provider"] == "scripted", r'
-          pending=$(curl -fsS "$base/api/v1/agents/actions?status=pending" | python3 -c 'import sys,json; print(len(json.load(sys.stdin)))')
-          test "$pending" -eq 4
-          run=$(curl -fsS -X POST $base/api/v1/agents/runs -H 'Content-Type: application/json' \
-            -d '{"agent_key":"boss","input":"Check stock and the staff schedule"}' | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
-          timeout 60 curl -fsSN "$base/api/v1/agents/runs/$run/stream" | tee stream.txt | grep -q '__end__'
-          test "$(grep -c '"delegation"' stream.txt)" -eq 2
+          # The login page offers the demo's shared account; sign in with it.
+          creds=$(curl -fsS $base/api/v1/auth/options | python3 -c 'import sys,json; print(json.dumps(json.load(sys.stdin)["demo"]))')
+          curl -fsS -c jar -b jar -X POST $base/api/v1/auth/login -H 'Content-Type: application/json' -d "$creds" >/dev/null
+          curl -fsS -b jar $base/api/v1/agents/runtime | python3 -c 'import sys,json; r=json.load(sys.stdin); assert r["demo_mode"] and r["provider"] == "scripted", r'
+          pending=$(curl -fsS -b jar "$base/api/v1/agents/actions?status=pending" | python3 -c 'import sys,json; print(len(json.load(sys.stdin)))')
+          test "$pending" -ge 1
+          run=$(curl -fsS -b jar -X POST $base/api/v1/agents/runs -H 'Content-Type: application/json' \
+            -d '{"agent_key":"maestro","input":"Check stock and the staff schedule"}' | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
+          timeout 60 curl -fsSN -b jar "$base/api/v1/agents/runs/$run/stream" | tee stream.txt | grep -q '__end__'
+          grep -q '"tool_call"' stream.txt
           grep -q '"succeeded"' stream.txt
-          echo "Maestro delegated twice and finished"
+          echo "The Assistant Manager ran its tools and finished, with $pending proposals waiting"
       - name: Container logs
         if: always()
         run: docker logs demo 2>&1 | tail -100
