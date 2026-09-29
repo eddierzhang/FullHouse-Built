@@ -18,12 +18,12 @@ class Settings:
     # tests, CI and demos).
     llm_provider: str = os.getenv("LLM_PROVIDER", "anthropic").strip().lower()
 
-    # OpenAI-compatible APIs. The defaults are Google Gemini's free tier;
-    # a key from https://aistudio.google.com/apikey is all it needs.
+    # OpenAI-compatible APIs. The base URL defaults to Google Gemini's; there
+    # is no default model, so LLM_MODEL must name one the API serves.
     # `llm_model` replaces AgentDefinition.model for every run, as with Ollama.
     llm_base_url: str = os.getenv("LLM_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai")
     llm_api_key: str | None = os.getenv("LLM_API_KEY")
-    llm_model: str = os.getenv("LLM_MODEL", "gemini-3.5-flash")
+    llm_model: str = os.getenv("LLM_MODEL", "").strip()
     llm_timeout_seconds: float = float(os.getenv("LLM_TIMEOUT_SECONDS", "120"))
 
     # Ollama. `ollama_model` replaces AgentDefinition.model for every run,

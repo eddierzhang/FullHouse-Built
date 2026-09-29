@@ -1,7 +1,6 @@
 """Run agents against any hosted OpenAI-compatible chat API.
 
-One wire format covers most hosted models: Google Gemini (whose free tier
-is the default here, so an instance can run real agents at no cost), Groq,
+One wire format covers most hosted models: Google Gemini, Groq,
 OpenRouter, Mistral, and OpenAI itself. Point LLM_BASE_URL, LLM_API_KEY and
 LLM_MODEL at any of them.
 
@@ -93,6 +92,11 @@ class OpenAICompatibleProvider(LLMProvider):
             raise ProviderError(
                 "LLM_API_KEY is not set. Get a free Gemini key at https://aistudio.google.com/apikey "
                 "and set it in the host's environment."
+            )
+        if not model:
+            raise ProviderError(
+                "LLM_MODEL is not set. Set it to a tool-capable model your API serves "
+                "(e.g. from GET {LLM_BASE_URL}/models) in the host's environment."
             )
         payload: dict[str, Any] = {"model": model, "messages": messages}
         if tools:

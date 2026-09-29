@@ -7,11 +7,13 @@
 # agents on a real model, still at no cost:
 #   - DATABASE_URL: a free Neon Postgres database, one project per customer
 #     (Render's free plan has no persistent disk, so SQLite would be wiped).
-#   - LLM_API_KEY: a free Google Gemini API key from
-#     https://aistudio.google.com/apikey. LLM_PROVIDER=openai speaks Gemini's
-#     OpenAI-compatible API; LLM_BASE_URL and LLM_MODEL can repoint it at
-#     Groq, OpenRouter or a paid model later.
-# Render asks for both values when the Blueprint is applied. See DEPLOY.md.
+#   - LLM_API_KEY, LLM_BASE_URL, LLM_MODEL: any OpenAI-compatible API, e.g.
+#     Groq (https://api.groq.com/openai/v1) or Gemini
+#     (https://generativelanguage.googleapis.com/v1beta/openai). There is no
+#     default model.
+# Render asks for these when the Blueprint is applied, and a sync never
+# overwrites them. LLM_PROVIDER is not set here either: add LLM_PROVIDER=openai
+# under the service's Environment. See DEPLOY.md.
 
 services:
   - type: web
@@ -27,10 +29,10 @@ services:
         sync: false
       - key: LLM_API_KEY
         sync: false
-      - key: LLM_PROVIDER
-        value: openai
+      - key: LLM_BASE_URL
+        sync: false
       - key: LLM_MODEL
-        value: gemini-3.5-flash
+        sync: false
       - key: DEMO_MODE
         value: "false"
       # The owner's setup fills the restaurant; no sample suppliers or staff.

@@ -63,7 +63,9 @@ database, so restaurants never see each other's data. The agents run on Google G
 2. **Model key.** At [aistudio.google.com/apikey](https://aistudio.google.com/apikey), **Create API key**.
 3. **App.** At [render.com](https://render.com): **New → Blueprint**, pick this repository, and set **Blueprint
    Path** to `render.customer.yaml`. Rename the service (e.g. `fullhouse-joes`). Paste the Neon string into
-   `DATABASE_URL` and the key into `LLM_API_KEY`. Apply. Render also generates `SECRET_KEY`, which encrypts
+   `DATABASE_URL`, the key into `LLM_API_KEY`, the API's address into `LLM_BASE_URL` (Gemini:
+   `https://generativelanguage.googleapis.com/v1beta/openai`) and a tool-capable model into `LLM_MODEL`; there is
+   no default model. Apply, then add `LLM_PROVIDER=openai` under the service's **Environment**. Render also generates `SECRET_KEY`, which encrypts
    two-step sign-in secrets: never change it. The first build takes a few minutes.
 4. **Hand-over.** Open the service URL and have the restaurant owner **sign up straight away**. Until the
    restaurant is set up, anyone who signs up becomes an owner; after that, nobody can sign up without an invite.
@@ -73,7 +75,7 @@ database, so restaurants never see each other's data. The agents run on Google G
 
 Repeat for each restaurant. Every push to `main` redeploys all of them, and migrations run automatically.
 
-To use a different model, change `LLM_MODEL` (anything from Gemini's
+To use a different model, change `LLM_MODEL` (for Gemini, anything from its
 [model list](https://ai.google.dev/gemini-api/docs/models)). To use another provider, point `LLM_BASE_URL`,
 `LLM_API_KEY` and `LLM_MODEL` at any OpenAI-compatible API: Groq (`https://api.groq.com/openai/v1`, also free),
 OpenRouter, or a paid one.
