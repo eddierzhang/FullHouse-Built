@@ -111,30 +111,32 @@ def test_finishing_sets_up_the_agent(client, db):
     assert restaurant["inventory_settings"]["daily_stock_check"] == "07:30"
 
     maestro = db.query(AgentDefinition).filter_by(key="maestro").one()
-    # An hour before the usual 11:00 opening, on the six open days.
-    assert maestro.schedule_cron == "0 10 * * tue,wed,thu,fri,sat,sun"
+    # An hour before the usual 11:00 opening, on the six open days -- this
+    # restaurant's own schedule; the definition every restaurant shares is untouched.
+    assert db.get(Restaurant, restaurant["id"]).agent_settings == {
+        "maestro": {"schedule_cron": "0 10 * * tue,wed,thu,fri,sat,sun"}
+    }
+    assert maestro.schedule_cron is None
     # The stock check is a job of its own, read from the settings, not a second agent.
     assert scheduler.stock_check_cron(db) == "30 7 * * *"
 
     definitions = {d["key"]: d for d in client.get("/api/v1/agents/definitions").json()}
     assert list(definitions) == ["maestro"]
+    assert definitions["maestro"]["schedule_cron"] == "0 10 * * tue,wed,thu,fri,sat,sun"
     next_review = datetime.fromisoformat(definitions["maestro"]["next_run_at"])
     assert next_review.astimezone(timezone(timedelta(hours=-7))).hour == 10  # 10:00 in Portland (PDT)
     assert client.get("/api/v1/agents/runtime").json()["schedule_timezone"] == "America/Los_Angeles"
 
 
 def test_finishing_twice_changes_nothing(client, db):
-    from app.agents.models import AgentDefinition
-
     first = _set_up(client, db)
-    maestro = db.query(AgentDefinition).filter_by(key="maestro").one()
-    maestro.schedule_cron = "15 8 * * *"  # the owner tuned it since
-    db.commit()
+    # The owner tuned it since.
+    assert client.patch("/api/v1/agents/definitions/maestro", json={"schedule_cron": "15 8 * * *"}).status_code == 200
 
     again = client.post(f"{BASE}/complete").json()
     assert again["setup_completed_at"] == first["setup_completed_at"]
-    db.refresh(maestro)
-    assert maestro.schedule_cron == "15 8 * * *"
+    (maestro,) = client.get("/api/v1/agents/definitions").json()
+    assert maestro["schedule_cron"] == "15 8 * * *"
 
 
 def test_settings_edits_persist(client, db):
@@ -149,25 +151,84 @@ def test_settings_edits_persist(client, db):
     assert saved["setup_completed_at"] is not None
 
 
-def test_later_accounts_join_the_same_restaurant_as_members(client, anon_client, db):
-    restaurant = _set_up(client, db)
-    client.post("/api/v1/auth/logout")
+def test_signing_up_later_opens_another_restaurant_not_a_way_into_this_one(client, db):
+    from app.main import app
+    from fastapi.testclient import TestClient
 
-    response = client.post(
-        "/api/v1/auth/signup", json={"name": "Second Person", "email": "two@example.com", "password": "another-password"}
-    )
-    assert response.json()["role"] == "member"
-    assert response.json()["restaurant_id"] == restaurant["id"]
-    assert db.query(Restaurant).count() == 1
-    # Joining isn't taking over: a member can't change what the owner set up.
-    assert client.put(f"{BASE}/details", json={**DETAILS, "name": "Taken Over"}).status_code == 403
+    restaurant = _set_up(client, db)
+
+    newcomer = TestClient(app)
+    response = newcomer.post("/api/v1/auth/signup", json={
+        "name": "Second Person", "email": "two@example.com", "password": "another-password",
+        "restaurant_name": "  Two's Diner ",
+    })
+    assert response.status_code == 201
+    assert response.json()["role"] == "owner"
+    theirs = newcomer.get(BASE).json()
+    assert theirs["id"] == response.json()["restaurant_id"] != restaurant["id"]
+    assert (theirs["name"], theirs["completed_steps"], theirs["setup_completed_at"]) == ("Two's Diner", [], None)
+    assert db.query(Restaurant).count() == 2
+
+    # Setup carries on from the name they gave, in their own restaurant.
+    assert newcomer.put(f"{BASE}/details", json={**DETAILS, "name": "Two's Diner & Bar"}).status_code == 200
+    assert newcomer.get(BASE).json()["id"] == theirs["id"]
+    assert client.get(BASE).json()["name"] == DETAILS["name"]
+    assert {p["email"] for p in newcomer.get("/api/v1/auth/team").json()} == {"two@example.com"}
+
+
+def test_each_restaurant_keeps_its_own_agent_schedule(client, db):
+    from test_restaurant_details import _second_restaurant
+
+    _set_up(client, db)
+    _, other = _second_restaurant(db)
+    mine = "0 10 * * tue,wed,thu,fri,sat,sun"
+
+    paused = other.patch("/api/v1/agents/definitions/maestro", json={"schedule_cron": "0 6 * * *", "enabled": False})
+    assert (paused.json()["schedule_cron"], paused.json()["enabled"]) == ("0 6 * * *", False)
+    assert other.post("/api/v1/agents/runs", json={"agent_key": "maestro", "input": "hello"}).status_code == 400
+
+    (maestro,) = client.get("/api/v1/agents/definitions").json()
+    assert (maestro["schedule_cron"], maestro["enabled"]) == (mine, True)
+
+
+def test_scheduled_runs_fire_for_each_restaurant_on_its_own_clock(client, db, monkeypatch):
+    from apscheduler.schedulers.background import BackgroundScheduler
+
+    from app.agents import scheduler
+    from app.agents.models import AgentRun
+    from test_restaurant_details import _second_restaurant
+
+    mine = _set_up(client, db)
+    other, other_owner = _second_restaurant(db)
+    other_owner.patch("/api/v1/agents/definitions/maestro", json={"schedule_cron": "0 6 * * *"})
+    unfinished = Restaurant(name="Not Open Yet", completed_steps=[])
+    db.add(unfinished)
+    db.commit()
+
+    idle = BackgroundScheduler(timezone=timezone.utc)  # never started: jobs are only listed
+    monkeypatch.setattr(scheduler, "_scheduler", idle)
+    monkeypatch.setattr("app.db.session.SessionLocal", lambda: db)
+    monkeypatch.setattr(db, "close", lambda: None)
+    scheduler.sync_agent_schedules()
+    jobs = {job.id: job for job in idle.get_jobs()}
+    assert set(jobs) == {f"agent:maestro:{mine['id']}", f"stock-check:{mine['id']}", f"agent:maestro:{other.id}"}
+    assert str(jobs[f"agent:maestro:{mine['id']}"].trigger.timezone) == "America/Los_Angeles"
+    assert str(jobs[f"agent:maestro:{other.id}"].trigger.timezone) == "America/Denver"
+
+    monkeypatch.setattr("app.agents.executor.submit", lambda run_id: None)
+    run = db.get(AgentRun, scheduler.run_scheduled_agent("maestro", db, restaurant_id=other.id))
+    assert run.restaurant_id == other.id
+    assert run.input == "Scheduled run (0 6 * * *, America/Denver)."
+    # One restaurant's run in flight doesn't hold up another's.
+    assert scheduler.run_scheduled_agent("maestro", db, restaurant_id=other.id) is None
+    assert db.get(AgentRun, scheduler.run_stock_check(db, restaurant_id=mine["id"])).restaurant_id == mine["id"]
 
 
 def test_profile_changes_are_in_the_change_history(client, db, changes):
     client.put(f"{BASE}/details", json=DETAILS)
-    (row,) = changes(entity_type="restaurants")
-    assert row.operation == "insert"
-    assert row.actor_id == "eddie@example.com"
+    first, *_ = changes(entity_type="restaurants")
+    assert first.operation == "insert"
+    assert first.actor_id == "eddie@example.com"
 
 
 def test_setup_needs_an_owner(client, db):

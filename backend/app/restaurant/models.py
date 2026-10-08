@@ -227,9 +227,10 @@ class RecipeItem(Base):
 class Restaurant(Base):
     """Who the restaurant is and how it runs, from the owner's setup.
 
-    One per deployment. Created by the first setup step anyone saves, so
-    every column but the bookkeeping is nullable: a half-finished setup is
-    a real, resumable state. `completed_steps` records which sections have
+    One per owner who signs up; everything else in the app belongs to one.
+    Created with the owner's account, holding only a name, so every column
+    but the bookkeeping is nullable: a half-finished setup is a real,
+    resumable state. `completed_steps` records which sections have
     been saved; `setup_completed_at` is set once the owner finishes.
     """
 
@@ -256,6 +257,10 @@ class Restaurant(Base):
     staff_roles: Mapped[list | None] = mapped_column(JSON, nullable=True)
     #: {"max_shift_hours": 10, "min_rest_hours": 10, "max_weekly_hours": 40, "min_staff_per_open_day": 2}
     scheduling_rules: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    #: {"<agent key>": {"schedule_cron": "0 10 * * tue", "enabled": true}}: this
+    #: restaurant's own schedule and pause switch for the agent. A key that is
+    #: missing falls back to the agent definition's, which every restaurant shares.
+    agent_settings: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     completed_steps: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     setup_completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)

@@ -1,4 +1,5 @@
 import { type Page, expect, test } from '@playwright/test'
+import { joinAsMember } from './team'
 
 const API = `http://127.0.0.1:${process.env.E2E_API_PORT ?? '8100'}`
 
@@ -34,13 +35,10 @@ test('coworkers add stock and record changes, and each sees the other’s', asyn
   await change.getByRole('button', { name: 'Cancel' }).click()
   await expect(row(page, item)).toContainText('10 g')
 
-  // --- a coworker, in their own browser, signs up and logs a delivery
+  // --- a coworker, in their own browser, joins and logs a delivery
   const coworkerContext = await browser.newContext()
   const coworker = await coworkerContext.newPage()
-  const signup = await coworker.request.post(`${API}/api/v1/auth/signup`, {
-    data: { name: 'Carla Cook', email: `carla-${Date.now()}@example.com`, password: 'a-long-password' },
-  })
-  expect((await signup.json()).role).toBe('member')
+  await joinAsMember(coworker.request, { name: 'Carla Cook', email: `carla-${Date.now()}@example.com` })
   await coworker.goto('/#inventory')
   await expect(row(coworker, item)).toContainText('10 g') // the owner's item, from the database
   await expect(coworker.getByRole('button', { name: `Edit ${item}` })).toHaveCount(0) // details are for owners and admins

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.auth import schemas
+from app.audit.context import HUMAN, Actor, actor_context
 from app.auth import events, mfa
 from app.auth.deps import SESSION_COOKIE, current_user
 from app.auth.models import ADMIN, MEMBER, OWNER, AuthSession, Invite, MfaChallenge, PasswordReset, SecurityEvent, User
@@ -93,16 +94,15 @@ def _start_session(db: Session, user: User, request: Request, response: Response
     )
 
 
-def _site_restaurant(db: Session):
-    from app.restaurant.profile import get_restaurant
-
-    return get_restaurant(db)
-
-
 def _signup_open(db: Session) -> bool:
-    """Before the restaurant exists, signing up creates its owner. After, the
-    team joins by invite -- unless ALLOW_SIGNUP opens the door to anyone."""
-    return _site_restaurant(db) is None or settings.allow_signup
+    """Whether a new restaurant can sign up. ALLOW_SIGNUP opens the site to
+    any number of them; without it there is one, whose owner is whoever signs
+    up first. The demo takes none: its data is replaced every day."""
+    from app.restaurant.models import Restaurant
+
+    if db.query(Restaurant.id).first() is None:
+        return True
+    return settings.allow_signup and not settings.demo_mode
 
 
 @router.get("/options", response_model=schemas.AuthOptions)
@@ -118,22 +118,27 @@ def options(db: Session = Depends(get_db)):
 
 @router.post("/signup", response_model=schemas.UserOut, status_code=201)
 def signup(body: schemas.SignupIn, request: Request, response: Response, db: Session = Depends(get_db)):
+    """Open a new restaurant: its owner's account, and the restaurant itself, ready for setup."""
+    from app.restaurant.profile import create_restaurant
+
     if not _signup_open(db):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "New accounts need an invite. Ask the owner or a manager for a link.")
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "This site isn't taking new restaurants. To join one that's already here, ask its owner or a manager "
+            "for an invite link.",
+        )
     if db.query(User).filter(User.email == body.email).first():
         raise HTTPException(status.HTTP_409_CONFLICT, "An account with that email already exists. Sign in instead.")
-    # One restaurant per site. Before it exists, whoever signs up is an
-    # owner and can set it up; after (with ALLOW_SIGNUP on), a new account
-    # joins it as a member, who can't change its details until an owner
-    # makes them an admin.
-    restaurant = _site_restaurant(db)
-    user = User(email=body.email, name=body.name, password_hash=hash_password(body.password),
-                role=MEMBER if restaurant else OWNER, restaurant_id=restaurant.id if restaurant else None)
-    db.add(user)
-    db.flush()
-    _start_session(db, user, request, response)
-    events.record(db, "signup" if user.role == OWNER else "invite_accepted", request, actor=user,
-                  detail=None if user.role == OWNER else {"open_signup": True})
+    # Signing up never joins a restaurant that's already here -- that takes an
+    # invite from its owner. It starts a new one, which nobody else can see.
+    user = User(email=body.email, name=body.name, password_hash=hash_password(body.password), role=OWNER)
+    # Under the new owner's name, so the restaurant's history begins with them.
+    with actor_context(Actor(type=HUMAN, id=body.email[:64])):
+        create_restaurant(db, user, body.restaurant_name)
+        db.add(user)
+        db.flush()
+        _start_session(db, user, request, response)
+    events.record(db, "signup", request, actor=user)
     return user
 
 
@@ -341,12 +346,10 @@ def logout_everywhere(request: Request, user: User = Depends(current_user), db: 
 
 
 def _teammates(db: Session, user: User):
-    """Accounts in the caller's restaurant. Before it exists, every account --
-    they are all owners setting up the one restaurant this site will have."""
-    query = db.query(User)
+    """Accounts in the caller's restaurant. One with no restaurant has no team but itself."""
     if user.restaurant_id:
-        query = query.filter(User.restaurant_id == user.restaurant_id)
-    return query
+        return db.query(User).filter(User.restaurant_id == user.restaurant_id)
+    return db.query(User).filter(User.id == user.id)
 
 
 def _manager(request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)) -> User:

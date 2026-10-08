@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from fastapi.testclient import TestClient
 
 from app.auth.deps import SESSION_COOKIE
 from app.auth.models import AuthSession, User
@@ -82,20 +83,55 @@ def test_an_email_can_only_sign_up_once(anon_client):
     assert response.status_code == 409
 
 
-def test_with_signup_off_the_owner_starts_and_the_team_needs_invites(anon_client, db, monkeypatch):
+def test_signing_up_opens_a_restaurant_of_your_own(anon_client, db, changes):
     from app.restaurant.models import Restaurant
 
+    me = _signup(anon_client).json()
+    assert me["role"] == "owner"
+    restaurant = db.query(Restaurant).one()
+    assert me["restaurant_id"] == restaurant.id
+    assert (restaurant.name, restaurant.completed_steps, restaurant.setup_completed_at) == (None, [], None)
+    # Its history starts with the owner, and belongs to it.
+    (created,) = changes(entity_type="restaurants")
+    assert (created.operation, created.actor_id, created.restaurant_id) == ("insert", "ana@example.com", restaurant.id)
+
+
+def test_the_first_restaurant_takes_the_sample_data_and_later_ones_start_empty(anon_client, db):
+    from app.main import app
+    from app.restaurant.models import MenuItem
+
+    db.add(MenuItem(name="Sample Soup", category="Soup", price=6, cost=2))
+    db.commit()
+    _signup(anon_client)
+    assert [d["name"] for d in anon_client.get("/api/v1/restaurant/menu-items").json()] == ["Sample Soup"]
+
+    second = TestClient(app)
+    assert _signup(second, email="ben@example.com", name="Ben").status_code == 201
+    assert second.get("/api/v1/restaurant/menu-items").json() == []
+    second.post("/api/v1/restaurant/menu-items", json={"name": "Ben's Pie", "category": "Pie", "price": 9, "cost": 3})
+    assert [d["name"] for d in anon_client.get("/api/v1/restaurant/menu-items").json()] == ["Sample Soup"]
+
+
+def test_with_signup_off_the_site_has_one_restaurant(anon_client, db, monkeypatch):
     monkeypatch.setattr("app.config.settings.allow_signup", False)
     # No restaurant yet: signing up is how its owner starts.
     assert anon_client.get("/api/v1/auth/options").json()["signup_enabled"] is True
     assert _signup(anon_client).json()["role"] == "owner"
 
-    db.add(Restaurant(name="Casa", completed_steps=[]))
-    db.commit()
     anon_client.post("/api/v1/auth/logout")
     assert anon_client.get("/api/v1/auth/options").json()["signup_enabled"] is False
     refused = _signup(anon_client, email="walk-in@example.com")
     assert refused.status_code == 403 and "invite" in refused.json()["detail"]
+
+
+def test_the_demo_takes_no_new_restaurants(anon_client, db, monkeypatch):
+    from app.restaurant.models import Restaurant
+
+    monkeypatch.setattr("app.config.settings.demo_mode", True)
+    db.add(Restaurant(name="Demo Bistro", completed_steps=[]))
+    db.commit()
+    assert anon_client.get("/api/v1/auth/options").json()["signup_enabled"] is False
+    assert _signup(anon_client).status_code == 403
 
 
 def test_login_with_the_right_password(client):

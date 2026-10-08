@@ -51,12 +51,13 @@ def _account(db, email: str, role: str, restaurant_id: str, password: str = "a-l
 
 
 def _member(client, db) -> TestClient:
-    """Signs up a second account after setup -- which makes it a member."""
+    """A second account, joining the owner's restaurant by invite -- which makes it a member."""
     from app.main import app
 
     member = TestClient(app)
+    token = client.post("/api/v1/auth/invites", json={"role": MEMBER}).json()["token"]
     response = member.post(
-        "/api/v1/auth/signup", json={"name": "Mo", "email": "mo@example.com", "password": "a-long-password"}
+        f"/api/v1/auth/invite/{token}", json={"name": "Mo", "email": "mo@example.com", "password": "a-long-password"}
     )
     assert response.status_code == 201, response.text
     assert response.json()["role"] == MEMBER

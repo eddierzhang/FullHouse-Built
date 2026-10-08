@@ -2,9 +2,12 @@ import { type FormEvent, useEffect, useState } from 'react'
 import { type AuthOptions, type User, fetchAuthOptions, login, loginSecondStep, signup } from '../api/client'
 import { Icon } from '../components/Icon'
 
-type Mode = 'sign-in' | 'sign-up'
+export type Mode = 'sign-in' | 'sign-up'
 
 type Props = {
+  /** Which form to show. It follows the address (#signin, #signup), so the landing page can link to either. */
+  mode: Mode
+  onMode: (mode: Mode) => void
   /** The session check itself failed: the API is down, not the password wrong. */
   unreachable: boolean
   /** Signed out by the session ending, not by choice. */
@@ -13,9 +16,9 @@ type Props = {
   onSignedIn: (user: User) => void
 }
 
-export function LoginPage({ unreachable, expired = false, onRetry, onSignedIn }: Props) {
-  const [mode, setMode] = useState<Mode>('sign-in')
+export function LoginPage({ mode, onMode, unreachable, expired = false, onRetry, onSignedIn }: Props) {
   const [options, setOptions] = useState<AuthOptions | null>(null)
+  const [restaurantName, setRestaurantName] = useState('')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -29,7 +32,11 @@ export function LoginPage({ unreachable, expired = false, onRetry, onSignedIn }:
     fetchAuthOptions().then(setOptions).catch(() => {})
   }, [unreachable])
 
-  const signingUp = mode === 'sign-up'
+  // A site that isn't taking new restaurants has no sign-up form, whatever the address says.
+  const signingUp = mode === 'sign-up' && options?.signup_enabled !== false
+
+  // A message about one form says nothing about the other.
+  useEffect(() => setError(null), [mode])
 
   const submit = async (credentials?: { email: string; password: string }) => {
     setBusy(true)
@@ -38,7 +45,7 @@ export function LoginPage({ unreachable, expired = false, onRetry, onSignedIn }:
       const result = credentials
         ? await login(credentials.email, credentials.password)
         : signingUp
-          ? await signup(name, email, password)
+          ? await signup(name, email, password, restaurantName)
           : await login(email, password)
       if ('mfa_required' in result) {
         setNeedsCode(true)
@@ -126,21 +133,18 @@ export function LoginPage({ unreachable, expired = false, onRetry, onSignedIn }:
     )
   }
 
-  const switchMode = (next: Mode) => {
-    setMode(next)
-    setError(null)
-  }
-
   return (
     <main className="auth-screen">
       <div className="auth-card">
-        <div className="brand auth-brand">
+        <a className="brand auth-brand" href="#home" aria-label="FullHouse home">
           <span className="brand-mark">F</span>
           FullHouse
-        </div>
-        <h1 className="auth-title">{signingUp ? 'Create your account' : 'Sign in'}</h1>
+        </a>
+        <h1 className="auth-title">{signingUp ? 'Create your restaurant’s account' : 'Sign in'}</h1>
         <p className="auth-subtitle">
-          {signingUp ? 'Start running your restaurant with FullHouse.' : 'Welcome back. Sign in to your dashboard.'}
+          {signingUp
+            ? 'You’ll be its owner. Setting it up takes a few minutes, and you can invite your team as you go.'
+            : 'Welcome back. Sign in to your dashboard.'}
         </p>
 
         {expired && !unreachable && (
@@ -204,7 +208,20 @@ export function LoginPage({ unreachable, expired = false, onRetry, onSignedIn }:
         <form className="auth-form" onSubmit={onSubmit} noValidate>
           {signingUp && (
             <label className="field">
-              <span className="field-label">Name</span>
+              <span className="field-label">Restaurant name</span>
+              <input
+                className="input auth-input"
+                autoComplete="organization"
+                required
+                maxLength={120}
+                value={restaurantName}
+                onChange={(e) => setRestaurantName(e.target.value)}
+              />
+            </label>
+          )}
+          {signingUp && (
+            <label className="field">
+              <span className="field-label">Your name</span>
               <input
                 className="input auth-input"
                 autoComplete="name"
@@ -253,13 +270,16 @@ export function LoginPage({ unreachable, expired = false, onRetry, onSignedIn }:
           </button>
         </form>
 
-        {options?.signup_enabled === false && !signingUp && (
+        {signingUp && (
+          <p className="auth-switch">Joining a restaurant that’s already here? Use the invite link its owner sent you.</p>
+        )}
+        {options?.signup_enabled === false && (
           <p className="auth-switch">New here? Ask the owner or a manager for an invite link.</p>
         )}
         {options?.signup_enabled !== false && (
           <p className="auth-switch">
             {signingUp ? 'Already have an account?' : 'New to FullHouse?'}{' '}
-            <button type="button" className="link-button" onClick={() => switchMode(signingUp ? 'sign-in' : 'sign-up')}>
+            <button type="button" className="link-button" onClick={() => onMode(signingUp ? 'sign-in' : 'sign-up')}>
               {signingUp ? 'Sign in' : 'Create an account'}
             </button>
           </p>

@@ -16,7 +16,7 @@ from datetime import datetime, timezone, tzinfo
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from app.audit.context import SYSTEM_ACTOR, actor_context, note_context
+from app.audit.context import SYSTEM, SYSTEM_ACTOR, Actor, actor_context, note_context
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -64,44 +64,61 @@ def agent_timezone(db) -> tzinfo:
     return restaurant_timezone(db)
 
 
-def _agent_job_id(key: str) -> str:
-    return f"agent:{key}"
+def _job_id(prefix: str, restaurant_id: str | None) -> str:
+    return f"{prefix}:{restaurant_id}" if restaurant_id else prefix
 
 
-def run_scheduled_agent(agent_key: str, db=None, task: str | None = None) -> str | None:
-    """Queue one scheduled run. Returns the run id, or None if skipped.
+def _agent_job_id(key: str, restaurant_id: str | None = None) -> str:
+    return _job_id(f"agent:{key}", restaurant_id)
+
+
+def _system_for(restaurant_id: str | None) -> Actor:
+    """The system, at work for one restaurant: its clock, its settings, its records."""
+    return Actor(type=SYSTEM, id=SYSTEM_ACTOR.id, restaurant_id=restaurant_id)
+
+
+def run_scheduled_agent(
+    agent_key: str, db=None, task: str | None = None, restaurant_id: str | None = None
+) -> str | None:
+    """Queue one scheduled run for a restaurant. Returns the run id, or None if skipped.
 
     `task` is what the run is asked to do; by default, a note of the schedule
-    that fired, which leaves the agent to its standing instructions.
+    that fired, which leaves the agent to its standing instructions. With no
+    `restaurant_id` the run is for the site's restaurant.
 
-    Skips when the agent already has a run queued or in flight: a slow model
-    on a frequent schedule would otherwise pile up runs faster than it
-    finishes them.
+    Skips when the restaurant already has a run of this agent queued or in
+    flight: a slow model on a frequent schedule would otherwise pile up runs
+    faster than it finishes them.
     """
     from app.agents import crud, executor
     from app.agents.models import AgentRun
     from app.db.session import SessionLocal
+    from app.restaurant.profile import agent_settings, get_restaurant
 
     owns_session = db is None
     db = db or SessionLocal()
     try:
-        defn = crud.get_definition_by_key(db, agent_key)
-        if defn is None or not defn.enabled or not defn.schedule_cron:
-            return None
+        with actor_context(_system_for(restaurant_id)):
+            restaurant = get_restaurant(db)
+            defn = crud.get_definition_by_key(db, agent_key)
+            if defn is None:
+                return None
+            cron, enabled = agent_settings(restaurant, defn)
+            if not enabled or not cron:
+                return None
 
-        busy = (
-            db.query(AgentRun)
-            .filter(AgentRun.agent_definition_id == defn.id, AgentRun.status.in_(("queued", "running")))
-            .count()
-        )
-        if busy:
-            logger.info("skipping scheduled %s run: one is already in flight", agent_key)
-            return None
+            in_flight = db.query(AgentRun).filter(
+                AgentRun.agent_definition_id == defn.id, AgentRun.status.in_(("queued", "running"))
+            )
+            if restaurant is not None:
+                in_flight = in_flight.filter(AgentRun.restaurant_id == restaurant.id)
+            if in_flight.count():
+                logger.info("skipping scheduled %s run: one is already in flight", agent_key)
+                return None
 
-        with actor_context(SYSTEM_ACTOR):
             run = crud.create_run(
                 db, defn.id, trigger_type="scheduled",
-                input=task or f"Scheduled run ({defn.schedule_cron}, {getattr(agent_timezone(db), 'key', 'UTC')}).",
+                input=task or f"Scheduled run ({cron}, {getattr(agent_timezone(db), 'key', 'UTC')}).",
             )
         executor.submit(run.id)
         return run.id
@@ -153,40 +170,66 @@ def expire_promotions(db=None, now: datetime | None = None) -> int:
             db.close()
 
 
+def _scheduled_restaurants(db) -> list[str | None]:
+    """Whose schedules run: every restaurant that has finished setup. A site
+    with no restaurant at all (sample data, before anyone signs up) runs the
+    agent definitions' own schedules, for nobody in particular."""
+    from app.restaurant.models import Restaurant
+
+    if db.query(Restaurant.id).first() is None:
+        return [None]
+    ready = db.query(Restaurant.id).filter(Restaurant.setup_completed_at.is_not(None))
+    return [row[0] for row in ready.order_by(Restaurant.created_at)]
+
+
 def sync_agent_schedules() -> None:
-    """Make the scheduler's agent jobs match the database."""
+    """Make the scheduler's jobs match the database: for each restaurant, the
+    agent's schedule and the daily stock check, on that restaurant's clock."""
     if _scheduler is None:
         return
 
     from app.agents.models import AgentDefinition
     from app.db.session import SessionLocal
+    from app.restaurant.models import Restaurant
+    from app.restaurant.profile import agent_settings
 
+    #: job id -> (what to call, cron, its clock, arguments)
+    wanted: dict[str, tuple] = {}
     db = SessionLocal()
     try:
-        tz = agent_timezone(db)
-        stock_check = stock_check_cron(db)
-        wanted = {
-            _agent_job_id(d.key): d
-            for d in db.query(AgentDefinition).all()
-            if d.enabled and d.schedule_cron
-        }
+        definitions = db.query(AgentDefinition).all()
+        for restaurant_id in _scheduled_restaurants(db):
+            restaurant = db.get(Restaurant, restaurant_id) if restaurant_id else None
+            with actor_context(_system_for(restaurant_id)):
+                tz = agent_timezone(db)
+                for defn in definitions:
+                    cron, enabled = agent_settings(restaurant, defn)
+                    if enabled and cron:
+                        wanted[_agent_job_id(defn.key, restaurant_id)] = (
+                            run_scheduled_agent, cron, tz, {"agent_key": defn.key, "restaurant_id": restaurant_id}
+                        )
+                # The owner's daily stock check: the same agent, asked a set question.
+                if stock_check := stock_check_cron(db):
+                    wanted[_job_id(STOCK_CHECK_JOB, restaurant_id)] = (
+                        run_stock_check, stock_check, tz, {"restaurant_id": restaurant_id}
+                    )
     finally:
         db.close()
 
     for job in _scheduler.get_jobs():
-        if job.id.startswith("agent:") and job.id not in wanted:
+        if job.id.startswith(("agent:", STOCK_CHECK_JOB)) and job.id not in wanted:
             job.remove()
 
-    for job_id, defn in wanted.items():
+    for job_id, (func, cron, tz, kwargs) in wanted.items():
         try:
-            trigger = parse_cron(defn.schedule_cron, tz)
+            trigger = parse_cron(cron, tz)
         except InvalidSchedule:
-            logger.warning("ignoring invalid schedule on %s: %r", defn.key, defn.schedule_cron)
+            logger.warning("ignoring invalid schedule on %s: %r", job_id, cron)
             continue
         _scheduler.add_job(
-            run_scheduled_agent,
+            func,
             trigger,
-            args=[defn.key],
+            kwargs=kwargs,
             id=job_id,
             replace_existing=True,
             coalesce=True,       # after downtime, fire once rather than catching up
@@ -194,20 +237,11 @@ def sync_agent_schedules() -> None:
             misfire_grace_time=300,
         )
 
-    # The owner's daily stock check: the same agent, asked a set question.
-    if stock_check:
-        _scheduler.add_job(
-            run_stock_check, parse_cron(stock_check, tz), id=STOCK_CHECK_JOB, replace_existing=True,
-            coalesce=True, max_instances=1, misfire_grace_time=300,
-        )
-    elif _scheduler.get_job(STOCK_CHECK_JOB):
-        _scheduler.remove_job(STOCK_CHECK_JOB)
 
-
-def run_stock_check(db=None) -> str | None:
+def run_stock_check(db=None, restaurant_id: str | None = None) -> str | None:
     from app.agents.definitions import AGENT_KEY
 
-    return run_scheduled_agent(AGENT_KEY, db, task=STOCK_CHECK_TASK)
+    return run_scheduled_agent(AGENT_KEY, db, task=STOCK_CHECK_TASK, restaurant_id=restaurant_id)
 
 
 def stock_check_cron(db) -> str | None:

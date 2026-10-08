@@ -9,7 +9,7 @@ import tempfile
 # TEST_DATABASE_URL runs the whole suite against that database instead (CI
 # uses it for Postgres); otherwise a throwaway SQLite file isolates it.
 os.environ["SCHEDULER_ENABLED"] = "false"  # tests drive scheduled jobs directly
-os.environ["ALLOW_SIGNUP"] = "true"  # tests sign coworkers up directly; test_account_security covers invites
+os.environ["ALLOW_SIGNUP"] = "true"  # any number of restaurants may sign up; test_auth covers it turned off
 os.environ["REQUIRE_MFA"] = "false"  # test_mfa turns it on; elsewhere owners sign in with a password alone
 
 TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
@@ -98,13 +98,28 @@ def anon_client(db):
 
 
 @pytest.fixture
-def client(anon_client):
-    """TestClient signed in as TEST_USER_EMAIL."""
-    response = anon_client.post(
-        "/api/v1/auth/signup",
-        json={"name": "Eddie", "email": TEST_USER_EMAIL, "password": TEST_USER_PASSWORD},
-    )
-    assert response.status_code == 201, response.text
+def client(anon_client, db):
+    """TestClient signed in as TEST_USER_EMAIL: an owner with no restaurant yet.
+
+    Signing up would give the account a restaurant of its own (test_auth
+    covers that). Most tests want the state before one exists -- records
+    that belong to no restaurant, which this account sees and its first
+    setup step claims -- so the account is made directly.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from app.auth.deps import SESSION_COOKIE
+    from app.auth.models import AuthSession, User
+    from app.auth.security import hash_password, new_session_token, token_id
+
+    user = User(email=TEST_USER_EMAIL, name="Eddie", password_hash=hash_password(TEST_USER_PASSWORD))
+    db.add(user)
+    db.flush()
+    # A session without a sign-in, so the security log starts empty, as it does after signing up.
+    token = new_session_token()
+    db.add(AuthSession(id=token_id(token), user_id=user.id, expires_at=datetime.now(timezone.utc) + timedelta(days=1)))
+    db.commit()
+    anon_client.cookies.set(SESSION_COOKIE, token)
     return anon_client
 
 

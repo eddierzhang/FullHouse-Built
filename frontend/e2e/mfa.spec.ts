@@ -1,7 +1,7 @@
 import { createHmac } from 'node:crypto'
 import { expect, test } from '@playwright/test'
+import { joinAsMember } from './team'
 
-const API = `http://127.0.0.1:${process.env.E2E_API_PORT ?? '8100'}`
 
 /** RFC 6238, as an authenticator app computes it: the code for one 30-second step. */
 function totp(secret: string, step = Math.floor(Date.now() / 30_000)): string {
@@ -19,7 +19,7 @@ function totp(secret: string, step = Math.floor(Date.now() / 30_000)): string {
 test('turning on two-step sign-in, then signing in with a code', async ({ page }) => {
   const email = `tess-${Date.now()}@example.com`
   const password = 'a-long-password'
-  expect((await page.request.post(`${API}/api/v1/auth/signup`, { data: { name: 'Tess', email, password } })).ok()).toBeTruthy()
+  await joinAsMember(page.request, { name: 'Tess', email, password })
 
   // --- set it up from the account tab
   await page.goto('/#profile/account')

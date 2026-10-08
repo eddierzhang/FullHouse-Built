@@ -1,4 +1,5 @@
 import { type Page, expect, test } from '@playwright/test'
+import { joinAsMember } from './team'
 
 const API = `http://127.0.0.1:${process.env.E2E_API_PORT ?? '8100'}`
 
@@ -68,13 +69,7 @@ test('staff, menu, inventory and scheduling are linked, not edited, from the det
 })
 
 test('a member sees the details but cannot change them', async ({ page }) => {
-  // Signing up once the restaurant exists makes a member, not an owner.
-  const email = `member-${Date.now()}@example.com`
-  const response = await page.request.post(`${API}/api/v1/auth/signup`, {
-    data: { name: 'Mia Member', email, password: 'a-long-password' },
-  })
-  expect(response.ok()).toBeTruthy()
-  expect((await response.json()).role).toBe('member')
+  await joinAsMember(page.request, { name: 'Mia Member', email: `member-${Date.now()}@example.com` })
 
   await page.goto('/#profile')
   await expect(page.getByText('Only the owner or an admin can change them.')).toBeVisible()

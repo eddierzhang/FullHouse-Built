@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
+  type AuthOptions,
   type Restaurant,
   SIGNED_OUT_EVENT,
   type User,
   canEditRestaurant,
+  fetchAuthOptions,
   fetchCurrentUser,
   fetchRestaurant,
   logout,
 } from './api/client'
 import { AppShell } from './app/AppShell'
 import { MfaSetup } from './components/MfaSetup'
+import { LandingPage } from './pages/LandingPage'
 import { type AccountLink, LinkPage, readAccountLink } from './pages/LinkPage'
 import { LoginPage } from './pages/LoginPage'
 import { SetupPage } from './pages/SetupPage'
@@ -20,6 +23,19 @@ type AuthState =
   /** `expired`: the session ended by itself -- say so, rather than just showing the login page. */
   | { status: 'signed-out'; expired?: boolean }
   | { status: 'signed-in'; user: User; restaurant: Restaurant | null }
+
+/** What a signed-out visitor sees, from the address. */
+type Front = 'landing' | 'sign-in' | 'sign-up'
+
+/**
+ * The bare address is the landing page. Anything else -- #signin, or a link
+ * to a page inside the app -- is someone on their way in: the sign-in form.
+ */
+function readFront(): Front {
+  const hash = window.location.hash.replace(/^#\/?/, '')
+  if (hash === '' || hash === 'home') return 'landing'
+  return hash === 'signup' ? 'sign-up' : 'sign-in'
+}
 
 /**
  * Nothing behind the login is rendered, or fetched, until the server has
@@ -33,9 +49,16 @@ export default function App() {
   const [auth, setAuth] = useState<AuthState>({ status: 'checking' })
   // An invite or password-reset link opens its own page, signed in or not.
   const [link, setLink] = useState<AccountLink | null>(readAccountLink)
+  const [front, setFront] = useState<Front>(readFront)
+  // What the landing page may offer: whether new restaurants can sign up, and the demo's account.
+  const [options, setOptions] = useState<AuthOptions | null>(null)
 
   useEffect(() => {
-    const onChange = () => setLink(readAccountLink())
+    const onChange = () => {
+      setLink(readAccountLink())
+      setFront(readFront())
+      window.scrollTo({ top: 0 })
+    }
     window.addEventListener('hashchange', onChange)
     return () => window.removeEventListener('hashchange', onChange)
   }, [])
@@ -46,6 +69,11 @@ export default function App() {
   }, [])
 
   const enter = useCallback(async (user: User) => {
+    // The address that led to the form isn't a page inside the app.
+    if (/^#\/?(home|signin|signup)?$/.test(window.location.hash)) {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search)
+      setFront('landing')
+    }
     setAuth({ status: 'checking' })
     try {
       // Until two-step is set up, the server answers nothing else -- the restaurant included.
@@ -64,6 +92,11 @@ export default function App() {
 
   useEffect(check, [check])
 
+  const signedOut = auth.status === 'signed-out'
+  useEffect(() => {
+    if (signedOut) fetchAuthOptions().then(setOptions).catch(() => {})
+  }, [signedOut])
+
   useEffect(() => {
     // A data request found the session gone: it expired, or access was turned off.
     const onSignedOut = () => setAuth((a) => ({ status: 'signed-out', expired: a.status === 'signed-in' }))
@@ -73,6 +106,9 @@ export default function App() {
 
   const signOut = useCallback(async () => {
     await logout().catch(() => {})
+    // To the sign-in form, not the landing page: they know what this is. A page
+    // they were on stays in the address, so signing back in returns to it.
+    if (readFront() === 'landing') window.location.hash = '#signin'
     setAuth({ status: 'signed-out' })
   }, [])
 
@@ -154,8 +190,16 @@ export default function App() {
       }
       return <AppShell user={auth.user} restaurant={auth.restaurant} setRestaurant={setRestaurant} onSignOut={signOut} />
     default:
+      // A session that ended, or a server that can't be reached, is explained on the sign-in form.
+      if (front === 'landing' && auth.status === 'signed-out' && !auth.expired) {
+        return <LandingPage options={options} />
+      }
       return (
         <LoginPage
+          mode={front === 'sign-up' ? 'sign-up' : 'sign-in'}
+          onMode={(mode) => {
+            window.location.hash = mode === 'sign-up' ? '#signup' : '#signin'
+          }}
           unreachable={auth.status === 'error'}
           expired={auth.status === 'signed-out' && Boolean(auth.expired)}
           onRetry={check}

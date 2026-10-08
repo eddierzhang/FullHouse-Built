@@ -8,8 +8,9 @@ const OWNER = { name: 'Rosa Owner', email: `rosa-${Date.now()}@example.com`, pas
 test('sign up, set up the restaurant, open the dashboard, and edit settings', async ({ page }) => {
   // --- sign up: a new account is an owner, sent to setup rather than the dashboard
   await page.goto('/')
-  await page.getByRole('button', { name: 'Create an account' }).click()
-  await page.getByLabel('Name').fill(OWNER.name)
+  await page.getByRole('link', { name: 'Set up your restaurant' }).first().click()
+  await page.getByLabel('Restaurant name').fill('Harbour House')
+  await page.getByLabel('Your name').fill(OWNER.name)
   await page.getByLabel('Email').fill(OWNER.email)
   await page.getByLabel('Password').fill(OWNER.password)
   await page.getByRole('button', { name: 'Create account' }).click()
@@ -18,7 +19,8 @@ test('sign up, set up the restaurant, open the dashboard, and edit settings', as
   await expect(page.getByRole('navigation')).toHaveCount(0)
   await expect(page.getByText('Step 1 of 8')).toBeVisible()
 
-  // --- step 1: details, with a mistake caught first
+  // --- step 1: details, starting from the name given at sign-up, with a mistake caught first
+  await expect(page.getByLabel('Restaurant name')).toHaveValue('Harbour House')
   await page.getByLabel('Restaurant name').fill('Harbor House')
   await page.getByLabel('Street address').fill('88 Pier Road')
   await page.getByLabel('City').fill('Chicago')

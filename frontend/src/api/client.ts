@@ -557,7 +557,7 @@ export type User = {
   name: string
   /** Owners and admins may edit the restaurant; members can only see it. */
   role: Role
-  /** Null until the owner saves the first setup step. */
+  /** Null only for an account from before signing up created its restaurant. */
   restaurant_id: string | null
   created_at: string
   /** Set while an owner or admin has turned the account off. */
@@ -569,6 +569,7 @@ export type User = {
 }
 
 export type AuthOptions = {
+  /** Whether a new restaurant can sign up here. A restaurant's team joins by invite either way. */
   signup_enabled: boolean
   /** The public demo's shared account; null on real deployments. */
   demo: { email: string; password: string } | null
@@ -596,8 +597,9 @@ export const newBackupCodes = (code: string) => send<{ codes: string[] }>('POST'
 export const disableMfa = (code: string) => send<User>('POST', '/api/v1/auth/mfa/disable', { code })
 /** For a lost phone: owners for admins and members, admins for members. */
 export const resetTeammateMfa = (userId: string) => send<User>('POST', `/api/v1/auth/team/${userId}/reset-mfa`)
-export const signup = (name: string, email: string, password: string) =>
-  send<User>('POST', '/api/v1/auth/signup', { name, email, password })
+/** Opens a new restaurant, with this account as its owner. Joining an existing one takes an invite. */
+export const signup = (name: string, email: string, password: string, restaurantName: string) =>
+  send<User>('POST', '/api/v1/auth/signup', { name, email, password, restaurant_name: restaurantName })
 export const logout = () => sendVoid('POST', '/api/v1/auth/logout')
 
 /** Everyone who can sign in to this restaurant. Owners and admins only. */

@@ -1,12 +1,8 @@
 import { expect, test } from '@playwright/test'
-
-const API = `http://127.0.0.1:${process.env.E2E_API_PORT ?? '8100'}`
+import { joinAsMember } from './team'
 
 test('staff see the restaurant but not the controls that are for owners and admins', async ({ page }) => {
-  const signup = await page.request.post(`${API}/api/v1/auth/signup`, {
-    data: { name: 'Sky Staff', email: `sky-${Date.now()}@example.com`, password: 'a-long-password' },
-  })
-  expect((await signup.json()).role).toBe('member')
+  await joinAsMember(page.request, { name: 'Sky Staff', email: `sky-${Date.now()}@example.com` })
 
   await page.goto('/#overview')
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible()

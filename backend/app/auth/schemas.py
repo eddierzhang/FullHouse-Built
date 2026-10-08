@@ -40,11 +40,19 @@ class SignupIn(BaseModel):
     name: str = Field(max_length=100)
     email: str = Field(max_length=254)
     password: str = Field(max_length=256)
+    #: The restaurant this account is opening. Setup asks again, with the
+    #: rest of its details, so it can be left for then.
+    restaurant_name: str | None = Field(default=None, max_length=120)
 
     _email = field_validator("email")(_normalise_email)
 
     _name = field_validator("name")(_valid_name)
     _password = field_validator("password")(_valid_password)
+
+    @field_validator("restaurant_name")
+    @classmethod
+    def _restaurant_name(cls, value: str | None) -> str | None:
+        return (value or "").strip() or None
 
 
 class UserOut(BaseModel):
@@ -85,6 +93,7 @@ class DemoCredentials(BaseModel):
 
 
 class AuthOptions(BaseModel):
+    #: Whether a new restaurant can sign up here. A restaurant's team joins by invite either way.
     signup_enabled: bool
     #: Shown on the login page of the public demo; null everywhere else.
     demo: DemoCredentials | None = None
