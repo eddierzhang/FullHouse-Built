@@ -20,7 +20,7 @@ const env = {
   DATABASE_URL: `sqlite:///${db}`,
   LLM_PROVIDER: 'scripted',
   SCHEDULER_ENABLED: 'false',
-  // Coworkers sign up directly in the tests, rather than through invite links.
+  // New restaurants can sign up from the landing page.
   ALLOW_SIGNUP: 'true',
   // Owners sign in with a password alone here; e2e/mfa.spec.ts turns two-step on for its own account.
   REQUIRE_MFA: 'false',

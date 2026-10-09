@@ -40,14 +40,46 @@ test.describe('signing in', () => {
     expect(errors.filter((e) => !e.includes('401'))).toEqual([])
   })
 
-  test('creating an account signs you straight in', async ({ page }) => {
+  test('the landing page explains FullHouse and leads to signing in', async ({ page }) => {
+    const errors = watchForErrors(page)
     await page.goto('/')
-    await page.getByRole('button', { name: 'Create an account' }).click()
-    await page.getByLabel('Name').fill('New Manager')
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('assistant manager')
+    for (const section of ['How it works', 'The whole back office, in one place', 'Your restaurant stays yours']) {
+      await expect(page.getByRole('heading', { name: section })).toBeVisible()
+    }
+    await expect(page.getByLabel('Email')).toHaveCount(0)
+
+    await page.getByRole('navigation', { name: 'Account' }).getByRole('link', { name: 'Sign in' }).click()
+    await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible()
+    await page.getByLabel('Email').fill(E2E_EMAIL)
+    await page.getByLabel('Password').fill(E2E_PASSWORD)
+    await page.getByRole('button', { name: 'Sign in' }).click()
+    await expect(page.getByRole('navigation').getByRole('link', { name: /^Help/ })).toBeVisible()
+    await expect(page).toHaveURL(/\/$/) // the address that led to the form isn't kept
+
+    // The brand on the sign-in form leads back to the landing page.
+    await page.getByRole('button', { name: 'Sign out' }).click()
+    await page.getByRole('link', { name: 'FullHouse home' }).click()
+    await expect(page.getByRole('heading', { name: 'How it works' })).toBeVisible()
+    expect(errors.filter((e) => !e.includes('401'))).toEqual([])
+  })
+
+  test('a new restaurant creates its own account, apart from every other', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('link', { name: 'Set up your restaurant' }).first().click()
+    await expect(page.getByRole('heading', { name: 'Create your restaurant’s account' })).toBeVisible()
+    await page.getByLabel('Restaurant name').fill('Corner Cafe')
+    await page.getByLabel('Your name').fill('New Owner')
     await page.getByLabel('Email').fill(`new-${Date.now()}@example.com`)
     await page.getByLabel('Password').fill('a-long-password')
     await page.getByRole('button', { name: 'Create account' }).click()
-    await expect(page.getByText('New Manager')).toBeVisible()
+
+    // Its owner, sent to set it up, with the name already filled in.
+    await expect(page.getByRole('heading', { name: 'Set up your restaurant' })).toBeVisible()
+    await expect(page.getByLabel('Restaurant name')).toHaveValue('Corner Cafe')
+    // None of the seeded restaurant's records are theirs to see.
+    const items = await (await page.request.get(`${API}/api/v1/restaurant/inventory-items`)).json()
+    expect(items).toEqual([])
   })
 })
 

@@ -40,7 +40,7 @@ services:
         value: "false"
       # The first person to sign up is the owner; everyone else joins with an
       # invite link from Profile -> Team access. "true" would let anyone who
-      # finds the site create an account in the restaurant.
+      # finds the site open a restaurant of their own on it.
       - key: ALLOW_SIGNUP
         value: "false"
       # Encrypts two-step sign-in secrets. Render makes a random one once;

@@ -67,8 +67,8 @@ database, so restaurants never see each other's data. The agents run on Google G
    `https://generativelanguage.googleapis.com/v1beta/openai`) and a tool-capable model into `LLM_MODEL`; there is
    no default model. Apply, then add `LLM_PROVIDER=openai` under the service's **Environment**. Render also generates `SECRET_KEY`, which encrypts
    two-step sign-in secrets: never change it. The first build takes a few minutes.
-4. **Hand-over.** Open the service URL and have the restaurant owner **sign up straight away**. Until the
-   restaurant is set up, anyone who signs up becomes an owner; after that, nobody can sign up without an invite.
+4. **Hand-over.** Open the service URL and have the restaurant owner **sign up straight away**. The
+   first person to sign up becomes the owner; after that, nobody can sign up without an invite.
    The owner sets up two-step sign-in (an authenticator app on their phone), goes through setup, then invites
    the team from **Profile → Team access**.
 5. **Backups.** See [Backups](#backups) below: two repository secrets turn on a nightly, restore-tested backup.
@@ -239,7 +239,8 @@ What the app enforces, and what's left to you.
 **Accounts and access**
 
 - Everyone has their own account. After setup, new people join only through an invite link an owner or admin
-  creates (Profile → Team access); `ALLOW_SIGNUP=true` would let anyone who finds the site join instead.
+  creates (Profile → Team access); nobody joins a restaurant by signing up. `ALLOW_SIGNUP=true` opens the site to *new restaurants*: anyone can
+  create an account from the landing page, which makes them the owner of a new, separate restaurant.
 - Roles, checked by the server on every request (agent tools included):
 
   | | Owner / admin | Member |

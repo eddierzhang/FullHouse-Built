@@ -41,8 +41,10 @@ class EditConflict(ValueError):
 
 def get_restaurant(db: Session) -> Restaurant | None:
     """The restaurant the current work is for: the signed-in person's, or the
-    one an agent run or approved proposal belongs to (the actor carries it);
-    otherwise the site's first. Its rules, roles and hours are the ones that apply."""
+    one an agent run, scheduled job or approved proposal belongs to (the actor
+    carries it). Work that names none -- a script, a site from before accounts
+    were tied to restaurants -- gets the site's first. Its rules, roles and
+    hours are the ones that apply."""
     from app.audit.context import get_actor
 
     if acting_for := get_actor().restaurant_id:
@@ -55,13 +57,32 @@ def get_restaurant(db: Session) -> Restaurant | None:
 def restaurant_for(db: Session, user: User) -> Restaurant | None:
     """The restaurant `user` belongs to -- never another one.
 
-    An account not linked to one yet (an owner before the first setup step,
-    or one from before restaurants existed) gets the site's restaurant,
-    which saving links them to.
+    Signing up creates one, and an invite names one, so only an account from
+    before that has none: its first setup step makes it one of its own.
     """
-    if user.restaurant_id:
-        return db.get(Restaurant, user.restaurant_id)
-    return get_restaurant(db)
+    return db.get(Restaurant, user.restaurant_id) if user.restaurant_id else None
+
+
+def create_restaurant(db: Session, owner: User, name: str | None = None) -> Restaurant:
+    """A new restaurant for `owner`, who is linked to it; setup fills in the rest.
+
+    Not committed -- the caller's transaction decides. Both ids are assigned
+    here, not at flush, so each row is written once and the history shows one
+    insert apiece.
+    """
+    owner.id = owner.id or uuid.uuid4().hex
+    first = db.query(Restaurant.id).first() is None
+    restaurant = Restaurant(id=uuid.uuid4().hex, name=name, completed_steps=[], updated_by=owner.id)
+    db.add(restaurant)
+    db.flush()
+    if first:
+        # Sample data seeded before anyone signed up becomes the first restaurant's.
+        # Only the first: nothing is left unassigned once every account has one.
+        from app.restaurant.crud import claim_unassigned
+
+        claim_unassigned(db, restaurant)
+    owner.restaurant_id = restaurant.id
+    return restaurant
 
 
 def view(db: Session, restaurant: Restaurant, viewer: User) -> RestaurantView:
@@ -101,16 +122,13 @@ def _configured(db: Session) -> Restaurant | None:
 
 
 def save_section(db: Session, user: User, section: str, data: BaseModel) -> Restaurant:
-    """Save one step. Creates the restaurant on the first save and links the owner to it."""
+    """Save one step. An account that has no restaurant yet gets one here."""
     if section not in SECTIONS:
         raise ValueError(f"Unknown section {section!r}")
     restaurant = restaurant_for(db, user)
     created = restaurant is None
     if created:
-        # Id assigned up front, not at flush, so the row is written once with
-        # this step's values and the history shows one insert, not insert+update.
-        restaurant = Restaurant(id=uuid.uuid4().hex, completed_steps=[])
-        db.add(restaurant)
+        restaurant = create_restaurant(db, user)
 
     values = data.model_dump()
     if section == "details":
@@ -129,15 +147,6 @@ def save_section(db: Session, user: User, section: str, data: BaseModel) -> Rest
     if section not in restaurant.completed_steps:
         # A new list, not an in-place append: the JSON column only notices reassignment.
         restaurant.completed_steps = [s for s in SECTIONS if s in {*restaurant.completed_steps, section}]
-    if created:
-        db.flush()  # after the values are set, so the history shows a single insert
-        # Sample data seeded before setup becomes this restaurant's.
-        from app.restaurant.crud import claim_unassigned
-
-        claim_unassigned(db, restaurant)
-    if user.restaurant_id != restaurant.id:
-        db.flush()  # the restaurant row must exist before the user can point at it
-        user.restaurant_id = restaurant.id
     db.commit()
     db.refresh(restaurant)
 
@@ -193,6 +202,25 @@ def save_restaurant_details(db: Session, user: User, body: RestaurantDetailsIn) 
     return restaurant
 
 
+def agent_settings(restaurant: Restaurant | None, agent) -> tuple[str | None, bool]:
+    """`agent`'s schedule and whether it is switched on, for `restaurant`.
+
+    Each restaurant keeps its own, so one pausing or rescheduling the agent
+    changes nothing for another. Until it has set one, the agent definition's
+    applies -- as it does where there is no restaurant at all.
+    """
+    own = ((restaurant.agent_settings if restaurant else None) or {}).get(agent.key, {})
+    return own.get("schedule_cron", agent.schedule_cron), own.get("enabled", agent.enabled)
+
+
+def set_agent_settings(restaurant: Restaurant, agent, **fields) -> None:
+    """Set `schedule_cron` and/or `enabled` for `agent` at `restaurant`."""
+    # A new dict, not an in-place change: the JSON column only notices reassignment.
+    settings = dict(restaurant.agent_settings or {})
+    settings[agent.key] = {**settings.get(agent.key, {}), **fields}
+    restaurant.agent_settings = settings
+
+
 def _schedule_agents(db: Session, restaurant: Restaurant) -> None:
     """Give the agent a routine that fits the restaurant's week.
 
@@ -213,7 +241,9 @@ def _schedule_agents(db: Session, restaurant: Restaurant) -> None:
         usual_open = Counter(hours[day]["open"] for day in open_days).most_common(1)[0][0]
         opens = time.fromisoformat(usual_open)
         review = (datetime.combine(date.min, opens) - timedelta(hours=1)).time() if opens.hour >= 1 else opens
-        agent.schedule_cron = f"{review.minute} {review.hour} * * {','.join(open_days)}"
+        set_agent_settings(
+            restaurant, agent, schedule_cron=f"{review.minute} {review.hour} * * {','.join(open_days)}"
+        )
 
 
 def _resync_scheduler() -> None:

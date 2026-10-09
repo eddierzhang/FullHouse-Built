@@ -81,9 +81,11 @@ class Settings:
     # whose one shared account is meant for strangers to use.
     require_mfa: bool = os.getenv("REQUIRE_MFA", "true").strip().lower() in ("1", "true", "yes")
 
-    # Whether anyone can create an account in the restaurant from the login
-    # page. Off by default: the team joins with invite links from the Profile
-    # page. (Before the restaurant exists, signing up is how its owner starts.)
+    # Whether new restaurants can sign up from the landing page: each gets an
+    # owner account and a restaurant of its own, kept apart from every other.
+    # Off by default, which makes this one restaurant's private site: whoever
+    # signs up first is its owner, and after that nobody can. Either way a
+    # restaurant's team joins it with invite links from the Profile page.
     allow_signup: bool = os.getenv("ALLOW_SIGNUP", "false").strip().lower() in ("1", "true", "yes")
 
     # The built frontend, when one process serves both it and the API (the

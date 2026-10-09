@@ -54,11 +54,14 @@ for each restaurant, with its agents on Gemini's free API tier ([`render.custome
   or agent responsible, and the agent run behind it. Any change can be undone; the undo is recorded too.
 - **Live agent runs.** Runs execute in the background and stream every tool call and result to the browser as it
   happens. Runs can be cancelled mid-flight.
+- **A front door.** Signed-out visitors get a landing page that explains the product. From there a new restaurant
+  creates its own account (when `ALLOW_SIGNUP` is on), and everyone else signs in; a restaurant's team joins by
+  invite link.
 - **Set up around your restaurant.** A new owner walks through name, address, contact details, timezone, opening
   hours, inventory preferences, staff roles and scheduling rules, saved step by step so setup can be resumed. Agents are
   told these details, schedules run on local time, and shift rules are enforced on people and agents alike. All of it
-  stays editable on the Profile page — by the owner, or by anyone the owner makes an admin; everyone else who signs
-  up joins as a member who can see the details but not change them.
+  stays editable on the Profile page — by the owner, or by anyone the owner makes an admin; everyone else joins
+  by invite as a member who can see the details but not change them.
 - **Scheduled agents.** Cron schedules per agent, with a guard against overlapping runs. Promotions expire on their own.
 - **Local or hosted models.** Swap between Anthropic's API, any OpenAI-compatible API (Gemini's free tier by
   default) and a local Ollama model with one setting.
@@ -238,9 +241,10 @@ dev.py              developer tasks
 
 ## Limitations
 
-- **One restaurant per site in practice.** Data is separated by restaurant throughout, but signing up still
-  creates the site's one restaurant; there is no self-serve way to add a second. See [DEPLOY.md](DEPLOY.md) for
-  running one site per restaurant, and its Security section for roles, invites and two-step sign-in.
+- **One site, one AI key.** With `ALLOW_SIGNUP=true` any number of restaurants can sign up from the landing page,
+  each with separate data, team and agent schedule, but they all run their agents on the site's one model
+  provider and key, with no per-restaurant limit or billing. Signup is off by default, which keeps a site to one
+  restaurant; see [DEPLOY.md](DEPLOY.md) for that, and its Security section for roles, invites and two-step sign-in.
 - **Single process.** The event broker and scheduler live in the API process, so it can't be scaled horizontally without
   moving them to something like Redis.
 - **Gross, not net.** Profit excludes labour and overheads.

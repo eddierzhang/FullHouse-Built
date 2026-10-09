@@ -4,7 +4,7 @@ import { type Page, expect, test } from '@playwright/test'
 const OWNER = { email: 'e2e@example.com', password: 'e2e-password' }
 
 async function signIn(page: Page) {
-  await page.goto('/')
+  await page.goto('/#signin')
   await page.getByLabel('Email').fill(OWNER.email)
   await page.getByLabel('Password').fill(OWNER.password)
   await page.getByRole('button', { name: 'Sign in' }).click()

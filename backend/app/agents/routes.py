@@ -13,6 +13,7 @@ from app.audit.context import Actor, actor_context, get_actor
 from app.auth.deps import current_user, manager
 from app.auth.models import User
 from app.db.session import get_db
+from app.restaurant import profile
 from app.restaurant.inventory import scope_for
 
 #: How long an idle stream waits before sending a comment to keep the
@@ -58,11 +59,13 @@ def _claim(db: Session, action, status: str) -> None:
         raise HTTPException(409, "Someone else has just decided this proposal. Refresh to see what they chose.")
 
 
-def _definition_out(defn, tz) -> schemas.AgentDefinitionOut:
+def _definition_out(defn, tz, restaurant) -> schemas.AgentDefinitionOut:
+    """The agent as the caller's restaurant has it: its own schedule and pause switch."""
     out = schemas.AgentDefinitionOut.model_validate(defn)
-    if defn.enabled and defn.schedule_cron:
+    out.schedule_cron, out.enabled = profile.agent_settings(restaurant, defn)
+    if out.enabled and out.schedule_cron:
         try:
-            out.next_run_at = scheduler.next_fire_time(defn.schedule_cron, tz=tz)
+            out.next_run_at = scheduler.next_fire_time(out.schedule_cron, tz=tz)
         except scheduler.InvalidSchedule:
             out.next_run_at = None
     return out
@@ -97,20 +100,21 @@ def runtime(db: Session = Depends(get_db)):
 
 
 @router.get("/definitions", response_model=list[schemas.AgentDefinitionOut])
-def list_definitions(db: Session = Depends(get_db)):
-    tz = scheduler.agent_timezone(db)
-    return [_definition_out(d, tz) for d in crud.list_definitions(db)]
+def list_definitions(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    tz, restaurant = scheduler.agent_timezone(db), profile.restaurant_for(db, user)
+    return [_definition_out(d, tz, restaurant) for d in crud.list_definitions(db)]
 
 
 @router.patch("/definitions/{agent_key}", response_model=schemas.AgentDefinitionOut)
 def update_definition(
-    agent_key: str, payload: schemas.AgentDefinitionUpdate, _: User = Depends(manager), db: Session = Depends(get_db)
+    agent_key: str, payload: schemas.AgentDefinitionUpdate, user: User = Depends(manager), db: Session = Depends(get_db)
 ):
-    """Schedule, reschedule, pause or resume an agent."""
+    """Schedule, reschedule, pause or resume an agent -- for the caller's restaurant only."""
     defn = crud.get_definition_by_key(db, agent_key)
     if defn is None:
         raise HTTPException(404, f"No agent with key '{agent_key}'")
 
+    changes = {}
     fields = payload.model_dump(exclude_unset=True)
     if "schedule_cron" in fields:
         expression = (fields["schedule_cron"] or "").strip() or None
@@ -119,15 +123,21 @@ def update_definition(
                 scheduler.parse_cron(expression)
             except scheduler.InvalidSchedule as exc:
                 raise HTTPException(422, str(exc)) from exc
-        defn.schedule_cron = expression
+        changes["schedule_cron"] = expression
     if fields.get("enabled") is not None:
-        defn.enabled = fields["enabled"]
+        changes["enabled"] = fields["enabled"]
 
-    db.add(defn)
+    restaurant = profile.restaurant_for(db, user)
+    if restaurant is not None:
+        profile.set_agent_settings(restaurant, defn, **changes)
+    else:
+        # An account with no restaurant has only the shared definition to set.
+        for field, value in changes.items():
+            setattr(defn, field, value)
     db.commit()
     db.refresh(defn)
     scheduler.sync_agent_schedules()
-    return _definition_out(defn, scheduler.agent_timezone(db))
+    return _definition_out(defn, scheduler.agent_timezone(db), restaurant)
 
 
 @router.post("/runs", response_model=schemas.AgentRunOut, status_code=202)
@@ -142,7 +152,7 @@ def trigger_run(payload: schemas.TriggerRunRequest, user: User = Depends(manager
     defn = crud.get_definition_by_key(db, payload.agent_key)
     if defn is None:
         raise HTTPException(404, f"No agent with key '{payload.agent_key}'")
-    if not defn.enabled:
+    if not profile.agent_settings(profile.restaurant_for(db, user), defn)[1]:
         raise HTTPException(400, f"Agent '{defn.key}' is disabled")
 
     run = crud.create_run(

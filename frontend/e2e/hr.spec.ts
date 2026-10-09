@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { joinAsMember } from './team'
 
 const API = `http://127.0.0.1:${process.env.E2E_API_PORT ?? '8100'}`
 
@@ -28,13 +29,10 @@ test('an employee sees only their published shifts and edits only their own cont
   await page.getByRole('button', { name: 'Add draft shift' }).click()
   await expect(person).toContainText('1 upcoming')
 
-  // --- the employee signs up with that email, in their own browser
+  // --- the employee joins with that email, in their own browser
   const employeeContext = await browser.newContext()
   const employee = await employeeContext.newPage()
-  const signup = await employee.request.post(`${API}/api/v1/auth/signup`, {
-    data: { name: 'Dana', email, password: 'a-long-password' },
-  })
-  expect((await signup.json()).role).toBe('member')
+  await joinAsMember(employee.request, { name: 'Dana', email })
   await employee.goto('/#staff')
   const mine = employee.locator('section.card', { has: employee.getByRole('heading', { name: 'My shifts' }) })
   await expect(mine).toContainText('No upcoming shifts.') // still a draft
