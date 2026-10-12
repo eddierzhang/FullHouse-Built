@@ -1,15 +1,15 @@
-fastapi==0.142.2
+fastapi==0.143.0
 uvicorn==0.54.0
-SQLAlchemy==2.1.1
+SQLAlchemy==2.1.4
 alembic==1.20.0
-pydantic==2.13.5
+pydantic==2.14.0
 python-dotenv==1.2.4
-anthropic==1.11.0
+anthropic==1.12.1
 httpx==0.28.1
 psycopg[binary]==3.3.6
 apscheduler==3.11.3
 # IANA timezones for the restaurant's clock, where the OS has none (Windows, slim images).
-tzdata==2026.4
+tzdata==2026.5
 # Two-step sign-in: authenticator secrets encrypted at rest, and the setup QR code.
 cryptography==50.0.2
 segno==1.6.6
