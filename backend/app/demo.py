@@ -5,11 +5,13 @@ with dates moved to end today. A public demo runs it at startup and on a
 schedule, so whatever visitors approve, delete or revert is gone by the
 next reset.
 
-The data is shaped to give every page something true to show: sales with
-a weekly rhythm (so the forecast uses weekday means), recipes (so food cost
-and days of cover are computed), ingredients running short, a supplier
-covering most of the stock, a team member without shifts, and a queue of
-proposals -- one of which is missing its price.
+The data is shaped to give every page something true to show: eight weeks
+of supplier invoices with a price that climbed, a cheaper supplier and a
+short delivery (app/prices/demo.py), sales with a weekly rhythm (so the
+forecast uses weekday means), recipes (so food cost and days of cover are
+computed), ingredients running short, a supplier covering most of the
+stock, a team member without shifts, and a queue of proposals -- one of
+which is missing its price.
 
 Rows are written with Core inserts, not the ORM, so loading the demo does
 not bury the change history under a thousand "created" entries: the
@@ -28,6 +30,7 @@ from app.agents.models import AgentAction, AgentDefinition, AgentEvent, AgentRun
 from app.auth.models import User
 from app.auth.security import hash_password
 from app.db.session import Base
+from app.customers.models import CustomerRequest
 from app.restaurant.models import (
     InventoryAdjustment,
     InventoryItem,
@@ -51,15 +54,15 @@ DEMO_NAME = "Demo Manager"
 
 #: The demo restaurant's profile, as if its owner had finished setup.
 DEMO_PROFILE = dict(
-    name="Bistro Fiore",
+    name="Demo Restaurant",
     street="214 Mulberry Street",
     city="New York",
     region="NY",
     postal_code="10012",
     country="United States",
     phone="+1 212 555 0148",
-    email="hello@bistrofiore.example.com",
-    website="https://bistrofiore.example.com",
+    email="hello@demo-restaurant.example.com",
+    website="https://demo-restaurant.example.com",
     timezone="America/New_York",
     opening_hours={
         **{day: {"closed": False, "open": "11:30", "close": "22:00"} for day in ("mon", "tue", "wed", "thu")},
@@ -83,6 +86,26 @@ SUPPLIERS = [
     ("Sysco Foods", "orders@sysco.example.com", 2),
     ("Green Valley Farms", "hello@greenvalley.example.com", 1),
     ("Harbor Dairy Co.", "sales@harbordairy.example.com", 3),
+    ("Empire Wine & Spirits", "orders@empirewine.example.com", 5),
+]
+
+CUSTOMER_REQUESTS = [
+    # days ago, channel, kind, customer, contact, what they said
+    (0, "in_person", "complaint", "Dana Whitfield", "555-0142",
+     "We waited 45 minutes for two margherita pizzas on Friday night and nobody came to tell us why. "
+     "The food was good when it arrived, but we nearly left."),
+    (1, "phone", "request", "Marcus Lee", "marcus.lee@example.com",
+     "Can you do a table for 14 on the 24th for my mother's 70th? Two of us are coeliac, so we'd need to "
+     "know what on the menu is gluten free. Please call me back."),
+    (1, "online_review", "complaint", None, None,
+     "Tiramisu was still frozen in the middle. Second time this month. Three stars, down from five."),
+    (2, "email", "question", "Priya Nair", "priya.nair@example.com",
+     "Do you take bookings for the patio, and is it heated in the evenings?"),
+    (3, "in_person", "compliment", "The Okafor family", None,
+     "Best chicken parmesan we've had in the city. Our server Maria remembered our daughter's allergy "
+     "without being asked. Thank you!"),
+    (4, "phone", "complaint", "Tom Becker", "555-0177",
+     "I was charged twice for a takeaway order on Tuesday, $38.50 each time. I'd like one of them refunded."),
 ]
 
 INVENTORY = [
@@ -223,14 +246,51 @@ def reset_demo_data(db: Session, now: datetime | None = None) -> dict:
 
     proposals = _proposals(db, now, today, agent_id, suppliers, inventory, menu, staff)
 
+    # What customers have said lately, waiting to be read and summarised.
+    _insert(db, CustomerRequest, [
+        dict(id=_id(), restaurant_id=restaurant_id, received_at=now - timedelta(days=days, hours=2 + index),
+             created_at=now - timedelta(days=days, hours=1 + index), channel=channel, kind=kind,
+             customer_name=name, customer_contact=contact, message=message, logged_by=DEMO_EMAIL, status="open")
+        for index, (days, channel, kind, name, contact, message) in enumerate(CUSTOMER_REQUESTS)
+    ])
+
     # Suppliers, dishes, orders and the agent's work are the demo restaurant's
     # too -- everything was wiped above, so nothing else is unclaimed.
     from app.restaurant.crud import claim_unassigned
 
     claim_unassigned(db, db.get(Restaurant, restaurant_id))
 
+    # Eight weeks of supplier invoices, and this week's digest: the main event.
+    from app.prices.demo import seed as seed_invoices
+
+    prices = seed_invoices(db, restaurant_id, suppliers, today)
+    # Two orders in flight: flour due tomorrow, and mozzarella that should have come yesterday.
+    from app.restaurant.models import PurchaseOrder
+
+    db.add_all([
+        PurchaseOrder(restaurant_id=restaurant_id, supplier_id=suppliers["Sysco Foods"], supplier_name="Sysco Foods",
+                      inventory_item_id=inventory["Flour"], item_name="Flour", quantity=100, unit="lb", packs=2,
+                      pack_unit="bag", estimated_cost=37.80, status="ordered", ordered_at=now - timedelta(days=1),
+                      expected_on=today + timedelta(days=1), placed_by=DEMO_EMAIL,
+                      note="Placed by phone with the Sysco rep."),
+        PurchaseOrder(restaurant_id=restaurant_id, supplier_id=suppliers["Harbor Dairy Co."], supplier_name="Harbor Dairy Co.",
+                      inventory_item_id=inventory["Mozzarella"], item_name="Mozzarella", quantity=30, unit="lb", packs=5,
+                      pack_unit="case", estimated_cost=159.50, status="shipped", ordered_at=now - timedelta(days=4),
+                      shipped_at=now - timedelta(days=2), expected_on=today - timedelta(days=1), placed_by=DEMO_EMAIL),
+    ])
+    db.flush()
+    # What the invoices price and the stock figures say is low: a reorder proposed from the invoices.
+    from app.prices import stock
+
+    proposals += len(stock.sync(db, restaurant_id, today, trigger="demo loaded").proposed)
+
+    # The seed's own bookkeeping isn't history anyone made: a visitor starts with an empty record.
+    from app.audit.models import ChangeLog
+
+    db.flush()
+    db.query(ChangeLog).delete()
     db.commit()
-    counts = {"orders": len(orders), "order_items": len(lines), "proposals": proposals}
+    counts = {"orders": len(orders), "order_items": len(lines), "proposals": proposals, **{f"price_{k}": v for k, v in prices.items()}}
     logger.info("demo data reset: %s", counts)
     return counts
 

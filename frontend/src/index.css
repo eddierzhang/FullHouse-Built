@@ -2743,3 +2743,839 @@ a.sidebar-user:hover {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* ---------- customer requests ------------------------------------------------- */
+
+.requests,
+.action-items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.request {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--border);
+  scroll-margin-top: 80px;
+}
+
+.request:last-child {
+  border-bottom: 0;
+}
+
+.request-highlight {
+  background: var(--brand-soft);
+}
+
+.request-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The customer's own words: line breaks and spacing kept as written. */
+.request-message {
+  margin: 0;
+  padding: 12px 14px;
+  border-left: 3px solid var(--border-strong);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--surface-muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.request-highlight .request-message {
+  background: var(--surface);
+}
+
+.request-resolution {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--success-soft);
+}
+
+.review-summary {
+  margin: 0;
+  font-size: 15px;
+  white-space: pre-wrap;
+}
+
+.review-earlier {
+  border-top: 1px solid var(--border);
+}
+
+.review-earlier > summary {
+  padding: 14px 20px;
+  color: var(--text-secondary);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.review-earlier > .card-body + .card-body {
+  border-top: 1px solid var(--border);
+}
+
+.action-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+
+.action-item input[type='checkbox'] {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  accent-color: var(--brand);
+}
+
+.action-item-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+.action-item-main > div {
+  flex-basis: 100%;
+}
+
+.action-item-title {
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.action-item-done .action-item-title {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.action-item-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+}
+
+/* ==========================================================================
+   Prices: the weekly digest, items, the agent's questions, the thread and
+   drafts. One scoped block (`.pi`) with its own type scale -- 32/40 for the
+   headline figure, 17/24 body, 15/20 secondary, 13/16 labels, nothing under
+   13 -- and a near-white ground. Colour appears only on figures that cost
+   money (red-orange) or are owed (green). The agent's words are set like
+   everyone else's, marked by a thin left rule and nothing more.
+   ========================================================================== */
+
+.pi {
+  flex: 1;
+  background: #fafafa;
+  color: #111;
+  font-size: 17px;
+  line-height: 24px;
+}
+
+.pi a {
+  color: #111;
+}
+
+.pi a:hover {
+  color: #444;
+}
+
+.pi p {
+  margin: 0;
+}
+
+.pi-page {
+  width: 100%;
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 32px 20px 96px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.pi-page.pi-wide {
+  max-width: 1280px;
+}
+
+.pi-money {
+  font-variant-numeric: tabular-nums;
+}
+
+.pi-headline {
+  font-size: 32px;
+  line-height: 40px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.pi-h1 {
+  font-size: 17px;
+  line-height: 24px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.pi-sub,
+.pi-secondary {
+  font-size: 15px;
+  line-height: 20px;
+  color: #555;
+}
+
+.pi-label {
+  font-size: 13px;
+  line-height: 16px;
+  color: #555;
+}
+
+.pi-label-strong {
+  font-size: 13px;
+  line-height: 16px;
+  font-weight: 600;
+  color: #111;
+}
+
+.pi-up {
+  color: var(--danger);
+}
+
+.pi-owed {
+  color: var(--success);
+}
+
+.pi-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pi-stack-sm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pi-section-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  line-height: 16px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.pi-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #e3e3e3;
+  border-radius: 8px;
+}
+
+.pi-card-link {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.pi-card-link:hover {
+  text-decoration: none;
+  color: inherit;
+}
+
+.pi-card-l1 {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  font-weight: 600;
+}
+
+.pi-card-l2 {
+  font-size: 15px;
+  line-height: 20px;
+  color: #444;
+}
+
+.pi-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.pi-btn,
+.pi-btn-o {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 6px;
+  font: 600 15px/20px var(--font);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.pi-btn {
+  background: #111;
+  color: #fff;
+  border: 0;
+}
+
+.pi-btn:hover {
+  color: #fff;
+  background: #333;
+  text-decoration: none;
+}
+
+.pi-btn-o {
+  background: #fff;
+  color: #111;
+  border: 1px solid #bdbdbd;
+}
+
+.pi-btn-o:hover {
+  text-decoration: none;
+  background: #f4f4f4;
+}
+
+.pi-btn:disabled,
+.pi-btn-o:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.pi-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 4px;
+  background: none;
+  border: 0;
+  color: #555;
+  font: 400 15px/20px var(--font);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.pi-link:hover {
+  color: #111;
+}
+
+.pi-link.pi-link-inline {
+  min-height: 20px;
+  padding: 0;
+}
+
+.pi-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  align-self: flex-start;
+  min-height: 44px;
+  font-size: 15px;
+  line-height: 20px;
+  color: #555;
+  text-decoration: none;
+}
+
+.pi-muted-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  font-size: 15px;
+  line-height: 20px;
+  color: #555;
+}
+
+/* The agent's words: same type as everything else, a thin rule on the left. */
+.pi-agent {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-left: 14px;
+  border-left: 2px solid #111;
+}
+
+.pi-agent.pi-pending {
+  color: #555;
+}
+
+.pi-you {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pi-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pi-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 12px;
+  background: #fff;
+  border: 1px solid #cfcfcf;
+  border-radius: 18px;
+  color: #111;
+  font: 400 13px/16px var(--font);
+  text-decoration: none;
+}
+
+.pi-chip:hover {
+  text-decoration: none;
+  background: #f4f4f4;
+}
+
+/* The one way to the agent: a text field, pinned. */
+.pi-ask-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.pi-ask {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 16px;
+  background: #fff;
+  border: 1px solid #bdbdbd;
+  border-radius: 22px;
+  color: #111;
+  font: 400 15px/20px var(--font);
+}
+
+.pi-ask::placeholder {
+  color: #555;
+}
+
+.pi-ask-context {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 16px;
+  color: #555;
+}
+
+.pi-ask-top {
+  flex: 0 1 380px;
+  min-width: 220px;
+}
+
+.pi-ask-bar {
+  display: none;
+}
+
+/* The invoice, zoomed to the line asked about. */
+.pi-crop {
+  padding: 12px 16px;
+  background: #f2f0eb;
+  color: #333;
+  font: 400 13px/18px var(--font-mono);
+  white-space: pre;
+  overflow: hidden;
+}
+
+.pi-crop-dim {
+  opacity: 0.4;
+}
+
+.pi-crop-hit {
+  margin: 3px -6px;
+  padding: 3px 6px;
+  background: #fff;
+  outline: 2px solid #111;
+  color: #111;
+}
+
+.pi-q {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #e3e3e3;
+  border-radius: 8px;
+  transition: opacity 240ms ease, transform 240ms ease;
+}
+
+.pi-q.pi-answered {
+  opacity: 0.35;
+  transform: translateY(-6px);
+  pointer-events: none;
+}
+
+.pi-q-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+
+.pi-answers {
+  display: flex;
+  gap: 8px;
+}
+
+.pi-answers .pi-btn-o {
+  flex: 1;
+}
+
+.pi-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 10px 0;
+  border-bottom: 1px solid #ececec;
+  color: #111;
+  text-decoration: none;
+}
+
+.pi-row:hover {
+  text-decoration: none;
+}
+
+.pi-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pi-row-value {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.pi-row.pi-hidden {
+  color: #555;
+}
+
+.pi-table-wrap {
+  margin: 0 -20px;
+  padding: 0 20px;
+  overflow-x: auto;
+}
+
+.pi-table {
+  min-width: 560px;
+  border-collapse: collapse;
+  font-size: 15px;
+  line-height: 20px;
+}
+
+.pi-table th {
+  padding: 8px 10px 8px 0;
+  border-bottom: 1px solid #d9d9d9;
+  font-size: 13px;
+  line-height: 16px;
+  font-weight: 600;
+  color: #555;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.pi-table td {
+  padding: 10px 10px 10px 0;
+  border-bottom: 1px solid #ececec;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.pi-table .num {
+  text-align: right;
+}
+
+.pi-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pi-input,
+.pi-textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid #bdbdbd;
+  border-radius: 6px;
+  color: #111;
+  font: 400 17px/24px var(--font);
+}
+
+.pi-input.pi-input-sm {
+  font-size: 15px;
+  line-height: 20px;
+}
+
+.pi-textarea {
+  resize: vertical;
+}
+
+.pi-sparkline {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+}
+
+.pi-sparkline svg {
+  flex: none;
+}
+
+.pi-sparkline-labels {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 8px 0 10px;
+  font-size: 13px;
+  line-height: 16px;
+}
+
+.pi-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 44px;
+  padding: 18px 16px;
+  background: #fff;
+  border: 1px solid #d9d9d9;
+  border-radius: 8px;
+  color: #111;
+  font-family: var(--font);
+  text-align: left;
+  cursor: pointer;
+}
+
+.pi-choice:hover {
+  background: #f4f4f4;
+}
+
+.pi-choice-title {
+  font-size: 17px;
+  line-height: 24px;
+  font-weight: 600;
+}
+
+.pi-draft {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid #d9d9d9;
+  border-radius: 8px;
+  font-size: 15px;
+  line-height: 20px;
+}
+
+.pi-draft ul,
+.pi-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: #444;
+}
+
+.pi-points {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding-left: 22px;
+}
+
+.pi-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(17, 17, 17, 0.35);
+}
+
+.pi-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+  max-width: 480px;
+  padding: 24px 20px calc(28px + env(safe-area-inset-bottom));
+  background: #fff;
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.pi-sheet dl {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr);
+  gap: 8px 12px;
+  margin: 0;
+  font-size: 15px;
+  line-height: 20px;
+}
+
+.pi-sheet dt {
+  color: #555;
+}
+
+.pi-sheet dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.pi-clients {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 32px;
+}
+
+.pi-clients-table {
+  flex: 999 1 560px;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.pi-clients-pane {
+  flex: 1 1 360px;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pi-client-head,
+.pi-client-row {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) 120px 140px 180px;
+  gap: 16px;
+  align-items: center;
+  min-width: 640px;
+  padding: 0 12px;
+}
+
+.pi-client-head {
+  min-height: 36px;
+  border-bottom: 1px solid #d9d9d9;
+  font-size: 13px;
+  line-height: 16px;
+  color: #555;
+}
+
+.pi-client-head .sorted {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #111;
+  font-weight: 600;
+}
+
+.pi-client-row {
+  min-height: 44px;
+  border-bottom: 1px solid #ececec;
+  background: none;
+  border-left: 0;
+  border-right: 0;
+  border-top: 0;
+  width: 100%;
+  color: #111;
+  font: 400 15px/20px var(--font);
+  text-align: left;
+  cursor: pointer;
+}
+
+.pi-client-row:hover {
+  background: #f2f2f2;
+}
+
+.pi-client-row[aria-current='true'] {
+  background: #efefef;
+}
+
+.pi-client-row .num,
+.pi-client-head .num {
+  text-align: right;
+}
+
+@media (max-width: 860px) {
+  .pi-ask-top {
+    display: none;
+  }
+
+  /* Pinned above the tab bar on every screen. */
+  .pi-ask-bar {
+    position: fixed;
+    right: 0;
+    bottom: calc(56px + env(safe-area-inset-bottom));
+    left: 0;
+    z-index: 23;
+    display: block;
+    padding: 10px 16px;
+    background: #fafafa;
+    border-top: 1px solid #e5e5e5;
+  }
+
+  .pi-ask {
+    font-size: 16px; /* smaller makes iPhones zoom on focus */
+  }
+
+  .pi-page {
+    padding-bottom: calc(160px + env(safe-area-inset-bottom));
+  }
+
+  .pi-sheet-backdrop {
+    align-items: flex-end;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pi-q {
+    transition: none;
+  }
+}
+
+/* The review queue's keyboard hint: a desktop convenience, no use on a phone. */
+.pi-desktop-only {
+  display: block;
+}
+@media (max-width: 860px) {
+  .pi-desktop-only {
+    display: none;
+  }
+}
+.pi-review-row td {
+  padding-top: 0;
+  border-top: 0;
+}

@@ -54,7 +54,7 @@ function readTab(): Tab {
   return TABS.some((t) => t.id === sub) ? (sub as Tab) : 'details'
 }
 
-const ROLE_LABELS: Record<Role, string> = { owner: 'Owner', admin: 'Admin', member: 'Member' }
+const ROLE_LABELS: Record<Role, string> = { owner: 'Owner', admin: 'Admin', member: 'Member', bookkeeper: 'Bookkeeper' }
 
 /** The restaurant's profile: its details, the rules it runs by, and who may change them. */
 export function ProfilePage({ app, user }: { app: AppContext; user: User }) {
@@ -561,6 +561,7 @@ function TeamTab({ app, user }: { app: AppContext; user: User }) {
               <select className="select" value={inviteRole} onChange={(e) => setInviteRole(e.target.value as Exclude<Role, 'owner'>)}>
                 <option value="member">Member — sees everything, changes only day-to-day things</option>
                 {isOwner && <option value="admin">Admin — can manage the restaurant and team</option>}
+                {isOwner && <option value="bookkeeper">Bookkeeper — answers the agent’s price questions for you, sees nothing else</option>}
               </select>
             </label>
             <label className="field">

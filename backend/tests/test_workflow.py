@@ -46,7 +46,13 @@ def test_stock_change_to_agent_proposal_to_approval_to_dashboard(client, db, mon
     assert approved.status_code == 200
     assert client.post(f"/api/v1/agents/actions/{proposal['id']}/approve", json={}).status_code == 400
 
-    # 4. The dashboard's figures update.
+    # 4. The order is placed, and the stock moves when it is received.
+    assert {i["name"]: i for i in client.get(ITEMS).json()}["Saffron"]["quantity_on_hand"] == 2
+    (order,) = client.get(f"{API}/purchase-orders").json()
+    assert (order["item_name"], order["quantity"], order["status"], order["action_id"]) == ("Saffron", 20, "ordered", proposal["id"])
+    received = client.post(f"{API}/purchase-orders/{order['id']}/receive", json={})
+    assert received.status_code == 200, received.text
+    assert client.get(f"{API}/purchase-orders").json() == []
     stock = {i["name"]: i for i in client.get(ITEMS).json()}
     assert stock["Saffron"]["quantity_on_hand"] == 22
     assert client.get(f"{API}/supply-chain").json()["low_stock_count"] == 0

@@ -203,8 +203,9 @@ def test_approving_is_attributed_to_the_signed_in_user(client, db, changes):
 
     assert client.post(f"/api/v1/agents/actions/{action.id}/approve", json={}).status_code == 200
 
-    (restock,) = changes(entity_type="inventory_items", operation="update")
-    assert restock.actor_id == TEST_USER_EMAIL
+    # Approval places the order; that record carries the approver's name.
+    (placed,) = changes(entity_type="purchase_orders", operation="insert")
+    assert placed.actor_id == TEST_USER_EMAIL
 
 
 def test_demo_offers_a_working_account(anon_client, db, monkeypatch):

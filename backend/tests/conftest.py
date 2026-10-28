@@ -11,6 +11,7 @@ import tempfile
 os.environ["SCHEDULER_ENABLED"] = "false"  # tests drive scheduled jobs directly
 os.environ["ALLOW_SIGNUP"] = "true"  # any number of restaurants may sign up; test_auth covers it turned off
 os.environ["REQUIRE_MFA"] = "false"  # test_mfa turns it on; elsewhere owners sign in with a password alone
+os.environ["LLM_PROVIDER"] = "scripted"  # tests that want another provider monkeypatch settings.llm_provider
 
 TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
 if TEST_DATABASE_URL:
@@ -30,6 +31,8 @@ from app.agents import models as agent_models  # noqa: E402,F401
 from app.audit import listener as audit_listener  # noqa: E402
 from app.audit import models as audit_models  # noqa: E402,F401
 from app.auth import models as auth_models  # noqa: E402,F401
+from app.customers import models as customer_models  # noqa: E402,F401
+from app.prices import models as price_models  # noqa: E402,F401
 from app.support import models as support_models  # noqa: E402,F401
 from app.db import session as app_session  # noqa: E402
 from app.db.session import Base, get_db  # noqa: E402

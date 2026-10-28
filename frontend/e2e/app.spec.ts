@@ -43,8 +43,8 @@ test.describe('signing in', () => {
   test('the landing page explains FullHouse and leads to signing in', async ({ page }) => {
     const errors = watchForErrors(page)
     await page.goto('/')
-    await expect(page.getByRole('heading', { level: 1 })).toContainText('assistant manager')
-    for (const section of ['How it works', 'The whole back office, in one place', 'Your restaurant stays yours']) {
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('what your suppliers changed')
+    for (const section of ['How it works', 'What you get', 'Your restaurant stays yours']) {
       await expect(page.getByRole('heading', { name: section })).toBeVisible()
     }
     await expect(page.getByLabel('Email')).toHaveCount(0)
@@ -107,13 +107,20 @@ test.describe('navigation', () => {
     await expect(nav.getByRole('link', { name: /^Help/ })).toBeVisible()
     const labels = await nav.getByRole('link').allInnerTexts()
     const names = labels.map((l) => l.replace(/\d+$/, '').trim())
-    // The day's work first, then the kitchen, the agent, the records and the restaurant.
+    // The day's check-in first, then a section each for stock, staffing, customers, invoices and prices, the menu,
+    // the agent, the records and the restaurant.
     expect(names).toEqual([
       'Today',
-      'Inventory',
-      'Schedule & staff',
       'Recommendations',
+      'Inventory',
       'Suppliers',
+      'Schedule & staff',
+      'Customer requests',
+      'Invoices',
+      'Questions',
+      'Items',
+      'Digest',
+      'Conversation',
       'Menu',
       'Assistant Manager',
       'Agent activity',
@@ -127,6 +134,9 @@ test.describe('navigation', () => {
       Inventory: 'Inventory',
       'Schedule & staff': 'Schedule & staff',
       Recommendations: 'Recommendations',
+      'Customer requests': 'Customer requests',
+      Invoices: 'Invoices',
+      Items: 'Items',
       Suppliers: 'Suppliers',
       Menu: 'Menu',
       'Assistant Manager': 'Assistant Manager',
@@ -157,7 +167,7 @@ test.describe('navigation', () => {
   })
 })
 
-test('approving a reorder restocks, and reverting it puts the stock back', async ({ page }) => {
+test('approving a reorder places an order, receiving it restocks, and reverting puts the stock back', async ({ page }) => {
   const before = await stockOf(page, 'Tomatoes')
   await page.goto('/#approvals')
 
@@ -166,9 +176,23 @@ test('approving a reorder restocks, and reverting it puts the stock back', async
   await expect(page.getByText('Approved', { exact: true })).toBeVisible()
   await expect(row).toHaveCount(0)
 
-  await expect.poll(() => stockOf(page, 'Tomatoes')).toBe(before + 25)
+  // Nothing is booked yet: the order is placed and waits under On order.
+  expect(await stockOf(page, 'Tomatoes')).toBe(before)
   await page.goto('/#inventory')
-  await expect(page.getByRole('row').filter({ hasText: 'Tomatoes' })).toContainText(`${before + 25} lb`)
+  const orders = page.getByRole('table', { name: 'Purchase orders' })
+  const order = orders.getByRole('row').filter({ hasText: 'Tomatoes' }).first()
+  await expect(order).toContainText('25 lb')
+  await expect(order.getByText('Ordered', { exact: true })).toBeVisible()
+  await order.getByRole('button', { name: 'Receive Tomatoes' }).click()
+  const receive = page.getByRole('form', { name: 'Receive Tomatoes' })
+  await expect(receive.getByLabel('Amount received (lb)')).toHaveValue('25')
+  await receive.getByRole('button', { name: 'Book into stock' }).click()
+  await expect(page.getByText('Order received', { exact: true })).toBeVisible()
+
+  await expect.poll(() => stockOf(page, 'Tomatoes')).toBe(before + 25)
+  await expect(page.getByRole('row').filter({ hasText: 'Tomatoes' }).last()).toContainText(`${before + 25} lb`)
+  await page.getByRole('button', { name: 'History of Tomatoes' }).click()
+  await expect(page.getByRole('list', { name: 'Stock changes' })).toContainText('Order received')
 
   // Undo through the change log, then confirm the UI reflects it.
   const changes = await (

@@ -18,6 +18,8 @@ from app.audit.routes import router as changes_router
 from app.auth.deps import current_user
 from app.auth.routes import router as auth_router
 from app.config import settings
+from app.customers.routes import router as customers_router
+from app.prices.routes import router as prices_router
 from app.restaurant.routes import router as restaurant_router
 from app.restaurant.profile_routes import router as profile_router
 from app.support.alerts import configure_logging, configure_sentry
@@ -63,6 +65,32 @@ def _recover_orphaned_runs(db=None) -> int:
             db.close()
 
 
+def _log_what_runs_here() -> None:
+    """One line in the log for each thing a key turns on, so a deployment can be read off its log."""
+    from app.prices import extract
+
+    try:
+        from app.agents.providers import get_provider
+
+        provider = get_provider()
+        if provider.key == "scripted":
+            assistant = "rule-based, no model (answers price questions from the invoices)"
+        else:
+            assistant = f"{provider.key} ({provider.resolve_model('claude-opus-5') or 'no model named'})"
+    except Exception as exc:  # noqa: BLE001 - reported, not fatal: the site works without a model
+        assistant = f"off: {exc}"
+    logger.info("assistant: %s", assistant)
+    logger.info("invoice reader: %s", extract.available() or "off")
+    if settings.resend_api_key:
+        mail = "Resend"
+    elif settings.smtp_configured:
+        mail = f"SMTP through {settings.smtp_host} as {settings.smtp_user}"
+    else:
+        mail = "printed to this log (no RESEND_API_KEY or SMTP_HOST)"
+    logger.info("digest mail: %s", mail)
+    logger.info("Bill.com: %s", f"{settings.billcom_environment}" if settings.billcom_configured else "not connected")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Worker threads publish run events back onto this loop.
@@ -81,6 +109,7 @@ async def lifespan(app: FastAPI):
                 "SECRET_KEY is not set: two-step sign-in secrets are encrypted with a development key. "
                 "Set a long random SECRET_KEY before real people use this site, and never change it."
             )
+    _log_what_runs_here()
     if settings.scheduler_enabled:
         scheduler.start()
     yield
@@ -135,6 +164,8 @@ app.include_router(agents_router, dependencies=signed_in)
 app.include_router(changes_router, dependencies=signed_in)
 app.include_router(profile_router, dependencies=signed_in)
 app.include_router(support_router, dependencies=signed_in)
+app.include_router(customers_router, dependencies=signed_in)
+app.include_router(prices_router, dependencies=signed_in)
 
 
 @app.get("/health")

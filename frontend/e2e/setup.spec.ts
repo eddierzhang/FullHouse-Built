@@ -99,6 +99,10 @@ test('sign up, set up the restaurant, open the dashboard, and edit settings', as
   await expect(page.getByRole('navigation').first()).toBeVisible()
   await expect(page.locator('.brand-name')).toHaveText('Harbor House')
   await expect(page.locator('.page-subtitle').first()).toContainText('Harbor House')
+  // The digest is empty until the first invoice, and says so.
+  await page.goto('/#digest')
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('$0.00')
+  await expect(page.getByRole('link', { name: 'No invoices yet. Add the first one' })).toBeVisible()
 
   await page.goto('/#agents')
   await expect(page.getByText('Schedules run on America/Chicago time')).toBeVisible()

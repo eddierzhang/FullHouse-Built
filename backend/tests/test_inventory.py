@@ -284,10 +284,16 @@ def test_sales_approvals_and_reverts_are_in_the_history(client, db):
     db.commit()
     assert client.post(f"{API}/orders", json={"items": [{"menu_item_id": dish.id, "qty": 4}]}).status_code == 200
 
-    # An approved reorder books the delivery.
+    # An approved reorder places the order; receiving it books the delivery.
+    from app.restaurant import orders
+    from app.restaurant.models import PurchaseOrder
+
     action = AgentAction(run_id="r", agent_definition_id="a", action_type="inventory_reorder",
                          payload={"inventory_item_id": item["id"], "quantity": 5})
     apply_action(db, action)
+    db.commit()
+    assert client.get(ITEMS).json()[0]["quantity_on_hand"] == 8
+    orders.receive(db, db.query(PurchaseOrder).one())
     db.commit()
 
     # And undoing that from the change history takes it back out.

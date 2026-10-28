@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   type AgentAction,
   type AgentDefinition,
+  type AgentQuestion,
   type InventoryItem,
   type Restaurant,
   type Runtime,
@@ -14,6 +15,7 @@ import {
   listActions,
   listAgentDefinitions,
   listInventoryItems,
+  listQuestions,
   rejectAction,
   triggerRun,
 } from '../api/client'
@@ -21,11 +23,20 @@ import { ActionDrawer } from '../components/ActionDrawer'
 import { FeedbackButton } from '../components/FeedbackButton'
 import { Icon, type IconName } from '../components/Icon'
 import { NewTaskModal } from '../components/NewTaskModal'
+import { AskField } from '../components/prices'
 import { Toast, type ToastState } from '../components/Toast'
 import { relativeTime } from '../lib/format'
 import { announceDataChanged } from '../lib/useLoad'
-import { type Route, useHashRoute } from '../lib/useHashRoute'
+import { PRICE_ROUTES, type Route, useHashRoute } from '../lib/useHashRoute'
 import { AgentsPage } from '../pages/AgentsPage'
+import { CustomersPage } from '../pages/CustomersPage'
+import { DigestPage } from '../pages/DigestPage'
+import { DraftPage } from '../pages/DraftPage'
+import { InvoicesPage } from '../pages/InvoicesPage'
+import { ItemPage } from '../pages/ItemPage'
+import { ItemsPage } from '../pages/ItemsPage'
+import { QuestionsPage } from '../pages/QuestionsPage'
+import { ThreadPage } from '../pages/ThreadPage'
 import { HelpPage } from '../pages/HelpPage'
 import { HistoryPage } from '../pages/HistoryPage'
 import { ApprovalsPage } from '../pages/ApprovalsPage'
@@ -50,26 +61,52 @@ type NavItem = { route: Route; label: string; icon: IconName }
 const MANAGER_ROUTES = new Set<Route>(['profit'])
 
 /**
- * Grouped by what people come to do. The first group is the day's work --
- * checking in, stock, the schedule, what the agent recommends -- and is
- * also the phone's bottom bar; the rest is setup and the longer view.
+ * Grouped by what people come to do: the day's check-in and what the agent
+ * recommends; then one section each for stock, staffing, customers, the
+ * invoices and prices, and the menu. Today, Inventory, Schedule and
+ * Recommendations are also the phone's bottom bar. "Invoices & prices"
+ * follows an invoice through, in order: it arrives and is read (Invoices),
+ * the agent asks what it can't place (Questions), each confirmed line adds
+ * to an item's price history (Items), the weekly findings go out (Digest),
+ * and the loop closes in the conversation and drafts (Conversation). The
+ * rest is setup and the longer view.
  */
 const NAV: { label: string | null; items: NavItem[] }[] = [
   {
     label: null,
     items: [
       { route: 'overview', label: 'Today', icon: 'overview' },
-      { route: 'inventory', label: 'Inventory', icon: 'inventory' },
-      { route: 'staff', label: 'Schedule & staff', icon: 'staff' },
       { route: 'approvals', label: 'Recommendations', icon: 'approvals' },
     ],
   },
   {
-    label: 'Kitchen',
+    label: 'Inventory',
     items: [
+      { route: 'inventory', label: 'Inventory', icon: 'inventory' },
       { route: 'suppliers', label: 'Suppliers', icon: 'suppliers' },
-      { route: 'menu', label: 'Menu', icon: 'menu' },
     ],
+  },
+  {
+    label: 'Staffing',
+    items: [{ route: 'staff', label: 'Schedule & staff', icon: 'staff' }],
+  },
+  {
+    label: 'Customers',
+    items: [{ route: 'customers', label: 'Customer requests', icon: 'chat' }],
+  },
+  {
+    label: 'Invoices & prices',
+    items: [
+      { route: 'invoices', label: 'Invoices', icon: 'suppliers' },
+      { route: 'questions', label: 'Questions', icon: 'approvals' },
+      { route: 'items', label: 'Items', icon: 'inventory' },
+      { route: 'digest', label: 'Digest', icon: 'profit' },
+      { route: 'thread', label: 'Conversation', icon: 'chat' },
+    ],
+  },
+  {
+    label: 'Menu',
+    items: [{ route: 'menu', label: 'Menu', icon: 'menu' }],
   },
   {
     label: 'Agent',
@@ -134,6 +171,7 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
   const [agents, setAgents] = useState<AgentDefinition[]>([])
   const [pendingActions, setPendingActions] = useState<AgentAction[]>([])
   const [inventory, setInventory] = useState<InventoryItem[]>([])
+  const [questions, setQuestions] = useState<AgentQuestion[]>([])
   const [runtime, setRuntime] = useState<Runtime | null>(null)
 
   const [toastState, setToastState] = useState<ToastState>(null)
@@ -149,6 +187,7 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
     listAgentDefinitions().then(setAgents).catch(() => {})
     listActions('pending').then(setPendingActions).catch(() => {})
     listInventoryItems().then(setInventory).catch(() => {})
+    listQuestions().then(setQuestions).catch(() => {})
     fetchRuntime().then(setRuntime).catch(() => {})
   }, [])
 
@@ -250,13 +289,31 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
   }
 
   const lowStock = inventory.filter((i) => i.quantity_on_hand <= i.reorder_threshold).length
+  const openQuestions = questions.filter((q) => q.status === 'open').length
   const counts: Partial<Record<Route, { value: number; attention: boolean }>> = {
+    questions: { value: openQuestions, attention: openQuestions > 0 },
     approvals: { value: pendingActions.length, attention: pendingActions.length > 0 },
     inventory: { value: lowStock, attention: lowStock > 0 },
   }
+  // On the price pages the top bar holds the agent's field; elsewhere, the Assistant Manager's controls.
+  const pricePage = PRICE_ROUTES.has(route)
 
   const page = (() => {
     switch (route) {
+      case 'digest':
+        return <DigestPage app={app} />
+      case 'items':
+        return <ItemsPage app={app} />
+      case 'item':
+        return <ItemPage app={app} />
+      case 'questions':
+        return <QuestionsPage app={app} />
+      case 'thread':
+        return <ThreadPage app={app} />
+      case 'draft':
+        return <DraftPage app={app} />
+      case 'invoices':
+        return <InvoicesPage app={app} />
       case 'approvals':
         return <ApprovalsPage app={app} />
       case 'runs':
@@ -271,8 +328,12 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
         return <MenuPage app={app} />
       case 'staff':
         return <StaffPage app={app} user={user} />
+      case 'customers':
+        return <CustomersPage app={app} />
       case 'profit':
         return app.canManage ? <ProfitPage app={app} /> : <OverviewPage app={app} />
+      case 'overview':
+        return <OverviewPage app={app} />
       case 'profile':
         return <ProfilePage app={app} user={user} />
       case 'history':
@@ -284,9 +345,17 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
     }
   })()
 
-  const nav = NAV.map((group) => ({ ...group, items: group.items.filter((item) => app.canManage || !MANAGER_ROUTES.has(item.route)) })).filter(
-    (group) => group.items.length > 0,
-  )
+  const allowed = (item: { route: Route }) => app.canManage || !MANAGER_ROUTES.has(item.route)
+  const navLink = (item: NavItem) => {
+    const count = counts[item.route]
+    return (
+      <a key={item.route} className="nav-link" href={`#${item.route}`} aria-current={route === item.route ? 'page' : undefined}>
+        <Icon name={item.icon} />
+        {item.label}
+        {count && count.value > 0 && <span className={`nav-count${count.attention ? ' attention' : ''}`}>{count.value}</span>}
+      </a>
+    )
+  }
 
   return (
     <div className="app">
@@ -299,26 +368,10 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
           </span>
         </a>
 
-        {nav.map((group) => (
-          <nav key={group.label ?? 'home'} className="nav-group" aria-label={group.label ?? 'Home'}>
+        {NAV.map((group) => (
+          <nav key={group.label ?? 'main'} className="nav-group" aria-label={group.label ?? 'Today'}>
             {group.label && <div className="nav-label">{group.label}</div>}
-            {group.items.map((item) => {
-              const count = counts[item.route]
-              return (
-                <a
-                  key={item.route}
-                  className="nav-link"
-                  href={`#${item.route}`}
-                  aria-current={route === item.route ? 'page' : undefined}
-                >
-                  <Icon name={item.icon} />
-                  {item.label}
-                  {count && count.value > 0 && (
-                    <span className={`nav-count${count.attention ? ' attention' : ''}`}>{count.value}</span>
-                  )}
-                </a>
-              )
-            })}
+            {group.items.filter(allowed).map(navLink)}
           </nav>
         ))}
 
@@ -349,8 +402,8 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
                 AI assistant unavailable
               </div>
             ) : (
-              <div className="faint" style={{ marginTop: 4 }}>
-                {runtime.provider} · {runtime.model}
+              <div className="faint" style={{ marginTop: 4 }} title={runtime.provider === 'scripted' ? 'No model is connected. Price questions are answered by rule from the invoices.' : undefined}>
+                {runtime.provider === 'scripted' ? 'Rule-based assistant · no model' : `${runtime.provider} · ${runtime.model}`}
               </div>
             ))}
         </div>
@@ -381,18 +434,19 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
             </div>
           )}
           <div className="topbar-spacer" />
-          {pendingActions.length > 0 && route !== 'approvals' && (
+          {!pricePage && pendingActions.length > 0 && route !== 'approvals' && (
             <a className="btn btn-secondary hide-mobile" href="#approvals">
               <span className="dot" style={{ color: 'var(--danger)' }} />
               {pendingActions.length} to review
             </a>
           )}
-          {app.canManage && (
+          {!pricePage && app.canManage && (
             <button className="btn btn-primary" onClick={() => app.newTask()}>
               <Icon name="plus" size={16} />
               New task
             </button>
           )}
+          {pricePage && <AskField id="ask-desktop" className="pi-ask-top" onError={(m) => toast('Couldn’t ask that', m)} />}
         </header>
 
         {(!online || apiStatus === 'error') && (
@@ -427,6 +481,12 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
           navigate('runs')
         }}
       />
+
+      {pricePage && (
+        <div className="pi-ask-bar">
+          <AskField id="ask-mobile" onError={(m) => toast('Couldn’t ask that', m)} />
+        </div>
+      )}
 
       <nav className="tabbar" aria-label="Daily tasks">
         {TABS.map((tab) => {

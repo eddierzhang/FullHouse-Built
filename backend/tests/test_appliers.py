@@ -6,7 +6,7 @@ import pytest
 
 from app.agents.appliers import ApplyError, apply_action
 from app.agents.models import AgentAction, AgentDefinition, AgentRun
-from app.restaurant.models import InventoryItem, MenuItem, Shift, Staff
+from app.restaurant.models import InventoryItem, MenuItem, PurchaseOrder, Shift, Staff
 
 
 @pytest.fixture
@@ -43,20 +43,33 @@ def stock(db):
     return item
 
 
-def test_approving_a_reorder_restocks(client, db, proposal, stock, changes):
+def test_approving_a_reorder_places_an_order_and_receiving_it_restocks(client, db, proposal, stock, changes):
     action = proposal("inventory_reorder", {"inventory_item_id": stock.id, "quantity": 20})
 
     response = client.post(f"/api/v1/agents/actions/{action.id}/approve")
     assert response.status_code == 200
 
+    # Approval places the order. The stock figure waits for the delivery.
+    db.refresh(stock)
+    assert stock.quantity_on_hand == 8.0
+    assert response.json()["status"] == "approved"
+    assert response.json()["applied_result"].startswith("Ordered 20 lb of Chicken Breast, expected ")
+    assert "booked when it is received" in response.json()["applied_result"]
+    order = db.query(PurchaseOrder).one()
+    assert (order.status, order.quantity, order.unit, order.action_id) == ("ordered", 20, "lb", action.id)
+    assert changes(entity_type="inventory_items", operation="update") == []
+    assert changes(entity_type="purchase_orders", operation="insert")[-1].agent_action_id == action.id
+
+    # It arrives: received on the Inventory page, booked once, with the order in the note.
+    received = client.post(f"/api/v1/restaurant/purchase-orders/{order.id}/receive")
+    assert received.status_code == 200, received.text
+    assert received.json()["order"]["status"] == "received" and received.json()["item"]["quantity_on_hand"] == 28.0
     db.refresh(stock)
     assert stock.quantity_on_hand == 28.0
-    assert response.json()["status"] == "approved"
-    assert "8 -> 28" in response.json()["applied_result"]
-
     update = changes(entity_type="inventory_items", operation="update")[-1]
     assert update.before == {"quantity_on_hand": 8.0}
     assert update.after == {"quantity_on_hand": 28.0}
+    assert client.post(f"/api/v1/restaurant/purchase-orders/{order.id}/receive").status_code == 409
 
 
 def test_approved_change_traces_back_to_the_proposing_run(client, db, proposal, stock, changes):
@@ -64,8 +77,16 @@ def test_approved_change_traces_back_to_the_proposing_run(client, db, proposal, 
 
     client.post(f"/api/v1/agents/actions/{action.id}/approve")
 
+    placed = changes(entity_type="purchase_orders", operation="insert")[-1]
+    # Placed by a human, but still attributable to the agent that proposed it.
+    assert placed.actor_type == "human"
+    assert placed.agent_run_id == action.run_id
+    assert placed.agent_action_id == action.id
+
+    # And so is the stock change when the order is received, by whoever receives it.
+    order = db.query(PurchaseOrder).one()
+    client.post(f"/api/v1/restaurant/purchase-orders/{order.id}/receive")
     update = changes(entity_type="inventory_items", operation="update")[-1]
-    # Applied by a human, but still attributable to the agent that proposed it.
     assert update.actor_type == "human"
     assert update.agent_run_id == action.run_id
     assert update.agent_action_id == action.id
@@ -194,7 +215,7 @@ def test_negative_quantity_is_refused(db, proposal, stock):
         apply_action(db, action)
 
 
-def test_purchase_order_restocks_and_names_the_supplier(db, proposal, stock):
+def test_purchase_order_places_the_order_with_the_supplier_named(db, proposal, stock):
     action = proposal(
         "purchase_order",
         {"inventory_item_id": stock.id, "quantity": 12, "supplier_name": "Bay Foods"},
@@ -202,5 +223,8 @@ def test_purchase_order_restocks_and_names_the_supplier(db, proposal, stock):
 
     result = apply_action(db, action)
 
-    assert "Bay Foods" in result
-    assert stock.quantity_on_hand == 20.0
+    assert result.startswith("Ordered 12 lb of Chicken Breast from Bay Foods, expected ")
+    db.refresh(stock)
+    assert stock.quantity_on_hand == 8.0
+    order = db.query(PurchaseOrder).one()
+    assert (order.supplier_name, order.quantity, order.status) == ("Bay Foods", 12, "ordered")

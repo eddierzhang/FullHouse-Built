@@ -10,7 +10,7 @@ from app.auth import schemas
 from app.audit.context import HUMAN, Actor, actor_context
 from app.auth import events, mfa
 from app.auth.deps import SESSION_COOKIE, current_user
-from app.auth.models import ADMIN, MEMBER, OWNER, AuthSession, Invite, MfaChallenge, PasswordReset, SecurityEvent, User
+from app.auth.models import ADMIN, BOOKKEEPER, MEMBER, OWNER, AuthSession, Invite, MfaChallenge, PasswordReset, SecurityEvent, User
 from app.auth.security import DUMMY_HASH, hash_password, new_session_token, token_id, verify_password
 from app.config import settings
 from app.db.session import get_db
@@ -510,7 +510,9 @@ def create_invite(body: schemas.InviteIn, request: Request, user: User = Depends
         raise events.deny(db, user, request, "Only the owner can invite admins.")
     if not user.restaurant_id:
         raise HTTPException(status.HTTP_409_CONFLICT, "Set the restaurant up before inviting anyone.")
-    if body.email and db.query(User).filter(User.email == body.email).first():
+    existing = db.query(User).filter(User.email == body.email).first() if body.email else None
+    # A bookkeeper who already has an account takes on another client with the same link.
+    if existing and not (body.role == BOOKKEEPER and existing.role == BOOKKEEPER):
         raise HTTPException(status.HTTP_409_CONFLICT, f"{body.email} already has an account.")
     token = new_session_token()
     invite = Invite(token_hash=token_id(token), restaurant_id=user.restaurant_id, role=body.role, email=body.email,
@@ -572,12 +574,22 @@ def accept_invite(token: str, body: schemas.AcceptInviteIn, request: Request, re
     invite = _live_invite(db, token)
     if invite.email and body.email != invite.email:
         raise HTTPException(status.HTTP_403_FORBIDDEN, f"This invite is for {invite.email}.")
-    if db.query(User).filter(User.email == body.email).first():
-        raise HTTPException(status.HTTP_409_CONFLICT, "An account with that email already exists. Sign in instead.")
-    user = User(email=body.email, name=body.name, password_hash=hash_password(body.password), role=invite.role,
-                restaurant_id=invite.restaurant_id)
-    db.add(user)
-    db.flush()
+    existing = db.query(User).filter(User.email == body.email).first()
+    if existing is not None:
+        if invite.role != BOOKKEEPER or existing.role != BOOKKEEPER or not verify_password(body.password, existing.password_hash):
+            raise HTTPException(status.HTTP_409_CONFLICT, "An account with that email already exists. Sign in instead.")
+        user = existing  # a bookkeeper adding a client: the account stays, the link is new
+    else:
+        # A bookkeeper belongs to no restaurant; the link below is what gives them a client.
+        user = User(email=body.email, name=body.name, password_hash=hash_password(body.password), role=invite.role,
+                    restaurant_id=None if invite.role == BOOKKEEPER else invite.restaurant_id)
+        db.add(user)
+        db.flush()
+    if invite.role == BOOKKEEPER:
+        from app.prices.models import BookkeeperClient
+
+        if not db.query(BookkeeperClient).filter_by(user_id=user.id, restaurant_id=invite.restaurant_id).first():
+            db.add(BookkeeperClient(user_id=user.id, restaurant_id=invite.restaurant_id))
     invite.accepted_at = datetime.now(timezone.utc)
     invite.accepted_by = user.id
     _start_session(db, user, request, response)

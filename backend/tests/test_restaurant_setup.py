@@ -211,7 +211,10 @@ def test_scheduled_runs_fire_for_each_restaurant_on_its_own_clock(client, db, mo
     monkeypatch.setattr(db, "close", lambda: None)
     scheduler.sync_agent_schedules()
     jobs = {job.id: job for job in idle.get_jobs()}
-    assert set(jobs) == {f"agent:maestro:{mine['id']}", f"stock-check:{mine['id']}", f"agent:maestro:{other.id}"}
+    assert set(jobs) == {f"agent:maestro:{mine['id']}", f"stock-check:{mine['id']}", f"agent:maestro:{other.id}",
+                         f"digest-mail:{mine['id']}", f"digest-mail:{other.id}"}
+    # The Monday digest mail goes out on each restaurant's own clock too.
+    assert str(jobs[f"digest-mail:{other.id}"].trigger.timezone) == "America/Denver"
     assert str(jobs[f"agent:maestro:{mine['id']}"].trigger.timezone) == "America/Los_Angeles"
     assert str(jobs[f"agent:maestro:{other.id}"].trigger.timezone) == "America/Denver"
 

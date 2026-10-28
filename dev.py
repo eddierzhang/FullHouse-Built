@@ -56,7 +56,7 @@ def setup(_args) -> None:
     if not env_file.exists():
         step("Creating backend/.env from .env.example (agents default to the scripted provider)")
         text = (BACKEND / ".env.example").read_text(encoding="utf-8")
-        env_file.write_text(text.replace("LLM_PROVIDER=anthropic", "LLM_PROVIDER=scripted"), encoding="utf-8")
+        env_file.write_text(text.replace("LLM_PROVIDER=\n", "LLM_PROVIDER=scripted\n", 1), encoding="utf-8")
 
     step("Migrating and seeding the database")
     run([VENV_PYTHON, "-m", "alembic", "upgrade", "head"], BACKEND)

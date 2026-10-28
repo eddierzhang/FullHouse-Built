@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 PROMOTION_SWEEP_JOB = "expire-promotions"
 DEMO_RESET_JOB = "demo-reset"
 STOCK_CHECK_JOB = "stock-check"
+DIGEST_JOB = "digest-mail"
 
 #: What the agent is asked at the owner's daily stock-check time.
 STOCK_CHECK_TASK = (
@@ -213,11 +214,16 @@ def sync_agent_schedules() -> None:
                     wanted[_job_id(STOCK_CHECK_JOB, restaurant_id)] = (
                         run_stock_check, stock_check, tz, {"restaurant_id": restaurant_id}
                     )
+                # The weekly price digest, mailed Monday morning on the restaurant's clock.
+                if restaurant_id is not None and settings.digest_cron:
+                    wanted[_job_id(DIGEST_JOB, restaurant_id)] = (
+                        run_digest_mail, settings.digest_cron, tz, {"restaurant_id": restaurant_id}
+                    )
     finally:
         db.close()
 
     for job in _scheduler.get_jobs():
-        if job.id.startswith(("agent:", STOCK_CHECK_JOB)) and job.id not in wanted:
+        if job.id.startswith(("agent:", STOCK_CHECK_JOB, DIGEST_JOB)) and job.id not in wanted:
             job.remove()
 
     for job_id, (func, cron, tz, kwargs) in wanted.items():
@@ -253,6 +259,27 @@ def stock_check_cron(db) -> str | None:
         return None
     hour, minute = prefs.daily_stock_check.split(":")
     return f"{int(minute)} {int(hour)} * * *"
+
+
+def run_digest_mail(restaurant_id: str | None, db=None) -> bool:
+    """Mail this week's price digest to a restaurant's owners and admins, once."""
+    from app.db.session import SessionLocal
+    from app.prices import mail
+
+    owns_session = db is None
+    db = db or SessionLocal()
+    try:
+        with actor_context(_system_for(restaurant_id)):
+            sent = mail.send_weekly(db, restaurant_id)
+        db.commit()
+        return sent
+    except Exception:
+        db.rollback()
+        logger.exception("digest mail failed for restaurant %s", restaurant_id)
+        return False
+    finally:
+        if owns_session:
+            db.close()
 
 
 def _reset_demo() -> None:

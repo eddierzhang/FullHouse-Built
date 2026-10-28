@@ -1,16 +1,82 @@
 # FullHouse: a short guide
 
-For owners, admins and staff. The same steps are in the app under **Help**.
+For owners, admins, staff and bookkeepers. The same steps are in the app under **Help**.
 
 ## Getting around
 
-- **Today**: what needs attention: low stock, recommendations waiting, the day's figures (owners and admins).
-- **Inventory**: stock on hand, deliveries, counts, and each item's history.
-- **Schedule & staff**: the team and the published schedule.
-- **Recommendations**: changes the Assistant Manager suggests. Nothing happens until someone approves.
-- **History & undo**: every change, who made it, and a way to undo it.
+The sidebar starts with Today and Recommendations, then one section for each part of the business: **Inventory**
+(Inventory, Suppliers), **Staffing** (Schedule & staff), **Customers** (Customer requests), **Invoices & prices** in
+the order an invoice moves through it (Invoices, Questions, Items, Digest, Conversation), and **Menu**. Then **Agent**
+(Assistant Manager, Agent activity), **Records** (Profit & forecast, History & undo) and **Restaurant** (Profile,
+Help). On a phone, Today, Inventory, Schedule and Recommendations are the bottom bar, and everything else is behind
+**More**.
 
-On a phone, these are the buttons along the bottom; everything else is under **More**.
+- **Today**: low stock, recommendations waiting, and the day's figures.
+- **Inventory**: stock on hand, deliveries, counts, each item's history, and the last price the invoices show for it.
+- **Schedule & staff**: the team and the published schedule.
+- **Recommendations**: changes the Assistant Manager proposed, waiting for a decision.
+- **Customer requests**: what customers told you, in their own words.
+
+Invoices & prices, start to finish:
+
+- **Invoices**: where they arrive. Add one (a photo or PDF, Bill.com, pasted text, or by hand), see what was read
+  from it, and confirm any that needed a check before it counts.
+- **Questions**: the one human step. The agent asks about invoice lines it couldn't place: is this the same item, how
+  many come in a pack. Tap an answer; the card goes, and the answer is kept for next time.
+- **Items**: the price history. Everything you buy, with the last price paid and how it moved over eight weeks, by
+  supplier. Open one for the chart, the invoice lines behind it, and "Draft message to supplier".
+- **Digest**: what the weekly check found: what changed in your supplier prices, what it cost, and what to do. Three
+  lists, always in the same order: Switch supplier, Price went up, Owed to you.
+- **Conversation**: where the loop closes. Everything said between you and the agent: its questions and your answers, your questions
+  and its answers, and the drafts to suppliers, each with the invoices it used.
+The field that says **Ask about prices, invoices, or suppliers** is on every price page: at the bottom on a phone,
+top right on a desktop. It is the way to talk to the agent about prices. On the other pages, **New task** gives the
+Assistant Manager something to do.
+
+## Prices, week by week
+
+**Add an invoice** (owners and admins). Invoices → **Add invoice**. Snap a photo or upload a PDF and the lines are
+read for you, each one marked if it was hard to make out (a site with no model connected reads PDFs but not photos,
+and says so; type the lines from the photo instead); pull bills from Bill.com if the site is connected; paste the
+text of a forwarded invoice; or type the lines. Check them, add the printed total if you have it, and save. If the
+lines don't add to the total or something was hard to read, the invoice is kept but marked **Not counted until
+checked**; press **Looks right** once you've compared it with the paper and it counts from then on.
+
+**Answer the agent's questions.** Questions shows a count and the cards. Each has the invoice line, one question and
+two answers; **Something else** lets you type the item's name or the count per case. Anyone on the team can answer.
+The agent asks at most five a week; the rest wait their turn, biggest dollars first.
+
+**Get the digest by mail.** It arrives Monday morning, to owners and admins, with the same three sections and a
+"Not useful" link on every card. **Email me this digest** on the Digest page sends it now.
+
+**Read the digest.** The number at the top is the dollars at stake this week. Each card says what you paid, where,
+and what changed, and has one button: **Move <item>** records that you're switching (nothing is ordered), **Draft
+message** writes to the rep. **Not useful** hides the item for four weeks; it's the only feedback there is.
+
+**Draft a message to a supplier** (owners and admins). From a card or an item page. The draft is three sentences and
+the invoice lines it rests on. Edit it, then **Send via email** (a confirm sheet shows who and what; your own mail app
+opens with it filled in), **Copy**, or **Discard**. The rep's name and email are remembered for next time.
+
+**Ask.** Type a question anywhere: "what did I pay for tomatoes last month", "which supplier is cheapest on paper
+goods", "how much did Sysco short me this quarter", "talking points for tomorrow's meeting". Answers are two sentences
+with the numbers and chips for the invoices used.
+
+**Fix a pack size.** On an item page the line "Reading this as 24 ct per case" has a **Wrong?** link. Enter the right
+count; every line of that item is re-read.
+
+**Stock from the invoices.** An item on the invoices is counted as the Inventory item its name matches ("Tomatoes,
+25 lb case" as Tomatoes). The item page says which; **Change** picks another, or none. From then on a line on a
+confirmed invoice is booked into Inventory as a delivery, once, in the agent's name, with the invoice in the note, and
+the Inventory page shows the last price paid for each item with a link to its prices. When an item is at or below its
+reorder point and the invoices price it, a reorder is proposed under Recommendations from the cheapest supplier of
+the last four weeks (its own supplier for beer, wine and liquor), in whole packs, with what it comes to. Approve it
+and the order is placed (see "Track an order" below); a delivery that lifts the stock, or an order already on its way,
+withdraws it. Nothing is sent to a supplier for you. An item counted in a unit the invoice can't be read in (bunches
+against pounds) is priced but never booked, and the page says so.
+
+**Bookkeepers.** An owner invites an accountant from Profile → Team access with the role *Bookkeeper*. They sign in
+to a table of clients (questions waiting, last digest, dollars flagged this month) and can answer any client's
+questions. Owners see those questions as resolved, not as answered by the bookkeeper.
 
 ## Everyday jobs
 
@@ -34,8 +100,17 @@ that breaks the restaurant's rules (too long, too little rest, too many hours in
 reason.
 
 **Recommendations** (owners and admins). Each says what it would change and why. **Approve** carries it out;
-**Reject** drops it. To ask the Assistant Manager something, press **New task**, e.g. "Check stock and reorder
-anything low".
+**Reject** drops it. Approving a reorder places the order; the stock moves when it arrives. To ask the Assistant
+Manager something, press **New task**, e.g. "Check stock and reorder anything low".
+
+**Track an order.** Inventory → **On order** lists every order placed and not yet here: the amount, the supplier, when
+it was ordered and when it's expected (the supplier's lead time unless you say otherwise). Approved reorders land
+there on their own; an order placed by phone or email is added with **Record an order** (owners and admins). **Mark
+shipped** when the supplier says it's on its way. One past its expected date shows as overdue, here and on Today.
+**Receive** when it arrives: enter what actually came (all of it by default) and a note, and it is booked into stock,
+once, under "Order received" in the history. If the invoice for the order is added first, the invoice receives it,
+and an order received by hand is matched to its invoice when that comes, so nothing is counted twice. **Cancel**
+drops an order that was never placed or never came (owners and admins). **Show received** lists the recent record.
 
 **Undo a mistake** (owners and admins). History & undo → find the change → **Undo**. If something has changed
 since, you'll be asked before it's undone anyway.

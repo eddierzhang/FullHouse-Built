@@ -394,6 +394,63 @@ class StockChangeOut(BaseModel):
     adjustment: StockAdjustmentOut | None
 
 
+class PurchaseOrderOut(BaseModel):
+    """An order placed with a supplier, wherever it is between placing and receipt."""
+
+    id: str
+    inventory_item_id: str
+    item_name: str
+    unit: str
+    quantity: float
+    packs: float | None
+    pack_unit: str | None
+    supplier_id: str | None
+    supplier_name: str | None
+    estimated_cost: float | None
+    status: Literal["ordered", "shipped", "received", "cancelled"]
+    ordered_at: datetime
+    expected_on: date | None
+    shipped_at: datetime | None
+    received_at: datetime | None
+    received_qty: float | None
+    #: Past its expected date and still not here.
+    overdue: bool
+    #: Received by the invoice for it arriving, rather than by hand.
+    received_by_invoice: bool
+    action_id: str | None
+    note: str | None
+    placed_by: str | None
+    received_by: str | None
+
+
+class PurchaseOrderCreate(BaseModel):
+    """An order placed outside Recommendations: by phone, email or a supplier's portal."""
+
+    inventory_item_id: str
+    supplier_id: str | None = None
+    #: In the item's unit, or in its packs with `in_packs`.
+    quantity: float = Field(gt=0, le=MAX_QUANTITY, allow_inf_nan=False)
+    in_packs: bool = False
+    expected_on: date | None = None
+    note: str | None = Field(default=None, max_length=255)
+
+
+class OrderShippedIn(BaseModel):
+    expected_on: date | None = None
+
+
+class OrderReceiveIn(BaseModel):
+    """What arrived, in the item's unit; unset means all of it."""
+
+    quantity: float | None = Field(default=None, ge=0, le=MAX_QUANTITY, allow_inf_nan=False)
+    note: str | None = Field(default=None, max_length=255)
+
+
+class OrderReceivedOut(BaseModel):
+    order: PurchaseOrderOut
+    item: InventoryItemOut
+
+
 class SupplierExposureOut(BaseModel):
     id: str
     name: str

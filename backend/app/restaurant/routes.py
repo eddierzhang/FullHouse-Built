@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func
@@ -10,7 +10,7 @@ from app.auth.events import deny
 from app.auth.models import User
 from app.db.session import get_db
 from app.hr import staff as hr
-from app.restaurant import crud, inventory, profile, schemas
+from app.restaurant import crud, inventory, orders, profile, schemas
 from app.restaurant.conflicts import check_expected, idempotency_key
 from app.restaurant.models import (
     InventoryAdjustment,
@@ -18,6 +18,7 @@ from app.restaurant.models import (
     MenuItem,
     Order,
     OrderItem,
+    PurchaseOrder,
     RecipeItem,
     Shift,
     Staff,
@@ -148,8 +149,17 @@ def create_inventory_item(
     with inventory.stock_change("initial"):
         db.add(item)
         db.commit()
+    _after_stock_change(db, restaurant_id, f"{item.name} added")
     db.refresh(item)
     return item
+
+
+def _after_stock_change(db: Session, restaurant_id: str | None, trigger: str) -> None:
+    """Stock moved: a reorder may be due, or one waiting may no longer be (app.prices.stock)."""
+    from app.prices import stock
+
+    stock.sync(db, restaurant_id, trigger=trigger)
+    db.commit()
 
 
 @router.post("/inventory-items/{inventory_item_id}/adjustments", response_model=schemas.StockChangeOut)
@@ -212,6 +222,7 @@ def record_stock_change(
         if key and (replay := _replay_stock_change(db, _item_or_404(db, user, inventory_item_id), key)):
             return replay
         raise
+    _after_stock_change(db, item.restaurant_id, f"{item.name} {payload.reason}")
     db.refresh(item)
     latest = (
         db.query(InventoryAdjustment)
@@ -222,6 +233,102 @@ def record_stock_change(
     return schemas.StockChangeOut(
         item=schemas.InventoryItemOut.model_validate(item), adjustment=_adjustments_out(db, [latest])[0]
     )
+
+
+# --- purchase orders -------------------------------------------------------------------
+
+
+def _order_out(order: PurchaseOrder, today: date | None = None) -> schemas.PurchaseOrderOut:
+    return schemas.PurchaseOrderOut(
+        id=order.id, inventory_item_id=order.inventory_item_id, item_name=order.item_name, unit=order.unit,
+        quantity=order.quantity, packs=order.packs, pack_unit=order.pack_unit, supplier_id=order.supplier_id,
+        supplier_name=order.supplier_name, estimated_cost=order.estimated_cost, status=order.status,
+        ordered_at=order.ordered_at, expected_on=order.expected_on, shipped_at=order.shipped_at,
+        received_at=order.received_at, received_qty=order.received_qty, overdue=orders.is_overdue(order, today),
+        received_by_invoice=order.invoice_line_id is not None, action_id=order.action_id, note=order.note,
+        placed_by=order.placed_by, received_by=order.received_by,
+    )
+
+
+def _order_or_404(db: Session, user: User, order_id: str) -> PurchaseOrder:
+    order = orders.order_in(db, inventory.scope_for(db, user), order_id)
+    if order is None:
+        raise HTTPException(404, "Purchase order not found")
+    return order
+
+
+@router.get("/purchase-orders", response_model=list[schemas.PurchaseOrderOut])
+def list_purchase_orders(
+    status: str = Query(default="open", pattern="^(open|all|ordered|shipped|received|cancelled)$"),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """Orders placed and not yet received, by default; `all` for the recent record too."""
+    return [_order_out(o) for o in orders.list_orders(db, inventory.scope_for(db, user), status)]
+
+
+@router.post("/purchase-orders", response_model=schemas.PurchaseOrderOut, status_code=201)
+def place_purchase_order(payload: schemas.PurchaseOrderCreate, user: User = Depends(manager), db: Session = Depends(get_db)):
+    """Record an order placed by phone, email or a portal, so its arrival can be tracked and booked."""
+    item = _item_or_404(db, user, payload.inventory_item_id)
+    supplier = _supplier_or_404(db, user, payload.supplier_id) if payload.supplier_id else None
+    quantity = payload.quantity
+    packs = pack_unit = None
+    if payload.in_packs:
+        if not item.pack_size:
+            raise HTTPException(422, f"{item.name} isn't bought in packs. Enter the amount in {item.unit}.")
+        packs, pack_unit = payload.quantity, item.pack_unit
+        quantity = round(payload.quantity * item.pack_size, 6)
+    try:
+        order = orders.place(db, item, quantity, supplier=supplier, packs=packs, pack_unit=pack_unit,
+                             expected_on=payload.expected_on, note=payload.note, placed_by=user.email)
+    except orders.OrderError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    db.commit()
+    _after_stock_change(db, item.restaurant_id, f"{item.name} ordered")
+    return _order_out(order)
+
+
+@router.post("/purchase-orders/{order_id}/shipped", response_model=schemas.PurchaseOrderOut)
+def mark_order_shipped(order_id: str, payload: schemas.OrderShippedIn | None = None,
+                       user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """The supplier says it's on its way; the expected date can move with it."""
+    order = _order_or_404(db, user, order_id)
+    try:
+        orders.mark_shipped(db, order, payload.expected_on if payload else None)
+    except orders.OrderError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    db.commit()
+    return _order_out(order)
+
+
+@router.post("/purchase-orders/{order_id}/receive", response_model=schemas.OrderReceivedOut)
+def receive_purchase_order(order_id: str, payload: schemas.OrderReceiveIn | None = None,
+                           user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """It arrived: what came in goes into stock, once, and the order closes. Anyone on the team."""
+    order = _order_or_404(db, user, order_id)
+    body = payload or schemas.OrderReceiveIn()
+    try:
+        orders.receive(db, order, quantity=body.quantity, note=body.note, received_by=user.email)
+    except orders.OrderError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    db.commit()
+    _after_stock_change(db, order.restaurant_id, f"{order.item_name} received")
+    item = db.get(InventoryItem, order.inventory_item_id)
+    db.refresh(item)
+    return schemas.OrderReceivedOut(order=_order_out(order), item=schemas.InventoryItemOut.model_validate(item))
+
+
+@router.post("/purchase-orders/{order_id}/cancel", response_model=schemas.PurchaseOrderOut)
+def cancel_purchase_order(order_id: str, user: User = Depends(manager), db: Session = Depends(get_db)):
+    order = _order_or_404(db, user, order_id)
+    try:
+        orders.cancel(db, order)
+    except orders.OrderError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    db.commit()
+    _after_stock_change(db, order.restaurant_id, f"{order.item_name} order cancelled")
+    return _order_out(order)
 
 
 def _replay_stock_change(db: Session, item: InventoryItem, key: str) -> schemas.StockChangeOut | None:
@@ -753,6 +860,7 @@ def update_inventory_item(
         setattr(item, field, value)
     db.add(item)
     db.commit()
+    _after_stock_change(db, item.restaurant_id, f"{item.name} changed")
     db.refresh(item)
     return item
 

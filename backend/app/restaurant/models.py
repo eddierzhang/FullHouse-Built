@@ -65,6 +65,60 @@ class InventoryItem(Base):
     supplier: Mapped[Supplier | None] = relationship()
 
 
+#: A purchase order's life: placed, on its way, in the stock figures, or called off.
+ORDERED, SHIPPED, RECEIVED, CANCELLED = "ordered", "shipped", "received", "cancelled"
+OPEN_ORDER_STATUSES = (ORDERED, SHIPPED)
+
+
+class PurchaseOrder(Base):
+    """An order placed with a supplier, followed from approval to receipt.
+
+    Approving a reorder places the order; nothing reaches the stock figures
+    until it is received, either by hand on the Inventory page or by the
+    invoice for it arriving (app.prices.stock). `quantity` is in the item's
+    unit; `packs` and `pack_unit` say how it was ordered when that is known.
+    """
+
+    __tablename__ = "purchase_orders"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    restaurant_id: Mapped[str | None] = mapped_column(
+        ForeignKey("restaurants.id", name="fk_purchase_orders_restaurant_id_restaurants"), nullable=True, index=True
+    )
+    supplier_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("suppliers.id"), nullable=True)
+    inventory_item_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("inventory_items.id", name="fk_purchase_orders_inventory_item_id_inventory_items"),
+        nullable=False, index=True,
+    )
+    #: As they read when the order was placed, so a renamed item or supplier doesn't rewrite the record.
+    item_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    supplier_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    quantity: Mapped[float] = mapped_column(Float, nullable=False)
+    unit: Mapped[str] = mapped_column(String(32), nullable=False)
+    packs: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pack_unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    estimated_cost: Mapped[float | None] = mapped_column(Float, nullable=True)
+    status: Mapped[str] = mapped_column(String(12), default=ORDERED, nullable=False, index=True)
+    ordered_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now, nullable=False)
+    expected_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    shipped_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    received_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    #: What actually arrived, in `unit`; null until received.
+    received_qty: Mapped[float | None] = mapped_column(Float, nullable=True)
+    #: The invoice line that received it, when the invoice did (no FK: the two modules don't import each other).
+    invoice_line_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    #: The approved proposal it came from, if any.
+    action_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    #: Who placed it and who received it: an email, or the agent's key.
+    placed_by: Mapped[str | None] = mapped_column(String(254), nullable=True)
+    received_by: Mapped[str | None] = mapped_column(String(254), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now, onupdate=_now, nullable=False)
+
+    item: Mapped[InventoryItem] = relationship()
+    supplier: Mapped[Supplier | None] = relationship()
+
+
 class InventoryAdjustment(Base):
     """One change to an item's stock: how much, why, by whom, and when.
 

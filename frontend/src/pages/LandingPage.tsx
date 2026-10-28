@@ -8,90 +8,89 @@ type Props = {
 
 const STEPS: { title: string; body: string }[] = [
   {
-    title: 'It reads your real numbers',
-    body: 'Stock on hand, supplier lead times, the schedule, what sold and what it cost. The assistant works from your restaurant’s own data, every day or whenever you ask it something.',
+    title: 'It reads your invoices',
+    body: 'From Bill.com, a forwarded email, a phone photo or a PDF. Every line is matched to one item, with the pack size worked out, so a case from one supplier compares with a case from another.',
   },
   {
-    title: 'It proposes, you decide',
-    body: 'Each idea arrives as a recommendation with its reasoning: reorder 25 kg of tomatoes, cover Friday’s late shift, discount a slow seller. Approve it, change it or turn it down.',
+    title: 'It asks instead of guessing',
+    body: 'When a printed line could be two things, you get one short question with two taps to answer. Five a week at most. Anything it isn’t sure of stays out of the digest.',
   },
   {
-    title: 'Everything is on the record',
-    body: 'Every change, by a person or the assistant, is kept with who made it and why. Any of them can be undone, and the undo is recorded too.',
+    title: 'Every Monday, one decision',
+    body: 'What changed, what it cost you, and what to do about it: which items to move between suppliers, which price rises and short deliveries to raise with a rep. With the message to the rep already written.',
   },
 ]
 
 const AREAS: { icon: IconName; title: string; body: string }[] = [
   {
+    icon: 'profit',
+    title: 'The weekly digest',
+    body: 'Dollars at stake this week in one number, then three lists: switch supplier, price went up, owed to you. Ranked by dollars.',
+  },
+  {
     icon: 'inventory',
-    title: 'Inventory',
-    body: 'Days of cover worked out from what you actually sell, set against how long each supplier takes to deliver. Bring in your stock spreadsheet to start.',
+    title: 'Every item, every price',
+    body: 'Eight weeks of per-case prices by supplier, and the raw invoice lines as printed, so you can check any number yourself.',
+  },
+  {
+    icon: 'chat',
+    title: 'Ask, don’t browse',
+    body: '“What did I pay for kale last month.” “Which supplier is cheapest on paper goods.” Two sentences back, with the invoices it used.',
   },
   {
     icon: 'suppliers',
-    title: 'Suppliers',
-    body: 'Contacts and lead times in one place, and reorders suggested before an item runs short rather than after.',
-  },
-  {
-    icon: 'menu',
-    title: 'Menu',
-    body: 'Dishes costed from their recipes, so margins are computed instead of guessed. Promotions end by themselves when their time is up.',
+    title: 'Messages to reps, drafted',
+    body: 'A price challenge, a credit claim or a short-delivery dispute, in three sentences with the invoice lines attached. You edit it and send it from your own mail app.',
   },
   {
     icon: 'staff',
-    title: 'Staff and schedule',
-    body: 'Build the week within your own rules for shift length, rest and weekly hours. Your team signs in to see their published shifts.',
-  },
-  {
-    icon: 'profit',
-    title: 'Profit and forecast',
-    body: 'Revenue, gross profit and margins from real sales, plus a seven-day forecast that says how much history it rests on.',
+    title: 'Talking points for the manager meeting',
+    body: 'Five lines from the digest in your words, on request.',
   },
   {
     icon: 'approvals',
-    title: 'One list of decisions',
-    body: 'Everything the assistant suggests waits in a single queue, on your phone or at a desk, until an owner or admin decides.',
+    title: 'Never on its own',
+    body: 'It never places an order, changes a supplier, sends anything, pays anything or alters an invoice. It never claims a market price, only that a price changed or another supplier charged less.',
   },
 ]
 
 const ASSURANCES: { title: string; body: string }[] = [
   { title: 'Your restaurant only', body: 'Each restaurant’s data is kept apart. Nobody outside your team can see or change it.' },
-  { title: 'Roles for your team', body: 'Owners and admins decide; staff see what they work with. People join by an invite link you create.' },
+  { title: 'A bookkeeper can help', body: 'Invite your bookkeeper to answer the agent’s questions across every client they keep. You see the questions as resolved.' },
   { title: 'Two-step sign-in', body: 'Owners and admins sign in with a password and a code from their phone.' },
   { title: 'Yours to take away', body: 'Download everything your restaurant keeps here as spreadsheet files, whenever you like.' },
 ]
 
-/** One of the assistant's recommendations, as it looks in the queue. A picture, not a control. */
-function ProposalPreview() {
+/** One card from the digest, as it looks on a Monday. A picture, not a control. */
+function DigestPreview() {
   return (
-    <figure className="landing-preview" role="img" aria-label="An example recommendation: reorder 25 kg of tomatoes, waiting for approval">
+    <figure className="landing-preview" role="img" aria-label="An example digest card: Kale, green, case, $36.00 a week, with the comparison and a Move kale button">
       <div className="landing-preview-head">
-        <span className="badge badge-brand">Assistant Manager</span>
-        <span className="landing-preview-when">Today, 10:00</span>
+        <span className="badge badge-brand">Switch supplier</span>
+        <span className="landing-preview-when">Monday</span>
       </div>
-      <div className="landing-preview-title">Reorder 25 kg of Tomatoes</div>
+      <div className="landing-preview-title">Kale, green, case</div>
       <p className="landing-preview-why">
-        3 kg left, about a day and a half at this week’s pace. The supplier takes 2 days to deliver, so this order
-        shouldn’t wait.
+        You paid $31.20 at Worldwide on Oct 21. Chef’s Warehouse charged $27.60 on Oct 17.
       </p>
       <dl className="landing-preview-facts">
         <div>
-          <dt>On hand</dt>
-          <dd>3 kg</dd>
+          <dt>A week</dt>
+          <dd>$36.00</dd>
         </div>
         <div>
-          <dt>Days of cover</dt>
-          <dd>1.5</dd>
+          <dt>At stake this week</dt>
+          <dd>$181.90</dd>
         </div>
         <div>
-          <dt>Lead time</dt>
-          <dd>2 days</dd>
+          <dt>Items</dt>
+          <dd>7</dd>
         </div>
       </dl>
       <div className="landing-preview-actions">
-        <span className="btn btn-primary btn-sm">Approve</span>
-        <span className="btn btn-secondary btn-sm">Reject</span>
-        <span className="landing-preview-status">Nothing changes until you choose</span>
+        <span className="btn btn-primary btn-sm">Move kale</span>
+        <span className="btn btn-secondary btn-sm">Not useful</span>
+        <span className="landing-preview-status">Nothing is ordered or sent for you</span>
       </div>
     </figure>
   )
@@ -142,25 +141,25 @@ export function LandingPage({ options }: Props) {
       <main>
         <section className="landing-hero">
           <div>
-            <p className="landing-eyebrow">Restaurant operations</p>
-            <h1 className="landing-headline">An assistant manager that does the legwork and leaves the decisions to you.</h1>
+            <p className="landing-eyebrow">Price intelligence for small restaurants</p>
+            <h1 className="landing-headline">Every week, know what your suppliers changed, what it cost you, and what to do about it.</h1>
             <p className="landing-lead">
-              FullHouse keeps your stock, suppliers, menu, schedule and profit in one place. Its AI assistant watches
-              those numbers and proposes what to do next: reorder before you run out, fill a shift, run a promotion.
-              Nothing takes effect until you approve it.
+              FullHouse reads your supplier invoices, matches every line to one item with the pack size worked out, and
+              sends you one digest each Monday: which items to move between suppliers, which price rises and short
+              deliveries to raise with a rep. An agent does the reading, matching and drafting. You decide and send.
             </p>
             {actions}
             <p className="landing-note">
               {options?.demo
-                ? 'The demo is a sample bistro with six weeks of trading. It resets every day, so try anything.'
+                ? 'The demo is a sample bistro with eight weeks of invoices from four suppliers. It resets every day, so try anything.'
                 : closed
                   ? 'Joining your restaurant’s team? Ask the owner or a manager for an invite link.'
                   : canSignUp
-                    ? 'Create an account for your restaurant, answer a few questions about how it runs, and invite your team.'
+                    ? 'Add one invoice. No account until it is in; your email comes at the end.'
                     : ' '}
             </p>
           </div>
-          <ProposalPreview />
+          <DigestPreview />
         </section>
 
         <section className="landing-section" aria-labelledby="landing-how">
@@ -182,7 +181,7 @@ export function LandingPage({ options }: Props) {
 
         <section className="landing-section" aria-labelledby="landing-areas">
           <h2 id="landing-areas" className="landing-heading">
-            The whole back office, in one place
+            What you get
           </h2>
           <ul className="landing-grid">
             {AREAS.map((area) => (
@@ -215,18 +214,18 @@ export function LandingPage({ options }: Props) {
         </section>
 
         <section className="landing-band" aria-labelledby="landing-start">
-          <h2 id="landing-start">{canSignUp ? 'Ready to hand off the legwork?' : 'Pick up where you left off'}</h2>
+          <h2 id="landing-start">{canSignUp ? 'Start with one invoice' : 'Pick up where you left off'}</h2>
           <p>
             {canSignUp
-              ? 'Create your restaurant’s account and walk through setup: details, opening hours, stock preferences, staff roles and scheduling rules.'
-              : 'Sign in to see what’s waiting for a decision today.'}
+              ? 'Connect Bill.com, forward an invoice, or snap a photo of one. The first digest comes the Monday after.'
+              : 'Sign in to see this week’s digest.'}
           </p>
           {actions}
         </section>
       </main>
 
       <footer className="landing-footer">
-        <span>FullHouse · restaurant operations, with a person in charge</span>
+        <span>FullHouse · supplier prices, read for you, decided by you</span>
         <a href="#signin">Sign in</a>
       </footer>
     </div>

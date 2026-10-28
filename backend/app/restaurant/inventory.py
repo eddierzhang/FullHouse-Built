@@ -33,7 +33,7 @@ REASONS = {
     "count": "Stock count",
     "initial": "Starting stock",
     "sale": "Sold",
-    "reorder": "Reorder approved",
+    "reorder": "Order received",
     "revert": "Undone",
     "correction": "Correction",
 }

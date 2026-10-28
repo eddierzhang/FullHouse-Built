@@ -203,6 +203,11 @@ def test_reverting_an_approved_reorder_undoes_the_restock(client, db):
 
     assert client.post(f"/api/v1/agents/actions/{action.id}/approve").status_code == 200
     db.expire_all()
+    # Approval places the order; the stock moves when it is received.
+    assert item.quantity_on_hand == 8.0
+    (order,) = client.get("/api/v1/restaurant/purchase-orders").json()
+    assert client.post(f"/api/v1/restaurant/purchase-orders/{order['id']}/receive").status_code == 200
+    db.expire_all()
     assert item.quantity_on_hand == 33.0
 
     change_id = _latest_change_id(client, entity_type="inventory_items", operation="update")

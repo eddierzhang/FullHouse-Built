@@ -1,7 +1,15 @@
 from sqlalchemy.orm import Session
 
 from app.agents.models import AgentDefinition, AgentRun
-from app.agents.tools import employee_tools, inventory_tools, marketing_tools, profit_tools, supply_chain_tools
+from app.agents.tools import (
+    customer_tools,
+    employee_tools,
+    inventory_tools,
+    marketing_tools,
+    price_tools,
+    profit_tools,
+    supply_chain_tools,
+)
 
 #: Every tool the agent has, by the part of the restaurant it covers. Order
 #: is the order the agent is offered them in.
@@ -11,6 +19,8 @@ TOOL_AREAS = {
     "staff": employee_tools.build_tools,
     "menu": marketing_tools.build_tools,
     "profit": profit_tools.build_tools,
+    "customers": customer_tools.build_tools,
+    "prices": price_tools.build_tools,
 }
 
 

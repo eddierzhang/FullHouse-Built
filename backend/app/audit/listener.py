@@ -42,6 +42,16 @@ EXCLUDED_TABLES = frozenset({
     "change_log", "agent_events", "inventory_adjustments",
     # Accounts and their secrets have their own record: the security log.
     "users", "auth_sessions", "invites", "password_resets", "security_events", "mfa_challenges",
+    # Customers' names, contact details and words are for owners and admins,
+    # and this history is open to the whole team. Each row says who logged
+    # or resolved it instead (app/customers/models.py).
+    "customer_requests", "customer_service_reviews", "customer_action_items",
+    # Of the price work, the history keeps what someone did or the agent proposed:
+    # invoices coming in, items, the aliases that match lines to them, the agent's
+    # questions and their answers, drafts and their sending. Not the lines (one
+    # invoice is one event), the digests (rebuilt after every change), the thread
+    # (its own record), reps or bookkeeper links (app/prices/models.py).
+    "supplier_invoice_lines", "price_digests", "supplier_reps", "agent_thread_messages", "bookkeeper_clients",
 })
 
 #: Key under which half-built rows wait on `Session.info` between the two events.

@@ -5,6 +5,23 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def provider_from_env(environ=os.environ) -> str:
+    """LLM_PROVIDER when set; otherwise the provider the keys in the environment point at.
+
+    With no key at all it is "scripted": the rule-based assistant, which answers price
+    questions from the invoices and runs the archived agents by rule. No key is needed
+    to run the app; a model adds free-form answers and the reading of photos.
+    """
+    explicit = environ.get("LLM_PROVIDER", "").strip().lower()
+    if explicit:
+        return explicit
+    if environ.get("ANTHROPIC_API_KEY", "").strip():
+        return "anthropic"
+    if environ.get("LLM_API_KEY", "").strip():
+        return "openai"
+    return "scripted"
+
+
 class Settings:
     database_url: str = os.getenv("DATABASE_URL", "sqlite:///./app.db")
     frontend_origins: list[str] = [
@@ -14,15 +31,18 @@ class Settings:
 
     # Which backend runs the agents: "anthropic" (hosted), "openai" (any
     # hosted OpenAI-compatible API -- Gemini's free tier by default),
-    # "ollama" (local), or "scripted" (deterministic, model-free -- for
-    # tests, CI and demos).
-    llm_provider: str = os.getenv("LLM_PROVIDER", "anthropic").strip().lower()
+    # "ollama" (local), "scripted" (rule-based, no model: answers price
+    # questions from the invoices; also what tests, CI and the demo run on) or
+    # "none" (the assistant is off and says so). Unset, it follows whichever
+    # key is present: ANTHROPIC_API_KEY, then LLM_API_KEY, else "scripted"
+    # (see `provider_from_env`).
+    llm_provider: str = provider_from_env()
 
     # OpenAI-compatible APIs. The base URL defaults to Google Gemini's; there
     # is no default model, so LLM_MODEL must name one the API serves.
     # `llm_model` replaces AgentDefinition.model for every run, as with Ollama.
     llm_base_url: str = os.getenv("LLM_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai")
-    llm_api_key: str | None = os.getenv("LLM_API_KEY")
+    llm_api_key: str | None = os.getenv("LLM_API_KEY", "").strip() or None
     llm_model: str = os.getenv("LLM_MODEL", "").strip()
     llm_timeout_seconds: float = float(os.getenv("LLM_TIMEOUT_SECONDS", "120"))
 
@@ -65,6 +85,62 @@ class Settings:
     # again on this schedule (UTC), so visitors' changes never accumulate.
     demo_mode: bool = os.getenv("DEMO_MODE", "false").strip().lower() in ("1", "true", "yes")
     demo_reset_cron: str = os.getenv("DEMO_RESET_CRON", "0 4 * * *")
+
+    # Where owners forward supplier invoices, shown on the Invoices page when
+    # this site has a mailbox that feeds them in. Empty: forwarding isn't offered.
+    invoice_forward_address: str | None = os.getenv("INVOICE_FORWARD_ADDRESS", "").strip() or None
+
+    # Reading a photo or PDF of an invoice into lines (app.prices.extract). Claude with an Anthropic
+    # key; a vision model on the OpenAI-compatible API with LLM_API_KEY (Gemini's free tier reads
+    # photos); with no model at all, PDFs that carry text are read by rule. INVOICE_READER_MODEL
+    # pins the reading model; unset, Claude uses claude-sonnet-4-5 and the openai reader LLM_MODEL.
+    invoice_reader_model: str | None = os.getenv("INVOICE_READER_MODEL", "").strip() or None
+
+    # The weekly digest mail. Sent with Resend when RESEND_API_KEY is set, printed to the log
+    # otherwise. DIGEST_CRON is read on each restaurant's own clock (default Monday 6am).
+    resend_api_key: str | None = os.getenv("RESEND_API_KEY", "").strip() or None
+    # Or any mailbox over SMTP, which costs nothing: a Gmail address with an app password
+    # (smtp.gmail.com, 587, the address, the 16-character password), Outlook, Fastmail, a
+    # host's own. Resend is used when both are set. Port 465 means TLS from the start.
+    smtp_host: str | None = os.getenv("SMTP_HOST", "").strip() or None
+    smtp_port: int = int(os.getenv("SMTP_PORT", "587") or 587)
+    smtp_user: str | None = os.getenv("SMTP_USER", "").strip() or None
+    smtp_password: str | None = os.getenv("SMTP_PASSWORD", "") or None
+    # The sender. Unset, the SMTP mailbox when there is one: Gmail rewrites anything else anyway.
+    mail_from: str = os.getenv("MAIL_FROM", "").strip() or (
+        f"FullHouse <{os.getenv('SMTP_USER', '').strip()}>" if os.getenv("SMTP_USER", "").strip() else "FullHouse <digest@fullhouse.app>"
+    )
+    digest_cron: str = os.getenv("DIGEST_CRON", "0 6 * * 1").strip()
+    # Lets an outside scheduler (Render cron, GitHub Actions) call POST /api/v1/prices/digest/cron.
+    cron_secret: str | None = os.getenv("CRON_SECRET", "").strip() or None
+    # Where links in mail point: PUBLIC_URL, else the address Render gives the service
+    # (RENDER_EXTERNAL_URL), else the first FRONTEND_ORIGIN.
+    public_url: str = (os.getenv("PUBLIC_URL", "").strip() or os.getenv("RENDER_EXTERNAL_URL", "").strip()).rstrip("/")
+
+    # Bill.com (v3 API). All four set: "Connect Bill.com" pulls bills. BILLCOM_ENVIRONMENT is
+    # sandbox or production. BILLCOM_WEBHOOK_SECRET guards POST /api/v1/prices/billcom/webhook.
+    billcom_username: str | None = os.getenv("BILLCOM_USERNAME", "").strip() or None
+    billcom_password: str | None = os.getenv("BILLCOM_PASSWORD", "").strip() or None
+    billcom_org_id: str | None = os.getenv("BILLCOM_ORG_ID", "").strip() or None
+    billcom_dev_key: str | None = os.getenv("BILLCOM_DEV_KEY", "").strip() or None
+    billcom_environment: str = os.getenv("BILLCOM_ENVIRONMENT", "sandbox").strip().lower()
+    billcom_webhook_secret: str | None = os.getenv("BILLCOM_WEBHOOK_SECRET", "").strip() or None
+
+    @property
+    def smtp_configured(self) -> bool:
+        return bool(self.smtp_host and self.smtp_user and self.smtp_password)
+
+    @property
+    def mail_configured(self) -> bool:
+        return bool(self.resend_api_key) or self.smtp_configured
+
+    @property
+    def billcom_configured(self) -> bool:
+        return all((self.billcom_username, self.billcom_password, self.billcom_org_id, self.billcom_dev_key))
+
+    @property
+    def link_base(self) -> str:
+        return self.public_url or (self.frontend_origins[0].rstrip("/") if self.frontend_origins else "")
 
     # Whether seed_data.py fills an empty database with a sample restaurant
     # (suppliers, stock, menu, staff, orders). Off for a customer's own

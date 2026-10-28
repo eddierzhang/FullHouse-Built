@@ -237,6 +237,20 @@ def export_files(db: Session, restaurant_id: str | None) -> dict[str, str]:
     add("agent_recommendations.csv", AgentAction, own(AgentAction).order_by(AgentAction.created_at))
     add("change_history.csv", ChangeLog, db.query(ChangeLog).filter(visible_to(restaurant_id, True)).order_by(ChangeLog.id))
     add("feedback.csv", Feedback, own(Feedback).order_by(Feedback.id))
+    from app.customers.models import CustomerActionItem, CustomerRequest, CustomerServiceReview
+
+    add("customer_requests.csv", CustomerRequest, own(CustomerRequest).order_by(CustomerRequest.received_at))
+    add("customer_service_summaries.csv", CustomerServiceReview, own(CustomerServiceReview).order_by(CustomerServiceReview.created_at))
+    add("customer_action_items.csv", CustomerActionItem, own(CustomerActionItem).order_by(CustomerActionItem.created_at))
+    from app.prices.models import AgentQuestion, Invoice, InvoiceLine, OutreachDraft, PriceDigest, PriceItem, ThreadMessage
+
+    add("price_items.csv", PriceItem, own(PriceItem).order_by(PriceItem.name))
+    add("supplier_invoices.csv", Invoice, own(Invoice).order_by(Invoice.invoice_date))
+    add("supplier_invoice_lines.csv", InvoiceLine, own(InvoiceLine).order_by(InvoiceLine.invoice_id, InvoiceLine.line_no))
+    add("agent_questions.csv", AgentQuestion, own(AgentQuestion).order_by(AgentQuestion.created_at), drop=("answered_by",))
+    add("price_digests.csv", PriceDigest, own(PriceDigest).order_by(PriceDigest.week_start))
+    add("supplier_messages.csv", OutreachDraft, own(OutreachDraft).order_by(OutreachDraft.created_at))
+    add("agent_thread.csv", ThreadMessage, own(ThreadMessage).order_by(ThreadMessage.created_at))
     # The team: who, and in what role -- never passwords, two-step secrets or sessions.
     files["team.csv"] = _csv(
         db.query(User).filter(User.restaurant_id == restaurant_id).order_by(User.name),

@@ -1,32 +1,47 @@
 # FullHouse
 
-**An operations platform for a restaurant, run by a team of AI agents that propose — and a manager who decides.**
+**Price intelligence for small restaurants: it reads your supplier invoices and tells you, once a week, what changed, what it cost you, and what to do about it.**
 
 [![CI](https://github.com/eddierzhang/FullHouse-Built/actions/workflows/ci.yml/badge.svg)](https://github.com/eddierzhang/FullHouse-Built/actions/workflows/ci.yml)
 ![Python 3.11](https://img.shields.io/badge/python-3.11-3776AB)
 ![React 19](https://img.shields.io/badge/react-19-149ECA)
 [![License: MIT](https://img.shields.io/badge/license-MIT-0f766e)](LICENSE)
 
-The Assistant Manager, a single AI agent, runs every part of the restaurant — inventory, suppliers, staff, the menu and profit. It reads
-the restaurant's real data and proposes changes: reorder stock, fill a shift, run a promotion.
-Nothing takes effect until a person approves it, every change is recorded with who made it and why, and anything can
-be undone.
+An owner-operator with two or three broadline distributors and a few single-source ones gets a bill a day and no time
+to compare them. FullHouse takes the invoices (a Bill.com export, forwarded email, a phone photo typed up, or pasted
+text), matches every printed line to one canonical item with its pack size, and on Monday sends one digest: dollars at
+stake this week, then three lists in fixed order. **Switch supplier**, **Price went up**, **Owed to you**. Each card
+names the item, the supplier and the dollars, and has one button: move the item, or draft the message to the rep.
+
+One agent does the reading, matching, drafting and answering. When it isn't sure what a line is, it asks a one-tap
+question instead of guessing, at most five a week. It never places an order, changes a supplier, sends anything, pays
+anything or edits an invoice, and it never says a price is "wrong", only that it changed or that someone charged less.
 
 > FullHouse started as a hackathon project — the original version is at
-> [eddierzhang/FullHouse](https://github.com/eddierzhang/FullHouse).
+> [eddierzhang/FullHouse](https://github.com/eddierzhang/FullHouse). Its first product, an operations dashboard with
+> inventory, schedule, menu and profit pages run by the same agent, is the main dashboard; the price pages sit
+> beside it under **Invoices & prices**.
 
 ![Asking the agent a question, watching it work live, and approving what it found](docs/demo.gif)
 
 ## Try it
 
-No API key, GPU or model download needed — the demo runs its agents on a deterministic scripted provider, loads a
-small Italian bistro with six weeks of trading, and resets itself daily.
+No API key, GPU or model download needed — the demo runs its agent on a deterministic scripted provider, loads a
+small Italian bistro with eight weeks of supplier invoices (and six weeks of trading for the operations pages), and
+resets itself daily.
 
 ```bash
 docker compose -f docker-compose.demo.yml up --build     # then open http://localhost:8080
 ```
 
 Without Docker: `python dev.py setup` once, then `python dev.py demo`.
+
+For real use, no key is required. With none, the assistant answers price questions by rule from the invoices and
+PDFs are read by rule. A model adds free-form answers and the reading of invoice photos: `ANTHROPIC_API_KEY` for
+Claude, or `LLM_API_KEY` for a free Gemini key, Groq, or any OpenAI-compatible API. The Monday digest is mailed
+from any mailbox over SMTP (a Gmail address with an app password, free) or through Resend, and printed to the log
+with neither; the four `BILLCOM_*` values pull bills from Bill.com. All optional; `backend/.env.example` describes
+each.
 
 Or put your own copy online, free and without a card, on Render's free plan:
 
@@ -35,7 +50,9 @@ Or put your own copy online, free and without a card, on Render's free plan:
 It reads [`render.yaml`](render.yaml), builds the single-container image and serves the same demo. The free plan
 sleeps after 15 idle minutes and wakes in about a minute, starting from a fresh restaurant each time. Other hosts,
 and running it for real rather than as a demo, are in [DEPLOY.md](DEPLOY.md). That includes a free private instance
-for each restaurant, with its agents on Gemini's free API tier ([`render.customer.yaml`](render.customer.yaml)).
+with no card and no key anywhere: one Render service for any number of restaurants, Neon Postgres, the Monday
+digest from a Gmail address, and the assistant rule-based or on Gemini's free tier
+([`render.customer.yaml`](render.customer.yaml)).
 
 | Overview | The agent's run, live | Menu costed from recipes |
 |---|---|---|
@@ -43,31 +60,45 @@ for each restaurant, with its agents on Gemini's free API tier ([`render.custome
 | **Approvals** | **Profit and forecast** | **Inventory and days of cover** |
 | ![Approvals](docs/screenshots/approvals.png) | ![Profit](docs/screenshots/profit.png) | ![Inventory](docs/screenshots/inventory.png) |
 
+The screenshots above are of the operations pages; the design for the price screens is in
+[docs/design](docs/design).
+
 ---
 
 ## What it does
 
-- **Agents that act, safely.** Agents call tools against live data and queue proposals. Approving one performs the real
-  change in the same transaction as the approval and its audit record — so an approval can't succeed while its effect
-  fails. Proposals missing information (a promotion described but never priced) ask for it before Approve is enabled.
-- **A complete, revertible history.** Every insert, update and delete is captured with before/after values, the person
-  or agent responsible, and the agent run behind it. Any change can be undone; the undo is recorded too.
-- **Live agent runs.** Runs execute in the background and stream every tool call and result to the browser as it
-  happens. Runs can be cancelled mid-flight.
-- **A front door.** Signed-out visitors get a landing page that explains the product. From there a new restaurant
-  creates its own account (when `ALLOW_SIGNUP` is on), and everyone else signs in; a restaurant's team joins by
-  invite link.
-- **Set up around your restaurant.** A new owner walks through name, address, contact details, timezone, opening
-  hours, inventory preferences, staff roles and scheduling rules, saved step by step so setup can be resumed. Agents are
-  told these details, schedules run on local time, and shift rules are enforced on people and agents alike. All of it
-  stays editable on the Profile page — by the owner, or by anyone the owner makes an admin; everyone else joins
-  by invite as a member who can see the details but not change them.
-- **Scheduled agents.** Cron schedules per agent, with a guard against overlapping runs. Promotions expire on their own.
-- **Local or hosted models.** Swap between Anthropic's API, any OpenAI-compatible API (Gemini's free tier by
-  default) and a local Ollama model with one setting.
-- **Operations that add up.** Recipes link dishes to ingredients, so selling a dish draws down stock, food cost is
-  computed rather than guessed, and "days of cover" compares real consumption against supplier lead times.
-  Profit, margins and a seven-day revenue forecast come from actual sales, each labelled with how much data it rests on.
+- **Reads invoices as printed.** Every line is kept exactly as the supplier printed it: description, quantity, pack,
+  price. Matching sets which canonical item it is and how many units one pack holds, so a 24-count case from one
+  supplier and a "KALE GRN 24CT" from another become the same price per unit. A confirmed match is remembered per
+  supplier and never asked again. ([engine.py](backend/app/prices/engine.py))
+- **Asks instead of guessing.** A line the agent can't place becomes one question with two tap answers and "Something
+  else": the invoice crop, the question, nothing more. Questions are ordered by the line's dollars, capped at five a
+  week per restaurant; the rest wait. The first question after the first invoice is the whole tutorial.
+- **One digest a week.** Dollars at stake, then Switch supplier (food, dry goods and paper only), Price went up, and
+  Owed to you (billed more than delivered, no credit yet). Ranked by dollars, ten cards at most, the rest behind
+  "N smaller items". Items with fewer than two matched invoices get no card and no recommendation; the item page says
+  "Not enough matched invoices to compare yet." There are no confidence numbers anywhere.
+- **Answers from the invoices.** Ask from any screen: "what did I pay for tomatoes last month", "how much did Harbor
+  Dairy short me this quarter", "talking points for tomorrow's meeting". Two sentences with the numbers, then chips for
+  the invoices and items it used. An answer without a source isn't allowed. Meeting prep comes straight from the
+  digest, five lines in the owner's words.
+- **Drafts the message, you send it.** Price challenge or credit claim: three sentences and the invoice lines cited,
+  addressed to the rep it remembers per supplier. Send via email opens your own mail app after a confirm sheet; there
+  is no auto-send and no send-later.
+- **"Not useful" is the only feedback.** It hides the item from the digest for four weeks. "Move kale" records your
+  decision so the next digest checks the invoice for it; nothing is ordered.
+- **Stock that follows the invoices.** Each item on the invoices is counted as an Inventory item (matched by name,
+  or chosen by the owner). A confirmed invoice books its deliveries into stock, and an item at its reorder point gets
+  a purchase order proposed from the cheapest recent supplier, in whole packs, with the cost, for an owner to approve.
+- **Orders followed to the door.** Approving a reorder places an order, not a delivery. It sits under On order with its
+  expected date, can be marked shipped, shows as overdue, and is booked into stock when it is received, by hand with
+  what actually arrived or by the invoice for it. Nothing is sent to a supplier.
+- **A bookkeeper view.** An accountant invited as a bookkeeper sees a table of clients (questions outstanding, last
+  digest, dollars flagged this month) and answers the agent's questions for any of them. The owner sees the question
+  resolved, not who resolved it.
+- **The operations platform.** The inventory, schedule, recommendations, customer requests, menu, profit and
+  history pages from the first product are the main dashboard, with the same agent and the same complete,
+  revertible change history. Nothing in the price product counts inventory, sets par levels or automates purchasing.
 
 ## Architecture
 
@@ -200,7 +231,7 @@ Every task is one command through [`dev.py`](dev.py), which works the same on Wi
 `LLM_PROVIDER` in `backend/.env` picks what runs the agents: `ollama` (needs [Ollama](https://ollama.com) and a
 tool-capable model), `anthropic` (needs `ANTHROPIC_API_KEY`), `openai` (needs `LLM_API_KEY`; a free Gemini key
 from [AI Studio](https://aistudio.google.com/apikey) works as-is), or `scripted`, which `setup` chooses so the app works
-straight away.
+straight away. Left empty, it follows whichever key is set, and with no key it is `scripted`: the app needs no key.
 
 For Ollama, don't share the server with other heavy workloads — a competing request for the same model with different
 settings makes Ollama reload it.
@@ -249,6 +280,19 @@ dev.py              developer tasks
   moving them to something like Redis.
 - **Gross, not net.** Profit excludes labour and overheads.
 - **No purchase-order lifecycle.** Approving a reorder books the goods as received immediately.
+- **Reading photos needs a model.** A photo of an invoice is read into lines by Claude (`ANTHROPIC_API_KEY`) or by a
+  vision model on the OpenAI-compatible API (`LLM_API_KEY`, Gemini for one). A PDF that carries text is read by rule
+  with any model or none; a scanned PDF, or a photo on a site with no model, is typed up. The demo's scripted reader
+  reads only the PDFs the app wrote itself. There is no mailbox: forwarded email is pasted in. Whatever is read is checked (lines add to the total, quantity × price is the line total, nothing read
+  with doubt) and an invoice that fails a check waits for "Looks right" before it counts.
+- **Bill.com is untested against the real sandbox.** The v3 client (`backend/app/prices/billcom.py`) signs in, pages
+  bills with their line items and vendor names, and saves each once; it has run against a stub only. One Bill.com
+  organisation per site, from `BILLCOM_*` in the environment. Webhooks are received, not registered: subscribe to
+  bill.created and bill.updated in the Bill.com developer portal and point them at
+  `POST /api/v1/prices/billcom/webhook` with `X-Billcom-Secret`.
+- **Outbound mail is the digest only.** The Monday digest goes out from a mailbox over SMTP (`SMTP_*`, a Gmail app
+  password will do) or with Resend (`RESEND_API_KEY`), and without either to the server log. "Send via email" to a rep still opens a prefilled message in your own mail app and records that
+  you sent it; the agent never sends anything.
 
 ## License
 

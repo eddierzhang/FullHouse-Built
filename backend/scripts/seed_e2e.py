@@ -20,6 +20,7 @@ from app.auth.security import hash_password  # noqa: E402
 from app.bootstrap import setup  # noqa: E402
 from app.db.session import SessionLocal  # noqa: E402
 from app.demo import DEMO_PROFILE  # noqa: E402
+from app.prices.models import Invoice  # noqa: E402
 from app.restaurant.models import InventoryItem, MenuItem, Restaurant  # noqa: E402
 
 
@@ -60,6 +61,23 @@ def seed() -> None:
             db.add(User(email=E2E_EMAIL, name="E2E Manager", password_hash=hash_password(E2E_PASSWORD),
                         restaurant_id=restaurant.id if restaurant else None))
         db.commit()
+
+        if restaurant is not None and db.query(Invoice).filter(Invoice.restaurant_id == restaurant.id).count() == 0:
+            # Eight weeks of supplier invoices and this week's digest, as the demo has them.
+            from app.prices.demo import SUPPLIERS as INVOICE_SUPPLIERS
+            from app.prices.demo import seed as seed_invoices
+            from app.restaurant.models import Supplier
+
+            suppliers = {}
+            for name in INVOICE_SUPPLIERS:
+                supplier = db.query(Supplier).filter(Supplier.restaurant_id == restaurant.id, Supplier.name == name).first()
+                if supplier is None:
+                    supplier = Supplier(restaurant_id=restaurant.id, name=name, lead_time_days=3)
+                    db.add(supplier)
+                    db.flush()
+                suppliers[name] = supplier.id
+            seed_invoices(db, restaurant.id, suppliers)
+            db.commit()
 
         if db.query(AgentAction).count():
             print("E2E proposals already present, skipping")

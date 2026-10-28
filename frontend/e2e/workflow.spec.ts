@@ -56,11 +56,17 @@ test('sign in, use stock, the agent proposes a reorder, a manager approves, and 
   await expect(page.getByText('Approved')).toBeVisible()
   await expect(proposal).toHaveCount(0)
 
-  // --- the dashboard shows the result
+  // --- the order is placed; the stock moves when it is received
   await page.goto('/#inventory')
+  await expect(row(page, item)).toContainText('2 g')
+  const order = page.getByRole('table', { name: 'Purchase orders' }).getByRole('row').filter({ hasText: item }).first()
+  await expect(order).toContainText('20 g')
+  await order.getByRole('button', { name: `Receive ${item}` }).click()
+  await page.getByRole('form', { name: `Receive ${item}` }).getByRole('button', { name: 'Book into stock' }).click()
+  await expect(page.getByText('Order received', { exact: true })).toBeVisible()
   await expect(row(page, item)).toContainText('22 g')
   await expect(row(page, item).getByText('Low')).toHaveCount(0)
   await page.getByRole('button', { name: `History of ${item}` }).click()
   const history = page.getByRole('list', { name: 'Stock changes' })
-  await expect(history).toContainText('Reorder approved')
+  await expect(history).toContainText('Order received')
 })

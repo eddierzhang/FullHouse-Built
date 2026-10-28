@@ -32,7 +32,7 @@ docker run -p 8080:8000 fullhouse                  # the host may assign the por
 ```
 
 Any host that runs one container runs this image unchanged — Fly.io, Google Cloud Run, Northflank, an EC2 box.
-Set `DEMO_MODE=false` and a different `LLM_PROVIDER` to run it as a real instance instead of a demo.
+Set `DEMO_MODE=false` to run it as a real instance instead of a demo; no key is needed.
 
 Be aware which of those are still *free*, as of September 2026: Fly.io and Koyeb have both retired their free
 tiers, and Cloud Run's always-free grant (180,000 vCPU-seconds a month, about 50 CPU-hours) does not cover an
@@ -44,55 +44,89 @@ Don't point a demo at data you care about.
 
 ---
 
-## A restaurant's own instance (free, real agents)
+## Hosting it for real, completely free
 
-This is one private FullHouse per restaurant, with no local model. Each gets its own Render service and its own
-database, so restaurants never see each other's data. The agents run on Google Gemini's free API tier through
-`LLM_PROVIDER=openai`. Everything below is free as of September 2026.
+One FullHouse site for real restaurants, costing nothing and asking for no card anywhere. No key, no model and no
+domain are needed: without any key the assistant is rule-based (it answers price questions from the invoices),
+PDFs are read by rule, and the digest, the questions and the Monday mail all work. Everything below is free as
+of October 2026.
 
-| Piece | Free service | Free limits that matter |
-|---|---|---|
-| The app | Render free web service | 512 MB; sleeps after 15 idle minutes; 750 running hours a month per Render workspace, shared by all its services |
-| The database | [Neon](https://neon.com) Postgres | 100 projects, 0.5 GB each: one project per restaurant |
-| The model | [Gemini API](https://aistudio.google.com/apikey) | a few requests a minute and a daily cap, per Google account — check the [rate limit page](https://aistudio.google.com/rate-limit) |
+| Piece | Free service | What the free plan gives | Card needed |
+|---|---|---|---|
+| The app | [Render](https://render.com) free web service | 512 MB; sleeps after 15 idle minutes, wakes in about a minute; 750 running hours a month per workspace | no |
+| The database | [Neon](https://neon.com) Postgres | 0.5 GB per project, kept for good | no |
+| The Monday mail | a Gmail address over SMTP | 500 mails a day from your own mailbox; no domain to buy | no |
+| Mailing it while the site sleeps | GitHub Actions | the Monday schedule in `.github/workflows/digest.yml` | no |
+| Keeping it awake (optional) | [UptimeRobot](https://uptimerobot.com) | a ping every 5 minutes; see [sleep](#what-free-costs-you) | no |
+| The model (optional) | [Gemini API](https://aistudio.google.com/apikey) | a few requests a minute and a daily cap, per Google account ([rate limits](https://aistudio.google.com/rate-limit)) | no |
+| Error alerts (optional) | [Sentry](https://sentry.io) | plenty for a few restaurants | no |
 
-### Setting one up (about 10 minutes)
+**One site, any number of restaurants.** A site holds one restaurant by default. With `ALLOW_SIGNUP=true` any
+number can sign up on the same site, each with its own owner, team, invoices and digest, kept apart by the server
+on every request (`tests/test_restaurant_separation.py` has a second restaurant try every route against the
+first's). That is the free way to host several: one Render service, one Neon database, the 750 hours spent once.
+A site per restaurant (the steps below, repeated) keeps their data in separate databases and lets each bring its
+own model key, at the cost of sharing the workspace's hours between them.
 
-1. **Database.** Sign in at [neon.com](https://neon.com), **New project**, name it after the restaurant. Copy the
-   connection string (`postgresql://...`). The app migrates it on first start.
-2. **Model key.** At [aistudio.google.com/apikey](https://aistudio.google.com/apikey), **Create API key**.
+### Setting it up (about 10 minutes)
+
+1. **Database.** Sign in at [neon.com](https://neon.com), **New project**. Copy the connection string
+   (`postgresql://...`). The app migrates it on first start.
+2. **A mailbox for the Monday digest, if you want it mailed.** In a Google account with 2-Step Verification on,
+   go to Security → 2-Step Verification → **App passwords** and make one for "FullHouse". Keep the 16-character
+   password. (Any other mailbox works too: its SMTP host and port go under Environment in step 3.) Skip this and
+   the digest is printed to the service log and read in the app.
 3. **App.** At [render.com](https://render.com): **New → Blueprint**, pick this repository, and set **Blueprint
    Path** to `render.customer.yaml`. Rename the service (e.g. `fullhouse-joes`). Paste the Neon string into
-   `DATABASE_URL`, the key into `LLM_API_KEY`, the API's address into `LLM_BASE_URL` (Gemini:
-   `https://generativelanguage.googleapis.com/v1beta/openai`) and a tool-capable model into `LLM_MODEL`; there is
-   no default model. Apply, then add `LLM_PROVIDER=openai` under the service's **Environment**. Render also generates `SECRET_KEY`, which encrypts
-   two-step sign-in secrets: never change it. The first build takes a few minutes.
+   `DATABASE_URL`, the Gmail address into `SMTP_USER` and the app password into `SMTP_PASSWORD`. Leave
+   `LLM_API_KEY` and `LLM_MODEL` blank for the rule-based assistant, or see [a model](#adding-a-model-still-free)
+   below. Apply. Render generates `SECRET_KEY` (encrypts two-step sign-in secrets; never change it) and
+   `CRON_SECRET`. The first build takes a few minutes; the service log then says what it runs on
+   (`assistant: ...`, `invoice reader: ...`, `digest mail: ...`).
 4. **Hand-over.** Open the service URL and have the restaurant owner **sign up straight away**. The
-   first person to sign up becomes the owner; after that, nobody can sign up without an invite.
-   The owner sets up two-step sign-in (an authenticator app on their phone), goes through setup, then invites
-   the team from **Profile → Team access**.
-5. **Backups.** See [Backups](#backups) below: two repository secrets turn on a nightly, restore-tested backup.
+   first person to sign up becomes the owner; after that, nobody can sign up without an invite. For several
+   restaurants on this site, add `ALLOW_SIGNUP=true` under **Environment** instead, and each owner signs up from
+   the landing page. The owner sets up two-step sign-in (an authenticator app on their phone), goes through
+   setup, then invites the team from **Profile → Team access**.
+5. **Mondays.** A free service is asleep at six on Monday, so its own schedule may never fire. In this repository,
+   add two **Actions secrets** (Settings → Secrets and variables → Actions): `DIGEST_URL` (the service's
+   address; several, separated by spaces, for several sites) and `CRON_SECRET` (copied from the service's
+   Environment tab). Every Monday [`.github/workflows/digest.yml`](.github/workflows/digest.yml) wakes each site
+   and asks it to mail every restaurant's digest, once a week however often it is asked. Run it once by hand
+   (Actions → Monday digest mail → Run workflow) to check; the service log shows each mail.
+6. **Bill.com, if the restaurant uses it.** Set `BILLCOM_USERNAME`, `BILLCOM_PASSWORD`, `BILLCOM_ORG_ID`,
+   `BILLCOM_DEV_KEY` (and `BILLCOM_ENVIRONMENT=production`) under **Environment**; "Pull from Bill.com" appears on
+   the Invoices page. See the README's limitations: the client has run against a stub only.
+7. **Backups.** See [Backups](#backups) below: two repository secrets turn on a nightly, restore-tested backup,
+   also free.
 
-Repeat for each restaurant. Every push to `main` redeploys all of them, and migrations run automatically.
+Every push to `main` redeploys the site, and migrations run automatically.
 
-To use a different model, change `LLM_MODEL` (for Gemini, anything from its
-[model list](https://ai.google.dev/gemini-api/docs/models)). To use another provider, point `LLM_BASE_URL`,
-`LLM_API_KEY` and `LLM_MODEL` at any OpenAI-compatible API: Groq (`https://api.groq.com/openai/v1`, also free),
-OpenRouter, or a paid one.
+### Adding a model, still free
+
+A model adds free-form answers in the conversation and the reading of invoice photos. At
+[aistudio.google.com/apikey](https://aistudio.google.com/apikey), **Create API key**, and set `LLM_API_KEY` to it
+and `LLM_MODEL` to a model that reads images (`gemini-2.5-flash`; anything from Gemini's
+[model list](https://ai.google.dev/gemini-api/docs/models)). The provider follows the key: an `LLM_API_KEY` means
+the OpenAI-compatible provider, an `ANTHROPIC_API_KEY` means Claude (paid). For another OpenAI-compatible API, add
+`LLM_BASE_URL`: Groq (`https://api.groq.com/openai/v1`, also free), OpenRouter, or a paid one. Photos are read
+only by a model that takes images; PDFs read on any model. `INVOICE_READER_MODEL` pins a different model for
+reading than for the assistant.
 
 ### What "free" costs you
 
 - **Sleep.** After 15 idle minutes the first visit takes about a minute to wake the service. A run in progress
-  when it sleeps is marked failed. **Scheduled agents only fire while it's awake.** Keeping it awake with an
-  uptime pinger (e.g. UptimeRobot on `/health` every 10 minutes) uses about 720 of the workspace's 750 hours, so
-  that works for **one** restaurant per Render workspace. For more, use Render's Starter plan (about $7/month
-  each), which never sleeps.
+  when it sleeps is marked failed, and the archived agents' schedules only fire while it's awake; the Monday mail
+  doesn't depend on it (step 5). To keep it awake, point [UptimeRobot](https://uptimerobot.com)'s free plan at
+  `/health` every 5 minutes: that uses about 720 of the workspace's 750 hours, so it works for **one** site per
+  Render workspace, which with `ALLOW_SIGNUP=true` is still any number of restaurants.
 - **Rate limits.** Free Gemini keys allow only a few requests a minute. The app waits out a 429 up to four
-  times before failing the run with a message saying so. Give each restaurant **its own key from its own
-  Google account**, so one busy restaurant can't use up another's quota, and so the usage is on their account,
-  not yours.
+  times before failing the run with a message saying so. Restaurants sharing a site share its key, so for a busy
+  site give each restaurant its own site, with its own key from its own Google account.
 - **Privacy.** On Gemini's free tier, Google may use prompts to improve its products; the paid tier doesn't.
   Agents send stock, menu, staff and sales data. Tell the restaurant, or use a paid key for them.
+- **Mail from a personal mailbox.** The digest comes from the Gmail address you set up, so use one made for the
+  purpose. Gmail's limit of 500 mails a day is far beyond a weekly digest to a handful of owners.
 
 ---
 
@@ -196,7 +230,7 @@ network readable. For a second layer, or to hide the login page itself:
 ### Route 2: free platforms, on a hosted model
 
 No free platform can run Ollama, but agents can still run on a real model for free through a hosted API. The
-full recipe is [A restaurant's own instance](#a-restaurants-own-instance-free-real-agents) above. The pieces:
+full recipe is [Hosting it for real, completely free](#hosting-it-for-real-completely-free) above. The pieces:
 
 - **The whole thing, one container:** Render's free web service — 512 MB, spins down after 15
   idle minutes. Spinning down kills any run in flight; the backend marks those runs failed on
@@ -204,8 +238,8 @@ full recipe is [A restaurant's own instance](#a-restaurants-own-instance-free-re
 - **Frontend alone:** Cloudflare Pages, Netlify or Vercel, all permanently free. Build with
   `VITE_API_BASE` set to the backend's URL, and set `FRONTEND_ORIGIN` on the backend to the
   frontend's URL for CORS.
-- **Model:** there is no free host for Ollama at this size. Use `LLM_PROVIDER=openai` with a free
-  Gemini (or Groq) key, or `LLM_PROVIDER=anthropic` with a paid key.
+- **Model:** there is no free host for Ollama at this size. No key is needed (the rule-based assistant runs);
+  a free Gemini or Groq key (`LLM_API_KEY`) adds a model, and an Anthropic key (paid) Claude.
 - **Database:** Render's free disk is wiped on every deploy, so SQLite won't persist, and
   Render's free Postgres is deleted after 30 days. Neon's free tier (0.5 GB) is permanent, and
   Postgres is supported: point `DATABASE_URL` at it (CI runs the whole suite on Postgres 16).
@@ -213,7 +247,7 @@ full recipe is [A restaurant's own instance](#a-restaurants-own-instance-free-re
 ### Route 3: a free VM on one of the big clouds
 
 Both of these run the compose stack the way the Oracle route does, and neither has the RAM for
-a local model — use `LLM_PROVIDER=openai` with a free Gemini key, or `anthropic` with a paid one.
+a local model — run with no key, or add a free Gemini key (`LLM_API_KEY`).
 
 **Google Compute Engine** keeps a genuinely permanent free e2-micro in `us-west1`, `us-central1`
 or `us-east1`, with 30 GB of disk. Its 1 GB of RAM holds the single-container image comfortably

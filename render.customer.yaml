@@ -1,19 +1,29 @@
-# Render Blueprint for one customer's own FullHouse instance, free:
-# Dashboard -> New -> Blueprint, pick this repository, and set Blueprint Path
-# to render.customer.yaml. Deploy it once per restaurant, renaming the
-# service each time (fullhouse-joes, fullhouse-marias, ...).
+# Render Blueprint for a real FullHouse site, free, with no key and no card:
+# Dashboard -> New -> Blueprint, pick this repository, set Blueprint Path to
+# render.customer.yaml, rename the service (fullhouse-joes, ...), apply. One
+# site holds one restaurant; set ALLOW_SIGNUP=true under Environment and any
+# number of restaurants can sign up on it, each kept apart from the others.
 #
-# Unlike the demo in render.yaml, this one keeps its data and runs the
-# agents on a real model, still at no cost:
-#   - DATABASE_URL: a free Neon Postgres database, one project per customer
-#     (Render's free plan has no persistent disk, so SQLite would be wiped).
-#   - LLM_API_KEY, LLM_BASE_URL, LLM_MODEL: any OpenAI-compatible API, e.g.
-#     Groq (https://api.groq.com/openai/v1) or Gemini
-#     (https://generativelanguage.googleapis.com/v1beta/openai). There is no
-#     default model.
-# Render asks for these when the Blueprint is applied, and a sync never
-# overwrites them. LLM_PROVIDER is not set here either: add LLM_PROVIDER=openai
-# under the service's Environment. See DEPLOY.md.
+# Render asks for the values marked `sync: false` when the Blueprint is applied
+# and never overwrites them afterwards:
+#   - DATABASE_URL: a free Neon Postgres database, one project per restaurant
+#     (Render's free plan has no disk, so SQLite would be wiped on each deploy).
+#   - LLM_API_KEY and LLM_MODEL, optional: a free Gemini key from
+#     https://aistudio.google.com/apikey and a model that reads images, such as
+#     gemini-2.5-flash. Set, the assistant answers anything in the thread and
+#     photos of invoices are read. Blank, the site runs with no model: the
+#     assistant answers price questions by rule from the invoices, PDFs are
+#     read by rule, and the digest, questions and Monday mail all work.
+#   - SMTP_USER and SMTP_PASSWORD, optional: a Gmail address and an app password
+#     (Google account -> Security -> 2-Step Verification -> App passwords) send
+#     the Monday digest from that mailbox, at no cost and with no domain. Blank,
+#     the mail is printed to the service log. Another mailbox: change SMTP_HOST
+#     and SMTP_PORT under Environment; Resend (RESEND_API_KEY) also works.
+# The provider follows the key: LLM_API_KEY means the OpenAI-compatible provider,
+# an ANTHROPIC_API_KEY added later means Claude. For Groq or another API add
+# LLM_BASE_URL. Bill.com (BILLCOM_*), SENTRY_DSN and SUPPORT_EMAIL go under the
+# service's Environment when you have them. Links in mail use the address Render
+# gives the service. See DEPLOY.md, "A restaurant's own instance".
 
 services:
   - type: web
@@ -29,10 +39,16 @@ services:
         sync: false
       - key: LLM_API_KEY
         sync: false
-      - key: LLM_BASE_URL
-        sync: false
       - key: LLM_MODEL
         sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "587"
       - key: DEMO_MODE
         value: "false"
       # The owner's setup fills the restaurant; no sample suppliers or staff.
@@ -47,10 +63,8 @@ services:
       # never change it, or everyone must set two-step sign-in up again.
       - key: SECRET_KEY
         generateValue: true
-      # Error alerts: paste the DSN from a free Sentry project (see DEPLOY.md,
-      # "Error alerts"). Left blank, nothing is sent anywhere.
-      - key: SENTRY_DSN
-        sync: false
-      # Who owners and staff contact, shown on the Help page.
-      - key: SUPPORT_EMAIL
-        sync: false
+      # Lets .github/workflows/digest.yml (or any outside scheduler) ask the
+      # site to mail the Monday digest. Copy it into the repository's
+      # CRON_SECRET Actions secret.
+      - key: CRON_SECRET
+        generateValue: true

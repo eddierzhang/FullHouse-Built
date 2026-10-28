@@ -1,4 +1,4 @@
-import { type Forecast, fetchForecast, fetchProfitSummary, listRuns } from '../api/client'
+import { type Forecast, fetchForecast, fetchProfitSummary, listPurchaseOrders, listRuns } from '../api/client'
 import type { AppContext } from '../app/context'
 import { ActionList } from '../components/ActionList'
 import { ForecastCard } from '../components/ForecastCard'
@@ -16,7 +16,10 @@ export function OverviewPage({ app }: { app: AppContext }) {
   const weekLoad = useLoad(() => (app.canManage ? fetchProfitSummary(7) : Promise.resolve(undefined)), [app.canManage])
   const forecastLoad = useLoad(() => (app.canManage ? fetchForecast(7) : Promise.resolve(undefined)), [app.canManage])
   const runsLoad = useLoad(() => listRuns(), [app.pendingActions.length])
+  const ordersLoad = useLoad(() => listPurchaseOrders('open'), [app.pendingActions.length])
   const week = weekLoad.data
+  const onOrder = ordersLoad.data ?? []
+  const overdue = onOrder.filter((o) => o.overdue).length
 
   const lowStock = app.inventory.filter((i) => i.quantity_on_hand <= i.reorder_threshold)
   const today = new Date().toLocaleDateString('en-US', {
@@ -70,6 +73,13 @@ export function OverviewPage({ app }: { app: AppContext }) {
             <div className="stat-value">{lowStock.length}</div>
             <div className="stat-meta">
               {lowStock.length ? lowStock.map((i) => i.name).slice(0, 2).join(', ') : `of ${app.inventory.length} items`}
+            </div>
+          </a>
+          <a className={`card stat${overdue ? ' attention' : ''}`} href="#inventory" style={{ color: 'inherit', textDecoration: 'none' }}>
+            <div className="stat-label">On order</div>
+            <div className="stat-value">{ordersLoad.data ? onOrder.length : '—'}</div>
+            <div className="stat-meta">
+              {!ordersLoad.data ? ' ' : overdue ? `${overdue} overdue` : onOrder.length ? 'arriving as expected' : 'nothing on its way'}
             </div>
           </a>
         </section>

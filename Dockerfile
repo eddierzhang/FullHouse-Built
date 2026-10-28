@@ -1,9 +1,11 @@
 # Single-container FullHouse: the built frontend and the API in one process.
 #
 # This is the image for the public demo and for free hosts that run one
-# container (Render, Fly.io, Koyeb). It defaults to demo mode: the scripted
-# model provider, and a demo restaurant that is replaced at every start and
-# daily at 04:00 UTC. Override the environment to run it for real.
+# container (Render, Fly.io, Koyeb). It defaults to demo mode: a demo
+# restaurant that is replaced at every start and daily at 04:00 UTC. No model
+# key is needed: with none, the rule-based assistant runs; LLM_API_KEY or
+# ANTHROPIC_API_KEY in the environment picks a model. Override the environment
+# to run it for real (render.customer.yaml does).
 #
 #   docker build -t fullhouse . && docker run -p 8080:8000 fullhouse
 #
@@ -28,7 +30,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     DATABASE_URL=sqlite:////data/app.db \
     STATIC_DIR=/app/static \
     DEMO_MODE=true \
-    LLM_PROVIDER=scripted \
     SCRIPTED_STEP_DELAY_SECONDS=0.8 \
     PORT=8000
 

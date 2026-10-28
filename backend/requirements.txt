@@ -6,6 +6,8 @@ pydantic==2.13.4
 python-dotenv==1.2.2
 anthropic==0.121.0
 httpx==0.28.1
+# Text out of supplier PDFs, so they read without a model (app.prices.extract).
+pypdf==6.21.2
 psycopg[binary]==3.3.5
 apscheduler==3.11.3
 # IANA timezones for the restaurant's clock, where the OS has none (Windows, slim images).

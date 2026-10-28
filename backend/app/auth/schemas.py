@@ -100,7 +100,8 @@ class AuthOptions(BaseModel):
 
 
 class InviteIn(BaseModel):
-    role: Literal["admin", "member"] = "member"
+    #: "bookkeeper": an outside accountant, who may already keep other restaurants' books.
+    role: Literal["admin", "member", "bookkeeper"] = "member"
     #: Optional: when given, only this address can accept the invite.
     email: str | None = Field(default=None, max_length=254)
 

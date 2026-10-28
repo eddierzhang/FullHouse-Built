@@ -201,6 +201,10 @@ jobs:
           curl -fsS -b jar $base/api/v1/agents/runtime | python3 -c 'import sys,json; r=json.load(sys.stdin); assert r["demo_mode"] and r["provider"] == "scripted", r'
           pending=$(curl -fsS -b jar "$base/api/v1/agents/actions?status=pending" | python3 -c 'import sys,json; print(len(json.load(sys.stdin)))')
           test "$pending" -ge 1
+          # The main event: this week's digest has dollars at stake and cards in all three sections.
+          curl -fsS -b jar $base/api/v1/prices/digest | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d["total"] > 0 and all(s["cards"] for s in d["sections"]), d'
+          questions=$(curl -fsS -b jar $base/api/v1/prices/questions | python3 -c 'import sys,json; print(len(json.load(sys.stdin)))')
+          test "$questions" -ge 1
           run=$(curl -fsS -b jar -X POST $base/api/v1/agents/runs -H 'Content-Type: application/json' \
             -d '{"agent_key":"maestro","input":"Check stock and the staff schedule"}' | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
           timeout 60 curl -fsSN -b jar "$base/api/v1/agents/runs/$run/stream" | tee stream.txt | grep -q '__end__'

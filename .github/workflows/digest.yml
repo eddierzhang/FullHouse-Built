@@ -1,0 +1,46 @@
+name: Monday digest mail
+
+# A free Render service sleeps when idle, so its own Monday-6am job may never
+# fire. This wakes each site every Monday and asks it to mail its restaurant's
+# digest; a site mails each week's digest once, however often it is asked.
+#
+# Two repository secrets (Settings -> Secrets and variables -> Actions):
+#   DIGEST_URL   the service's address, e.g. https://fullhouse-joes.onrender.com
+#                (several, separated by spaces, for several restaurants)
+#   CRON_SECRET  the service's CRON_SECRET (Render -> the service -> Environment)
+# Without them the job does nothing.
+
+on:
+  schedule:
+    - cron: "0 13 * * 1" # Monday 13:00 UTC: 6am Pacific, 9am Eastern
+  workflow_dispatch:
+
+jobs:
+  digest:
+    name: Mail this week's digest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ask each site to mail its digest
+        env:
+          DIGEST_URL: ${{ secrets.DIGEST_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -u
+          if [ -z "${DIGEST_URL}" ] || [ -z "${CRON_SECRET}" ]; then
+            echo "DIGEST_URL or CRON_SECRET is not set; nothing to do."
+            exit 0
+          fi
+          status=0
+          for url in ${DIGEST_URL}; do
+            url="${url%/}"
+            echo "== ${url}"
+            # A sleeping free service takes about a minute to wake: keep trying.
+            if curl -sS --fail-with-body --retry 8 --retry-delay 15 --retry-all-errors --max-time 120 \
+                 -X POST "${url}/api/v1/prices/digest/cron" -H "X-Cron-Secret: ${CRON_SECRET}"; then
+              echo
+            else
+              echo "failed for ${url}"
+              status=1
+            fi
+          done
+          exit ${status}

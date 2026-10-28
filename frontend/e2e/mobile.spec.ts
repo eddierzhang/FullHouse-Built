@@ -51,9 +51,14 @@ test('on a phone, daily tasks are one tap away and stock can be logged', async (
   await save.tap()
   await expect(row).toContainText('7 bunch')
 
-  // Everything else is behind More.
+  // Everything else is behind More, the price pages among it.
   await tabs.getByRole('button', { name: 'More' }).tap()
   await expect(page.getByRole('link', { name: 'History & undo' })).toBeVisible()
+  await page.getByRole('link', { name: /^Digest/ }).tap()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(/^\$[\d,]+\.\d\d$/)
+  // The one way to the agent is pinned above the bar.
+  await expect(page.getByPlaceholder('Ask about prices, invoices, or suppliers').last()).toBeVisible()
+  await noSidewaysScroll(page)
 })
 
 test('on a phone, going offline says so plainly', async ({ page, context }) => {

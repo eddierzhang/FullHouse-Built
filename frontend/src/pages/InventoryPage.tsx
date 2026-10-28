@@ -2,19 +2,26 @@ import { type ChangeEvent, type FormEvent, Fragment, useCallback, useEffect, use
 import {
   ApiError,
   type InventoryItem,
+  type PurchaseOrder,
   type StockAdjustment,
   type StockReason,
   type Supplier,
   type User,
   UNITS,
   canEditRestaurant,
+  cancelOrder,
   createInventoryItem,
   fetchSupplyChain,
   listInventoryItems,
+  listPurchaseOrders,
   listStockChanges,
+  listStockLinks,
   listSuppliers,
+  markOrderShipped,
   newRequestKey,
+  placePurchaseOrder,
   plural,
+  receiveOrder,
   recordStockChange,
   updateInventoryItem,
 } from '../api/client'
@@ -22,8 +29,8 @@ import type { AppContext } from '../app/context'
 import { Icon } from '../components/Icon'
 import { ImportInventory } from '../components/ImportInventory'
 import { Empty, Freshness, LoadError, Loaded } from '../components/PageState'
-import { dateTime, money, qty, relativeTime } from '../lib/format'
-import { useLoad } from '../lib/useLoad'
+import { dateTime, money, qty, relativeTime, shortDate } from '../lib/format'
+import { type Load, useLoad } from '../lib/useLoad'
 
 /** Fill scaled so the reorder point sits at the midpoint of the bar. */
 const fill = (onHand: number, threshold: number) =>
@@ -66,20 +73,27 @@ export function InventoryPage({ app, user }: { app: AppContext; user: User }) {
   const suppliersLoad = useLoad(listSuppliers, [])
   const chainLoad = useLoad(fetchSupplyChain, [])
   const historyLoad = useLoad(() => listStockChanges(historyItem ?? undefined), [historyItem])
+  // What the invoices say about each item: the last price paid, and any reorder waiting.
+  const pricesLoad = useLoad(listStockLinks, [])
+  // Orders placed and not yet here; the recent record too, on request.
+  const [showDone, setShowDone] = useState(false)
+  const ordersLoad = useLoad(() => listPurchaseOrders(showDone ? 'all' : 'open'), [showDone])
   const items = itemsLoad.data
   const suppliers = suppliersLoad.data ?? []
   const chain = chainLoad.data
 
   /** After any save: the database's numbers, here and in the sidebar and dashboard. */
   const saved = useCallback(async () => {
-    await Promise.all([itemsLoad.reload(), chainLoad.reload(), historyLoad.reload()])
+    await Promise.all([itemsLoad.reload(), chainLoad.reload(), historyLoad.reload(), pricesLoad.reload(), ordersLoad.reload()])
     app.refresh()
-  }, [itemsLoad.reload, chainLoad.reload, historyLoad.reload, app])
+  }, [itemsLoad.reload, chainLoad.reload, historyLoad.reload, pricesLoad.reload, ordersLoad.reload, app])
 
   // Blank rather than a wrong "No supplier" while the list hasn't loaded.
   const supplierName = (id: string | null) =>
     suppliersLoad.data ? (suppliers.find((s) => s.id === id)?.name ?? 'No supplier') : ''
   const cover = useMemo(() => new Map((chain?.cover ?? []).map((c) => [c.id, c])), [chain])
+  const priced = useMemo(() => new Map((pricesLoad.data ?? []).map((s) => [s.inventory_item_id, s])), [pricesLoad.data])
+  const reorders = (pricesLoad.data ?? []).filter((s) => s.pending_action_id).length
   const all = items ?? []
 
   // Most urgent first: how far above its reorder point each item sits, relative
@@ -184,6 +198,26 @@ export function InventoryPage({ app, user }: { app: AppContext; user: User }) {
           </div>
         </section>
 
+        {priced.size > 0 && (
+          <p className="muted small" role="note" aria-label="Stock and the invoices">
+            {priced.size} {priced.size === 1 ? 'item is' : 'items are'} priced from the invoices. A delivery on a confirmed
+            invoice is booked here by the agent, and an item at its reorder point gets a reorder proposed under{' '}
+            <a href="#approvals">Recommendations</a> from the cheapest recent supplier
+            {reorders > 0 ? `: ${reorders} waiting now.` : '.'}
+          </p>
+        )}
+
+        <OrdersCard
+          app={app}
+          items={all}
+          suppliers={suppliers}
+          load={ordersLoad}
+          showDone={showDone}
+          setShowDone={setShowDone}
+          canManage={canEditDetails}
+          onChanged={saved}
+        />
+
         <section className="card">
           <div className="card-header">
             <h2 className="card-title">Stock levels</h2>
@@ -243,6 +277,42 @@ export function InventoryPage({ app, user }: { app: AppContext; user: User }) {
                               <td data-label="Item">
                                 <div className="cell-title">{item.name}</div>
                                 <div className="cell-sub">{supplierName(item.supplier_id)}</div>
+                                {(() => {
+                                  const p = priced.get(item.id)
+                                  if (!p) return null
+                                  return (
+                                    <div className="cell-sub">
+                                      <a href={`#item/${p.item_id}`}>
+                                        {p.per_unit !== null ? `Last paid ${money(p.per_unit, true)}/${p.unit}` : 'On the invoices'}
+                                      </a>
+                                      {p.per_unit !== null && p.last_supplier && ` · ${p.last_supplier.name}`}
+                                      {p.per_unit !== null && p.last_date && ` · ${shortDate(p.last_date)}`}
+                                      {!p.converts && ' · counted in a unit the invoice can’t be read in'}
+                                      {p.on_order && (
+                                        <>
+                                          {' · '}
+                                          <a
+                                            href="#inventory"
+                                            onClick={(e) => {
+                                              e.preventDefault()
+                                              document.getElementById('on-order')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                                            }}
+                                          >
+                                            On order: {qty(p.on_order.quantity)} {p.on_order.unit}
+                                            {p.on_order.supplier_name && ` from ${p.on_order.supplier_name}`}
+                                            {p.on_order.expected_on && `, ${p.on_order.overdue ? 'was due' : 'due'} ${shortDate(p.on_order.expected_on)}`}
+                                          </a>
+                                        </>
+                                      )}
+                                      {p.pending_action_id && (
+                                        <>
+                                          {' · '}
+                                          <a href="#approvals">Reorder proposed</a>
+                                        </>
+                                      )}
+                                    </div>
+                                  )
+                                })()}
                               </td>
                               <td data-label="Level">
                                 <div className="row">
@@ -409,6 +479,377 @@ export function InventoryPage({ app, user }: { app: AppContext; user: User }) {
         </section>
       </div>
     </main>
+  )
+}
+
+const ORDER_BADGE: Record<PurchaseOrder['status'], { label: string; badge: string }> = {
+  ordered: { label: 'Ordered', badge: 'badge-warning' },
+  shipped: { label: 'Shipped', badge: 'badge-info' },
+  received: { label: 'Received', badge: 'badge-success' },
+  cancelled: { label: 'Cancelled', badge: '' },
+}
+
+/**
+ * Orders placed with suppliers, from approval to receipt. Placing one moves
+ * no stock; receiving it books what arrived, once. An invoice for an open
+ * order receives it on its own.
+ */
+function OrdersCard({
+  app,
+  items,
+  suppliers,
+  load,
+  showDone,
+  setShowDone,
+  canManage,
+  onChanged,
+}: {
+  app: AppContext
+  items: InventoryItem[]
+  suppliers: Supplier[]
+  load: Load<PurchaseOrder[]>
+  showDone: boolean
+  setShowDone: (v: boolean) => void
+  canManage: boolean
+  onChanged: () => Promise<void>
+}) {
+  const [receiving, setReceiving] = useState<string | null>(null)
+  const [recording, setRecording] = useState(false)
+  const [busyId, setBusyId] = useState<string | null>(null)
+
+  const act = async (id: string, work: () => Promise<unknown>, done: string) => {
+    setBusyId(id)
+    try {
+      await work()
+      app.toast(done)
+      await onChanged()
+    } catch (err) {
+      app.toast('Couldn’t do that', err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const amount = (o: PurchaseOrder) =>
+    o.packs && o.pack_unit ? `${qty(o.packs)} ${plural(o.pack_unit, o.packs)} (${qty(o.quantity)} ${o.unit})` : `${qty(o.quantity)} ${o.unit}`
+
+  return (
+    <section className="card" id="on-order" aria-labelledby="orders-title">
+      <div className="card-header">
+        <div>
+          <h2 className="card-title" id="orders-title">
+            On order
+          </h2>
+          <div className="card-subtitle">
+            Placed with suppliers and not yet here. Receiving one books it into stock; the invoice for it does the same on its own.
+          </div>
+        </div>
+        <div className="row">
+          <button className="btn btn-ghost btn-sm" aria-pressed={showDone} onClick={() => setShowDone(!showDone)}>
+            {showDone ? 'Open only' : 'Show received'}
+          </button>
+          {canManage && (
+            <button className="btn btn-secondary btn-sm" aria-expanded={recording} onClick={() => setRecording((v) => !v)}>
+              <Icon name={recording ? 'close' : 'plus'} size={16} /> {recording ? 'Cancel' : 'Record an order'}
+            </button>
+          )}
+        </div>
+      </div>
+      {recording && canManage && (
+        <div className="card-body">
+          <RecordOrderForm
+            items={items}
+            suppliers={suppliers}
+            onCancel={() => setRecording(false)}
+            onSaved={async (message) => {
+              setRecording(false)
+              app.toast('Order recorded', message)
+              await onChanged()
+            }}
+          />
+        </div>
+      )}
+      <Loaded load={load} what="orders" placeholderHeight={80}>
+        {(orders) =>
+          orders.length === 0 ? (
+            <Empty title="Nothing on order">
+              Approve a reorder under <a href="#approvals">Recommendations</a>
+              {canManage ? ', or record one you placed by phone or email.' : '.'}
+            </Empty>
+          ) : (
+            <div className="table-wrap">
+              <table className="table table-cards" aria-label="Purchase orders">
+                <thead>
+                  <tr>
+                    <th>Item</th>
+                    <th>Amount</th>
+                    <th>Supplier</th>
+                    <th>Ordered</th>
+                    <th>Expected</th>
+                    <th>Status</th>
+                    <th className="actions" aria-label="Actions" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {orders.map((o) => {
+                    const open = o.status === 'ordered' || o.status === 'shipped'
+                    const badge = o.overdue ? { label: 'Overdue', badge: 'badge-danger' } : ORDER_BADGE[o.status]
+                    const busy = busyId === o.id
+                    return (
+                      <Fragment key={o.id}>
+                        <tr className={o.overdue ? 'highlight' : undefined}>
+                          <td data-label="Item">
+                            <div className="cell-title">{o.item_name}</div>
+                            {o.note && <div className="cell-sub">{o.note}</div>}
+                          </td>
+                          <td data-label="Amount">
+                            {amount(o)}
+                            {o.estimated_cost !== null && <div className="faint small">about {money(o.estimated_cost, true)}</div>}
+                          </td>
+                          <td data-label="Supplier">{o.supplier_name ?? <span className="faint">—</span>}</td>
+                          <td data-label="Ordered" title={dateTime(o.ordered_at)}>
+                            {shortDate(o.ordered_at)}
+                            {o.action_id && <div className="faint small">from a recommendation</div>}
+                          </td>
+                          <td data-label="Expected">
+                            {o.status === 'received' ? (
+                              <>
+                                {o.received_at ? shortDate(o.received_at) : ''}
+                                <div className="faint small">
+                                  {o.received_qty !== null && o.received_qty !== o.quantity ? `${qty(o.received_qty)} ${o.unit} arrived, ` : ''}
+                                  {o.received_by_invoice ? 'by invoice' : 'by hand'}
+                                </div>
+                              </>
+                            ) : o.expected_on ? (
+                              <span className={o.overdue ? 'negative strong' : undefined}>{shortDate(o.expected_on)}</span>
+                            ) : (
+                              <span className="faint">—</span>
+                            )}
+                          </td>
+                          <td data-label="Status">
+                            <span className={`badge ${badge.badge}`.trim()}>{badge.label}</span>
+                          </td>
+                          <td className="actions" data-label="Actions">
+                            {open && (
+                              <div className="row" style={{ justifyContent: 'flex-end' }}>
+                                <button
+                                  className="btn btn-secondary btn-sm"
+                                  disabled={busy}
+                                  aria-expanded={receiving === o.id}
+                                  aria-label={`Receive ${o.item_name}`}
+                                  onClick={() => setReceiving(receiving === o.id ? null : o.id)}
+                                >
+                                  Receive
+                                </button>
+                                {o.status === 'ordered' && (
+                                  <button
+                                    className="btn btn-ghost btn-sm"
+                                    disabled={busy}
+                                    aria-label={`Mark ${o.item_name} shipped`}
+                                    onClick={() => void act(o.id, () => markOrderShipped(o.id), `${o.item_name}: marked shipped`)}
+                                  >
+                                    Mark shipped
+                                  </button>
+                                )}
+                                {canManage && (
+                                  <button
+                                    className="btn btn-ghost btn-sm"
+                                    disabled={busy}
+                                    aria-label={`Cancel the order for ${o.item_name}`}
+                                    onClick={() => void act(o.id, () => cancelOrder(o.id), `${o.item_name}: order cancelled`)}
+                                  >
+                                    Cancel
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                        {receiving === o.id && open && (
+                          <tr className="panel-row">
+                            <td colSpan={7}>
+                              <ReceiveForm
+                                order={o}
+                                onCancel={() => setReceiving(null)}
+                                onSaved={async (message) => {
+                                  setReceiving(null)
+                                  app.toast('Order received', message)
+                                  await onChanged()
+                                }}
+                              />
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )
+        }
+      </Loaded>
+    </section>
+  )
+}
+
+/** "It arrived": how much, and anything worth noting. All of it by default. */
+function ReceiveForm({ order, onCancel, onSaved }: { order: PurchaseOrder; onCancel: () => void; onSaved: (message: string) => Promise<void> }) {
+  const [amount, setAmount] = useState(String(order.quantity))
+  const [note, setNote] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const onSubmit = async (event: FormEvent) => {
+    event.preventDefault()
+    const parsed = parseAmount(amount, { allowZero: true })
+    if (typeof parsed === 'string') return setError(parsed)
+    setBusy(true)
+    setError(null)
+    try {
+      const result = await receiveOrder(order.id, parsed, note.trim() || null)
+      await onSaved(`${order.item_name} is now ${qty(result.item.quantity_on_hand)} ${result.item.unit}.`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form className="inline-form stack-sm" onSubmit={onSubmit} aria-label={`Receive ${order.item_name}`} noValidate>
+      <div className="row wrap">
+        <label className="field" style={{ width: 160 }}>
+          <span className="field-label">Amount received ({order.unit})</span>
+          <input className="input" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
+        </label>
+        <label className="field" style={{ flex: 1, minWidth: 200 }}>
+          <span className="field-label">Note</span>
+          <input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Two cases short, credit requested" />
+        </label>
+      </div>
+      <FormError message={error} />
+      <div className="row">
+        <button type="submit" className="btn btn-primary btn-sm" disabled={busy}>
+          Book into stock
+        </button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  )
+}
+
+/** An order placed outside Recommendations, so its arrival can be tracked and booked. */
+function RecordOrderForm({
+  items,
+  suppliers,
+  onCancel,
+  onSaved,
+}: {
+  items: InventoryItem[]
+  suppliers: Supplier[]
+  onCancel: () => void
+  onSaved: (message: string) => Promise<void>
+}) {
+  const [itemId, setItemId] = useState(items[0]?.id ?? '')
+  const item = items.find((i) => i.id === itemId) ?? null
+  const [supplierId, setSupplierId] = useState<string>(item?.supplier_id ?? '')
+  const [amount, setAmount] = useState('')
+  const [inPacks, setInPacks] = useState(false)
+  const [expected, setExpected] = useState('')
+  const [note, setNote] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const pickItem = (id: string) => {
+    setItemId(id)
+    const next = items.find((i) => i.id === id)
+    setSupplierId(next?.supplier_id ?? '')
+    setInPacks(false)
+  }
+
+  const onSubmit = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!item) return setError('Pick an item.')
+    const parsed = parseAmount(amount, { allowZero: false })
+    if (typeof parsed === 'string') return setError(parsed)
+    setBusy(true)
+    setError(null)
+    try {
+      const order = await placePurchaseOrder({
+        inventory_item_id: item.id,
+        supplier_id: supplierId || null,
+        quantity: parsed,
+        in_packs: inPacks,
+        expected_on: expected || null,
+        note: note.trim() || null,
+      })
+      await onSaved(`${qty(order.quantity)} ${order.unit} of ${order.item_name}${order.expected_on ? `, expected ${shortDate(order.expected_on)}` : ''}.`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form className="inline-form stack-sm" onSubmit={onSubmit} aria-label="Record an order" noValidate>
+      <div className="row wrap">
+        <label className="field" style={{ minWidth: 180 }}>
+          <span className="field-label">Item</span>
+          <select className="input" value={itemId} onChange={(e) => pickItem(e.target.value)}>
+            {items.map((i) => (
+              <option key={i.id} value={i.id}>
+                {i.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field" style={{ minWidth: 180 }}>
+          <span className="field-label">Supplier</span>
+          <select className="input" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
+            <option value="">Not named</option>
+            {suppliers.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field" style={{ width: 150 }}>
+          <span className="field-label">Amount{item ? ` (${inPacks && item.pack_unit ? plural(item.pack_unit, 2) : item.unit})` : ''}</span>
+          <input className="input" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
+        </label>
+        {item?.pack_unit && item.pack_size ? (
+          <label className="field" style={{ alignSelf: 'flex-end' }}>
+            <span className="row" style={{ gap: 6 }}>
+              <input type="checkbox" checked={inPacks} onChange={(e) => setInPacks(e.target.checked)} />
+              in {plural(item.pack_unit, 2)} of {qty(item.pack_size)} {item.unit}
+            </span>
+          </label>
+        ) : null}
+        <label className="field" style={{ width: 170 }}>
+          <span className="field-label">Expected</span>
+          <input className="input" type="date" value={expected} onChange={(e) => setExpected(e.target.value)} />
+        </label>
+        <label className="field" style={{ flex: 1, minWidth: 200 }}>
+          <span className="field-label">Note</span>
+          <input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Placed by phone" />
+        </label>
+      </div>
+      <FormError message={error} />
+      <div className="row">
+        <button type="submit" className="btn btn-primary btn-sm" disabled={busy}>
+          Record order
+        </button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel}>
+          Cancel
+        </button>
+        <span className="muted small">Leave Expected blank to use the supplier’s lead time. Nothing is sent to the supplier.</span>
+      </div>
+    </form>
   )
 }
 

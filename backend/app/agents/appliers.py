@@ -16,7 +16,8 @@ from sqlalchemy.orm import Session
 
 from app.agents.models import AgentAction
 from app.restaurant import crud as restaurant_crud
-from app.restaurant.inventory import stock_change
+from app.restaurant import orders
+from app.restaurant.inventory import plural
 from app.restaurant.models import MenuItem, Shift, Staff
 
 
@@ -45,45 +46,58 @@ def _positive_quantity(payload: dict) -> float:
     return quantity
 
 
-def _restock(db: Session, payload: dict, source: str) -> str:
-    """Shared effect of `inventory_reorder` and `purchase_order`.
+def _place_order(db: Session, payload: dict, action: AgentAction | None) -> str:
+    """Shared effect of `inventory_reorder` and `purchase_order`: the order is placed.
 
-    Simplification worth knowing about: there is no purchase-order
-    lifecycle in the schema, so approval books the goods as received
-    immediately instead of ordering now and receiving on delivery.
+    Nothing reaches the stock figures yet. The order waits on the Inventory
+    page under "On order" until someone receives it, or until its invoice
+    arrives and receives it (app.prices.stock).
     """
     item_id = _require(payload, "inventory_item_id")
     quantity = _positive_quantity(payload)
-
-    # Locked first, so a stock change someone records at the same moment isn't lost.
-    from app.restaurant.inventory import lock_items
-
-    lock_items(db, [item_id])
     # The agent works for the site's restaurant; another's stock reads as missing.
     item = restaurant_crud.get_inventory_item(db, item_id)
     if item is None:
         raise ApplyError(f"No inventory item with id {item_id}")
-    db.refresh(item)  # the figure as it stands now that it's locked
-
-    previous = item.quantity_on_hand
-    item.quantity_on_hand = previous + quantity
-    db.add(item)
-    # Flushed while the reason applies, so the stock history says why.
-    with stock_change("reorder", source):
-        db.flush()
+    supplier = None
+    supplier_id = payload.get("supplier_id") or item.supplier_id
+    if supplier_id:
+        supplier = restaurant_crud.get_supplier(db, supplier_id)
+    packs = payload.get("packs")
+    try:
+        packs = float(packs) if packs is not None else None
+    except (TypeError, ValueError):
+        packs = None
+    cost = payload.get("estimated_cost")
+    try:
+        cost = float(cost) if cost is not None else None
+    except (TypeError, ValueError):
+        cost = None
+    try:
+        order = orders.place(
+            db, item, quantity, supplier=supplier, packs=packs, pack_unit=payload.get("pack_unit") if packs else None,
+            estimated_cost=cost, note=payload.get("note") or None, action_id=action.id if action else None,
+            supplier_name=payload.get("supplier_name") or None,
+        )
+    except orders.OrderError as exc:
+        raise ApplyError(str(exc)) from exc
+    amount = f"{quantity:g} {item.unit}"
+    if packs and order.pack_unit:
+        amount = f"{packs:g} {plural(order.pack_unit, packs)} ({amount})"
+    where = f" from {order.supplier_name}" if order.supplier_name else ""
+    due = f", expected {order.expected_on.strftime('%a %b %-d')}" if order.expected_on else ""
     return (
-        f"{source}: {item.name} stock {previous:g} -> {item.quantity_on_hand:g} {item.unit} "
-        f"(+{quantity:g})"
+        f"Ordered {amount} of {item.name}{where}{due}. Stock is booked when it is received: "
+        f"on the Inventory page under On order, or by its invoice."
     )
 
 
-def apply_inventory_reorder(db: Session, payload: dict) -> str:
-    return _restock(db, payload, "Reorder received")
+def apply_inventory_reorder(db: Session, payload: dict, action: AgentAction | None = None) -> str:
+    return _place_order(db, payload, action)
 
 
-def apply_purchase_order(db: Session, payload: dict) -> str:
-    supplier = payload.get("supplier_name") or payload.get("supplier_id") or "unknown supplier"
-    return _restock(db, payload, f"Purchase order from {supplier} received")
+def apply_purchase_order(db: Session, payload: dict, action: AgentAction | None = None) -> str:
+    return _place_order(db, payload, action)
 
 
 def apply_shift_change(db: Session, payload: dict) -> str:
@@ -231,6 +245,8 @@ def apply_action(db: Session, action: AgentAction) -> str:
             f"No applier for action_type {action.action_type!r}; "
             f"known types: {', '.join(sorted(APPLIERS))}"
         )
+    if action.action_type in ("inventory_reorder", "purchase_order"):
+        return applier(db, action.payload or {}, action)
     return applier(db, action.payload or {})
 
 

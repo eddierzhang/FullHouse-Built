@@ -11,6 +11,7 @@ import {
   logout,
 } from './api/client'
 import { AppShell } from './app/AppShell'
+import { BookkeeperApp } from './pages/BookkeeperPage'
 import { MfaSetup } from './components/MfaSetup'
 import { LandingPage } from './pages/LandingPage'
 import { type AccountLink, LinkPage, readAccountLink } from './pages/LinkPage'
@@ -152,6 +153,10 @@ export default function App() {
             </div>
           </main>
         )
+      }
+      if (auth.user.role === 'bookkeeper') {
+        // Many clients, no restaurant of their own: the clients table is their whole app.
+        return <BookkeeperApp user={auth.user} onSignOut={signOut} />
       }
       if (!auth.restaurant?.setup_completed_at && !canEditRestaurant(auth.user)) {
         // A member can't set the restaurant up, so there's nothing to do but wait.
