@@ -102,6 +102,13 @@ FullHouse gains price intelligence: an **Invoices & prices** section in the side
   Digest, Conversation), Menu, Agent, Records and Restaurant.
   Today is still the home page; `#archive` from an earlier build lands there.
 
+### Look
+- Warm paper instead of grey: a cream ground, brown ink, one orange for the brand and anything to press, warm
+  borders and shadows, softer corners. Page and landing titles are set in Fraunces (a serif); everything else in
+  Plus Jakarta Sans. The sidebar sits on cream with the current page lifted on white. The landing page gets a lit
+  hero with the digest card tilted beside it, white tiles, and a dark closing band. The price pages' grey paper
+  palette now uses the same tokens, so the whole app reads as one.
+
 ## [1.0.0] — 2026-09-13
 
 The first complete release: a team of agents that proposes, a manager who decides, and a record of everything.

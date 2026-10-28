@@ -5,45 +5,50 @@
    ========================================================================== */
 
 :root {
-  --bg: #f5f6f8;
+  /* Warm paper, brown ink, one orange. Headings in a serif, everything else in a rounded sans. */
+  --bg: #fdfbf7;
   --surface: #ffffff;
-  --surface-muted: #f9fafb;
-  --border: #e5e7eb;
-  --border-strong: #d1d5db;
+  --surface-muted: #f8f3ea;
+  --sidebar-bg: #f7f1e6;
+  --border: #eadfd0;
+  --border-strong: #d9cbb8;
 
-  --text: #111827;
-  --text-secondary: #4b5563;
-  --text-muted: #6b7280;
-  --text-faint: #9ca3af;
+  --text: #2b1708;
+  --text-secondary: #5c4634;
+  --text-muted: #7d6756;
+  --text-faint: #94806b;
 
-  --brand: #0f766e;
-  --brand-hover: #115e59;
-  --brand-soft: #e6f3f1;
-  --brand-ring: rgba(15, 118, 110, 0.18);
+  --brand: #bf4f1c;
+  --brand-hover: #a64317;
+  --brand-bright: #e87c48;
+  --brand-soft: #fbeadf;
+  --brand-ring: rgba(191, 79, 28, 0.22);
+  --ink: #2b1708;
 
-  --success: #15803d;
-  --success-soft: #e8f5ec;
-  --warning: #b45309;
-  --warning-soft: #fdf3e3;
-  --danger: #c2410c;
-  --danger-soft: #fdeee7;
-  --info: #1d4ed8;
-  --info-soft: #eaf0fd;
+  --success: #2f7d4a;
+  --success-soft: #e8f3ea;
+  --warning: #a6621a;
+  --warning-soft: #fbf0dc;
+  --danger: #b83a2a;
+  --danger-soft: #fbe8e3;
+  --info: #3b5fa8;
+  --info-soft: #e9eef9;
 
   /* Chart series. Validated as a colourblind-safe pair on white (protan ΔE 18.2). */
   --chart-1: #1f6f9e;
   --chart-2: #d2652b;
-  --chart-grid: #eceef1;
+  --chart-grid: #efe8dc;
 
-  --radius-sm: 6px;
-  --radius: 10px;
-  --radius-lg: 14px;
-  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05);
-  --shadow: 0 1px 3px rgba(16, 24, 40, 0.06), 0 1px 2px rgba(16, 24, 40, 0.04);
-  --shadow-lg: 0 12px 32px rgba(16, 24, 40, 0.12);
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 16px;
+  --shadow-sm: 0 1px 2px rgba(74, 48, 26, 0.05);
+  --shadow: 0 1px 3px rgba(74, 48, 26, 0.07), 0 1px 2px rgba(74, 48, 26, 0.04);
+  --shadow-lg: 0 20px 40px -12px rgba(74, 48, 26, 0.18), 0 4px 12px rgba(74, 48, 26, 0.06);
 
   --sidebar-width: 248px;
-  --font: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-heading: 'Fraunces', Georgia, 'Times New Roman', serif;
   --font-mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
 }
 
@@ -65,7 +70,6 @@ body {
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  font-feature-settings: 'cv11', 'ss01';
 }
 
 h1,
@@ -75,6 +79,21 @@ h4 {
   margin: 0;
   line-height: 1.25;
   letter-spacing: -0.01em;
+}
+
+/* Page and section titles wear the serif; dense card and table headings stay in the sans. */
+h1,
+.page-title,
+.auth-title,
+.landing-headline,
+.landing-heading,
+.landing-band h2,
+.deck-title,
+.serif {
+  font-family: var(--font-heading);
+  font-variation-settings: 'opsz' 48, 'SOFT' 30;
+  font-weight: 500;
+  letter-spacing: -0.015em;
 }
 
 button,
@@ -115,7 +134,7 @@ a:hover {
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
   min-height: 100vh;
   /* Carry the sidebar's surface the full height of long pages. */
-  background: linear-gradient(90deg, var(--surface) var(--sidebar-width), var(--bg) var(--sidebar-width));
+  background: linear-gradient(90deg, var(--sidebar-bg) var(--sidebar-width), var(--bg) var(--sidebar-width));
 }
 
 .sidebar {
@@ -126,7 +145,7 @@ a:hover {
   flex-direction: column;
   gap: 4px;
   padding: 18px 14px;
-  background: var(--surface);
+  background: var(--sidebar-bg);
   border-right: 1px solid var(--border);
   overflow-y: auto;
   z-index: 30;
@@ -152,11 +171,13 @@ a:hover {
   place-items: center;
   width: 30px;
   height: 30px;
-  border-radius: 8px;
-  background: var(--brand);
+  border-radius: 9px;
+  background: var(--brand-bright);
   color: #fff;
-  font-size: 14px;
-  font-weight: 800;
+  font-family: var(--font-heading);
+  font-size: 16px;
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
 }
 
 .nav-group {
@@ -181,22 +202,23 @@ a:hover {
   gap: 10px;
   height: 36px;
   padding: 0 10px;
-  border-radius: 8px;
+  border-radius: 9px;
   color: var(--text-secondary);
   font-weight: 500;
   transition: background 0.12s, color 0.12s;
 }
 
 .nav-link:hover {
-  background: var(--surface-muted);
+  background: rgba(255, 255, 255, 0.7);
   color: var(--text);
   text-decoration: none;
 }
 
 .nav-link[aria-current='page'] {
-  background: var(--brand-soft);
+  background: var(--surface);
   color: var(--brand);
   font-weight: 600;
+  box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--border);
 }
 
 .nav-link .icon {
@@ -247,7 +269,7 @@ a:hover {
   gap: 12px;
   height: 60px;
   padding: 0 32px;
-  background: rgba(255, 255, 255, 0.85);
+  background: rgba(253, 251, 247, 0.86);
   backdrop-filter: saturate(180%) blur(10px);
   border-bottom: 1px solid var(--border);
 }
@@ -310,8 +332,8 @@ a:hover {
 }
 
 .page-title {
-  font-size: 24px;
-  font-weight: 700;
+  font-size: 28px;
+  line-height: 1.15;
 }
 
 .page-subtitle {
@@ -442,7 +464,7 @@ a:hover {
   height: 36px;
   padding: 0 14px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 9px;
   background: none;
   font-weight: 600;
   font-size: 13px;
@@ -458,6 +480,7 @@ a:hover {
 
 .btn-primary {
   background: var(--brand);
+  border-color: rgba(0, 0, 0, 0.1);
   color: #fff;
   box-shadow: var(--shadow-sm);
 }
@@ -583,7 +606,7 @@ a:hover {
   display: inline-flex;
   padding: 3px;
   border-radius: 9px;
-  background: #eef0f3;
+  background: var(--surface-muted);
 }
 
 .segmented button {
@@ -640,7 +663,7 @@ a:hover {
 }
 
 .table tbody tr:hover td {
-  background: #fcfcfd;
+  background: var(--bg);
 }
 
 .table .num {
@@ -920,7 +943,7 @@ a:hover {
 
 .skeleton {
   border-radius: 6px;
-  background: linear-gradient(90deg, #eef0f3, #f6f7f9, #eef0f3);
+  background: linear-gradient(90deg, var(--surface-muted), var(--bg), var(--surface-muted));
   background-size: 200% 100%;
   animation: shimmer 1.2s linear infinite;
 }
@@ -1004,8 +1027,8 @@ code {
   min-width: 150px;
   padding: 10px 12px;
   border-radius: 8px;
-  background: #111827;
-  color: #f9fafb;
+  background: var(--ink);
+  color: #fff;
   font-size: 12px;
   box-shadow: var(--shadow-lg);
   pointer-events: none;
@@ -1022,7 +1045,7 @@ code {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #d1d5db;
+  color: rgba(255, 255, 255, 0.72);
 }
 
 /* ---------- overlays -------------------------------------------------------- */
@@ -1158,8 +1181,8 @@ code {
   max-width: 380px;
   padding: 12px 14px;
   border-radius: 10px;
-  background: #111827;
-  color: #f9fafb;
+  background: var(--ink);
+  color: #fff;
   box-shadow: var(--shadow-lg);
   animation: rise 0.18s ease-out;
 }
@@ -1172,7 +1195,7 @@ code {
 
 .toast-subtitle {
   margin-top: 2px;
-  color: #d1d5db;
+  color: rgba(255, 255, 255, 0.72);
   font-size: 13px;
 }
 
@@ -1312,8 +1335,21 @@ code {
 .landing {
   min-height: 100vh;
   min-height: 100dvh;
-  background: var(--surface);
+  background: var(--bg);
   color: var(--text);
+}
+
+.landing main {
+  position: relative;
+}
+
+/* A soft warm glow behind the hero, the way a cream landing page is lit. */
+.landing-hero-wrap {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(60% 55% at 78% 10%, rgba(232, 124, 72, 0.18), transparent 70%),
+    radial-gradient(40% 40% at 10% 90%, rgba(232, 124, 72, 0.1), transparent 70%);
 }
 
 .landing a.btn:hover {
@@ -1365,20 +1401,41 @@ code {
 }
 
 .landing-eyebrow {
-  margin: 0 0 14px;
-  color: var(--brand);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 18px;
+  padding: 6px 12px 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-secondary);
   font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+}
+
+.landing-eyebrow::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--brand-bright);
+  box-shadow: 0 0 0 3px var(--brand-soft);
 }
 
 .landing-headline {
-  font-size: clamp(30px, 4.6vw, 46px);
-  font-weight: 800;
-  line-height: 1.1;
-  letter-spacing: -0.03em;
+  font-size: clamp(34px, 5.2vw, 56px);
+  line-height: 1.06;
+  letter-spacing: -0.02em;
   text-wrap: balance;
+  font-variation-settings: 'opsz' 144, 'SOFT' 50;
+}
+
+.landing-headline em {
+  font-style: italic;
+  font-weight: 400;
+  color: var(--brand);
 }
 
 .landing-lead {
@@ -1410,11 +1467,17 @@ code {
 
 .landing-preview {
   margin: 0;
-  padding: 22px;
+  padding: 24px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: 20px;
   background: var(--surface);
   box-shadow: var(--shadow-lg);
+  transform: rotate(-1deg);
+}
+
+.landing-preview:hover {
+  transform: rotate(0deg);
+  transition: transform 0.25s ease;
 }
 
 .landing-preview-head {
@@ -1432,8 +1495,9 @@ code {
 
 .landing-preview-title {
   margin-top: 14px;
-  font-size: 18px;
-  font-weight: 700;
+  font-family: var(--font-heading);
+  font-size: 22px;
+  font-weight: 500;
   letter-spacing: -0.01em;
 }
 
@@ -1490,9 +1554,8 @@ code {
 
 .landing-heading {
   margin-bottom: 28px;
-  font-size: 26px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
+  font-size: 34px;
+  line-height: 1.15;
 }
 
 .landing-steps,
@@ -1538,16 +1601,32 @@ code {
   height: 32px;
   margin-bottom: 14px;
   border-radius: 999px;
-  background: var(--brand-soft);
-  color: var(--brand);
-  font-weight: 800;
+  background: var(--ink);
+  color: #fff;
+  font-family: var(--font-heading);
+  font-weight: 600;
+}
+
+.landing-step {
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
 }
 
 .landing-tile {
-  padding: 22px;
+  padding: 24px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface-muted);
+  border-radius: 20px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.landing-tile:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
 }
 
 .landing-tile-icon {
@@ -1573,23 +1652,32 @@ code {
 }
 
 .landing-band {
-  padding: 64px 24px;
-  background: var(--brand);
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto 56px;
+  padding: 72px 24px;
+  border-radius: 28px;
+  background:
+    radial-gradient(50% 60% at 85% 0%, rgba(232, 124, 72, 0.35), transparent 70%),
+    var(--ink);
   color: #fff;
   text-align: center;
 }
 
 .landing-band h2 {
-  font-size: 28px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
+  font-size: 36px;
+  line-height: 1.1;
+  color: #fff;
+  font-variation-settings: 'opsz' 144, 'SOFT' 50;
 }
 
 .landing-band p {
   max-width: 60ch;
-  margin: 12px auto 26px;
-  color: rgba(255, 255, 255, 0.86);
-  font-size: 16px;
+  margin: 14px auto 28px;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 17px;
 }
 
 .landing-band .landing-actions {
@@ -1597,12 +1685,13 @@ code {
 }
 
 .landing-band a.btn-primary {
-  background: #fff;
-  color: var(--brand-hover);
+  background: var(--brand);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: #fff;
 }
 
 .landing-band a.btn-primary:hover {
-  background: var(--brand-soft);
+  background: var(--brand-bright);
 }
 
 .landing-band a.btn-secondary {
@@ -1644,6 +1733,20 @@ code {
   .landing-section {
     padding-top: 40px;
     padding-bottom: 40px;
+  }
+
+  .landing-band {
+    margin: 0 16px 40px;
+    padding: 48px 20px;
+    border-radius: 20px;
+  }
+
+  .landing-band h2 {
+    font-size: 30px;
+  }
+
+  .landing-preview {
+    transform: none;
   }
 }
 
@@ -1696,9 +1799,7 @@ code {
 }
 
 .auth-title {
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-size: 26px;
 }
 
 .auth-subtitle {
@@ -2458,7 +2559,7 @@ a.sidebar-user:hover {
     padding-bottom: env(safe-area-inset-bottom);
     border-top: 1px solid var(--border);
     background: var(--surface);
-    box-shadow: 0 -2px 8px rgba(16, 24, 40, 0.06);
+    box-shadow: 0 -2px 8px rgba(74, 48, 26, 0.06);
   }
 
   .tab {
@@ -2874,18 +2975,18 @@ a.sidebar-user:hover {
 
 .pi {
   flex: 1;
-  background: #fafafa;
-  color: #111;
+  background: var(--bg);
+  color: var(--ink);
   font-size: 17px;
   line-height: 24px;
 }
 
 .pi a {
-  color: #111;
+  color: var(--ink);
 }
 
 .pi a:hover {
-  color: #444;
+  color: var(--text-secondary);
 }
 
 .pi p {
@@ -2918,30 +3019,32 @@ a.sidebar-user:hover {
 }
 
 .pi-h1 {
-  font-size: 17px;
-  line-height: 24px;
-  font-weight: 600;
-  letter-spacing: 0;
+  font-family: var(--font-heading);
+  font-variation-settings: 'opsz' 48, 'SOFT' 30;
+  font-size: 26px;
+  line-height: 32px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
 }
 
 .pi-sub,
 .pi-secondary {
   font-size: 15px;
   line-height: 20px;
-  color: #555;
+  color: var(--text-secondary);
 }
 
 .pi-label {
   font-size: 13px;
   line-height: 16px;
-  color: #555;
+  color: var(--text-secondary);
 }
 
 .pi-label-strong {
   font-size: 13px;
   line-height: 16px;
   font-weight: 600;
-  color: #111;
+  color: var(--ink);
 }
 
 .pi-up {
@@ -2980,7 +3083,7 @@ a.sidebar-user:hover {
   gap: 8px;
   padding: 16px;
   background: #fff;
-  border: 1px solid #e3e3e3;
+  border: 1px solid var(--border);
   border-radius: 8px;
 }
 
@@ -3008,7 +3111,7 @@ a.sidebar-user:hover {
 .pi-card-l2 {
   font-size: 15px;
   line-height: 20px;
-  color: #444;
+  color: var(--text-secondary);
 }
 
 .pi-actions {
@@ -3034,26 +3137,26 @@ a.sidebar-user:hover {
 }
 
 .pi-btn {
-  background: #111;
+  background: var(--brand);
   color: #fff;
   border: 0;
 }
 
 .pi-btn:hover {
   color: #fff;
-  background: #333;
+  background: var(--brand-hover);
   text-decoration: none;
 }
 
 .pi-btn-o {
   background: #fff;
-  color: #111;
-  border: 1px solid #bdbdbd;
+  color: var(--ink);
+  border: 1px solid var(--border-strong);
 }
 
 .pi-btn-o:hover {
   text-decoration: none;
-  background: #f4f4f4;
+  background: var(--surface-muted);
 }
 
 .pi-btn:disabled,
@@ -3069,7 +3172,7 @@ a.sidebar-user:hover {
   padding: 0 4px;
   background: none;
   border: 0;
-  color: #555;
+  color: var(--text-secondary);
   font: 400 15px/20px var(--font);
   text-decoration: underline;
   text-underline-offset: 3px;
@@ -3077,7 +3180,7 @@ a.sidebar-user:hover {
 }
 
 .pi-link:hover {
-  color: #111;
+  color: var(--ink);
 }
 
 .pi-link.pi-link-inline {
@@ -3093,7 +3196,7 @@ a.sidebar-user:hover {
   min-height: 44px;
   font-size: 15px;
   line-height: 20px;
-  color: #555;
+  color: var(--text-secondary);
   text-decoration: none;
 }
 
@@ -3105,7 +3208,7 @@ a.sidebar-user:hover {
   min-height: 44px;
   font-size: 15px;
   line-height: 20px;
-  color: #555;
+  color: var(--text-secondary);
 }
 
 /* The agent's words: same type as everything else, a thin rule on the left. */
@@ -3114,11 +3217,11 @@ a.sidebar-user:hover {
   flex-direction: column;
   gap: 12px;
   padding-left: 14px;
-  border-left: 2px solid #111;
+  border-left: 2px solid var(--ink);
 }
 
 .pi-agent.pi-pending {
-  color: #555;
+  color: var(--text-secondary);
 }
 
 .pi-you {
@@ -3141,14 +3244,14 @@ a.sidebar-user:hover {
   background: #fff;
   border: 1px solid #cfcfcf;
   border-radius: 18px;
-  color: #111;
+  color: var(--ink);
   font: 400 13px/16px var(--font);
   text-decoration: none;
 }
 
 .pi-chip:hover {
   text-decoration: none;
-  background: #f4f4f4;
+  background: var(--surface-muted);
 }
 
 /* The one way to the agent: a text field, pinned. */
@@ -3164,14 +3267,14 @@ a.sidebar-user:hover {
   min-height: 44px;
   padding: 0 16px;
   background: #fff;
-  border: 1px solid #bdbdbd;
+  border: 1px solid var(--border-strong);
   border-radius: 22px;
-  color: #111;
+  color: var(--ink);
   font: 400 15px/20px var(--font);
 }
 
 .pi-ask::placeholder {
-  color: #555;
+  color: var(--text-secondary);
 }
 
 .pi-ask-context {
@@ -3180,7 +3283,7 @@ a.sidebar-user:hover {
   gap: 8px;
   font-size: 13px;
   line-height: 16px;
-  color: #555;
+  color: var(--text-secondary);
 }
 
 .pi-ask-top {
@@ -3196,7 +3299,7 @@ a.sidebar-user:hover {
 .pi-crop {
   padding: 12px 16px;
   background: #f2f0eb;
-  color: #333;
+  color: var(--text-secondary);
   font: 400 13px/18px var(--font-mono);
   white-space: pre;
   overflow: hidden;
@@ -3210,8 +3313,8 @@ a.sidebar-user:hover {
   margin: 3px -6px;
   padding: 3px 6px;
   background: #fff;
-  outline: 2px solid #111;
-  color: #111;
+  outline: 2px solid var(--ink);
+  color: var(--ink);
 }
 
 .pi-q {
@@ -3219,7 +3322,7 @@ a.sidebar-user:hover {
   flex-direction: column;
   overflow: hidden;
   background: #fff;
-  border: 1px solid #e3e3e3;
+  border: 1px solid var(--border);
   border-radius: 8px;
   transition: opacity 240ms ease, transform 240ms ease;
 }
@@ -3253,8 +3356,8 @@ a.sidebar-user:hover {
   gap: 12px;
   min-height: 64px;
   padding: 10px 0;
-  border-bottom: 1px solid #ececec;
-  color: #111;
+  border-bottom: 1px solid var(--border);
+  color: var(--ink);
   text-decoration: none;
 }
 
@@ -3275,7 +3378,7 @@ a.sidebar-user:hover {
 }
 
 .pi-row.pi-hidden {
-  color: #555;
+  color: var(--text-secondary);
 }
 
 .pi-table-wrap {
@@ -3293,18 +3396,18 @@ a.sidebar-user:hover {
 
 .pi-table th {
   padding: 8px 10px 8px 0;
-  border-bottom: 1px solid #d9d9d9;
+  border-bottom: 1px solid var(--border-strong);
   font-size: 13px;
   line-height: 16px;
   font-weight: 600;
-  color: #555;
+  color: var(--text-secondary);
   text-align: left;
   white-space: nowrap;
 }
 
 .pi-table td {
   padding: 10px 10px 10px 0;
-  border-bottom: 1px solid #ececec;
+  border-bottom: 1px solid var(--border);
   vertical-align: top;
   white-space: nowrap;
 }
@@ -3325,9 +3428,9 @@ a.sidebar-user:hover {
   min-height: 44px;
   padding: 10px 12px;
   background: #fff;
-  border: 1px solid #bdbdbd;
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
-  color: #111;
+  color: var(--ink);
   font: 400 17px/24px var(--font);
 }
 
@@ -3366,16 +3469,16 @@ a.sidebar-user:hover {
   min-height: 44px;
   padding: 18px 16px;
   background: #fff;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
-  color: #111;
+  color: var(--ink);
   font-family: var(--font);
   text-align: left;
   cursor: pointer;
 }
 
 .pi-choice:hover {
-  background: #f4f4f4;
+  background: var(--surface-muted);
 }
 
 .pi-choice-title {
@@ -3390,7 +3493,7 @@ a.sidebar-user:hover {
   gap: 10px;
   padding: 14px 16px;
   background: #fff;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
   font-size: 15px;
   line-height: 20px;
@@ -3404,7 +3507,7 @@ a.sidebar-user:hover {
   margin: 0;
   padding: 0;
   list-style: none;
-  color: #444;
+  color: var(--text-secondary);
 }
 
 .pi-points {
@@ -3447,7 +3550,7 @@ a.sidebar-user:hover {
 }
 
 .pi-sheet dt {
-  color: #555;
+  color: var(--text-secondary);
 }
 
 .pi-sheet dd {
@@ -3488,29 +3591,29 @@ a.sidebar-user:hover {
 
 .pi-client-head {
   min-height: 36px;
-  border-bottom: 1px solid #d9d9d9;
+  border-bottom: 1px solid var(--border-strong);
   font-size: 13px;
   line-height: 16px;
-  color: #555;
+  color: var(--text-secondary);
 }
 
 .pi-client-head .sorted {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: #111;
+  color: var(--ink);
   font-weight: 600;
 }
 
 .pi-client-row {
   min-height: 44px;
-  border-bottom: 1px solid #ececec;
+  border-bottom: 1px solid var(--border);
   background: none;
   border-left: 0;
   border-right: 0;
   border-top: 0;
   width: 100%;
-  color: #111;
+  color: var(--ink);
   font: 400 15px/20px var(--font);
   text-align: left;
   cursor: pointer;
@@ -3543,7 +3646,7 @@ a.sidebar-user:hover {
     z-index: 23;
     display: block;
     padding: 10px 16px;
-    background: #fafafa;
+    background: var(--bg);
     border-top: 1px solid #e5e5e5;
   }
 
@@ -3602,7 +3705,7 @@ a.sidebar-user:hover {
   border: 1px solid var(--border, #e6e3dc);
   border-radius: 16px;
   padding: 20px 20px 16px;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--shadow-lg);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -3624,9 +3727,8 @@ a.sidebar-user:hover {
 }
 .deck-title {
   margin: 0;
-  font-size: 22px;
-  line-height: 28px;
-  font-weight: 600;
+  font-size: 24px;
+  line-height: 30px;
 }
 .deck-why {
   margin: 0;

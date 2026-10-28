@@ -105,7 +105,7 @@ export function BookkeeperApp({ user, onSignOut }: { user: User; onSignOut: () =
   const [toast] = useState<ToastState>(null)
   return (
     <div className="pi" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <header className="topbar" style={{ background: '#fafafa' }}>
+      <header className="topbar" style={{ background: 'var(--bg)' }}>
         <a className="brand" href="#bookkeeper" style={{ padding: 0 }}>
           <span className="brand-mark">F</span>
           <span className="brand-text">

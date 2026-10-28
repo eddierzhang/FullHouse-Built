@@ -555,7 +555,7 @@ export function InvoicesPage({ app }: { app: AppContext }) {
                 {mode === 'lines' && parsed && (
                   <section className="pi-stack">
                     <h2 className="pi-h1">{photo && !readFrom ? 'Type the lines from the photo' : 'Check the lines'}</h2>
-                    {photo && <img src={photo} alt="The invoice you photographed" style={{ maxWidth: '100%', borderRadius: 8, border: '1px solid #e3e3e3' }} />}
+                    {photo && <img src={photo} alt="The invoice you photographed" style={{ maxWidth: '100%', borderRadius: 8, border: '1px solid var(--border)' }} />}
                     <LinesForm status={s} initial={parsed} source={source} onSaved={onSaved} onCancel={reset} onError={fail} />
                   </section>
                 )}
@@ -582,7 +582,7 @@ export function InvoicesPage({ app }: { app: AppContext }) {
                             <tbody>
                               {rows.map((row) => (
                                 <Fragment key={row.id}>
-                                  <tr style={row.id === highlighted ? { background: '#efefef' } : undefined} aria-current={row.id === highlighted ? 'true' : undefined}>
+                                  <tr style={row.id === highlighted ? { background: 'var(--surface-muted)' } : undefined} aria-current={row.id === highlighted ? 'true' : undefined}>
                                     <td className="pi-money">{shortDate(row.invoice_date)}</td>
                                     <td>{row.supplier.name}</td>
                                     <td>{row.reference ?? ''}</td>
