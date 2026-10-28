@@ -2,10 +2,10 @@ import { type KeyboardEvent, type TouchEvent, useEffect, useRef, useState } from
 import type { AgentAction } from '../api/client'
 import type { AppContext } from '../app/context'
 import { relativeTime } from '../lib/format'
-import { ActionBody } from './ActionBody'
+import { ActionBody, ActionExplain } from './ActionBody'
 import { type Draft, ActionInputs, inputsFor } from './ActionList'
 import { Icon } from './Icon'
-import { actionDetail, actionMeta, actionTitle } from './actions'
+import { actionMeta, actionTitle } from './actions'
 
 /** How far a finger must travel to count as a swipe. */
 const SWIPE_PX = 70
@@ -157,7 +157,7 @@ export function ApprovalDeck({ app, actions, onChanged }: { app: AppContext; act
           </span>
         </div>
         <h2 className="deck-title">{actionTitle(current)}</h2>
-        <p className="deck-why">{actionDetail(current)}</p>
+        <ActionExplain action={current} />
         <ActionBody action={current} />
         {blocked && <div className="negative small">Nothing can carry this out yet. Reject it.</div>}
         {!blocked && <ActionInputs action={current} draft={draft} setDraft={setDraft} size="lg" />}

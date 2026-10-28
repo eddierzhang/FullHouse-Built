@@ -157,9 +157,9 @@ function StockLine({ item, app, onSaved }: { item: PriceItemDetail; app: AppCont
         {s?.on_order && (
           <>
             <a className="pi-link pi-link-inline" href="#inventory">
-              On order: {qty(s.on_order.quantity)} {s.on_order.unit}
+              {s.on_order.status === 'draft' ? 'Order drafted, not sent' : 'On order'}: {qty(s.on_order.quantity)} {s.on_order.unit}
               {s.on_order.supplier_name && ` from ${s.on_order.supplier_name}`}
-              {s.on_order.expected_on && `, ${s.on_order.overdue ? 'was due' : 'due'} ${shortDate(s.on_order.expected_on)}`}
+              {s.on_order.status !== 'draft' && s.on_order.expected_on && `, ${s.on_order.overdue ? 'was due' : 'due'} ${shortDate(s.on_order.expected_on)}`}
             </a>{' '}
           </>
         )}

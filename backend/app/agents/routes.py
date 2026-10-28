@@ -7,6 +7,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.agents import crud, executor, scheduler, schemas
+from app.agents import explain
 from app.agents.appliers import ApplyError, apply_action, is_appliable, missing_inputs
 from app.agents.broker import TERMINAL, broker
 from app.audit.context import Actor, actor_context, get_actor
@@ -249,16 +250,17 @@ def get_run(run_id: str, user: User = Depends(current_user), db: Session = Depen
     )
 
 
-def _as_out(action) -> schemas.AgentActionOut:
+def _as_out(action, db: Session | None = None) -> schemas.AgentActionOut:
     out = schemas.AgentActionOut.model_validate(action)
     out.appliable = is_appliable(action)
     out.needs_input = missing_inputs(action)
+    out.explain = schemas.ActionExplanation(**explain.explain(action, db).as_dict())
     return out
 
 
 @router.get("/actions", response_model=list[schemas.AgentActionOut])
 def list_actions(status: str | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    return [_as_out(a) for a in crud.list_actions(db, scope_for(db, user), status=status)]
+    return [_as_out(a, db) for a in crud.list_actions(db, scope_for(db, user), status=status)]
 
 
 @router.post("/actions/{action_id}/approve", response_model=schemas.AgentActionOut)
@@ -311,7 +313,7 @@ def approve_action(
         raise
 
     db.refresh(action)
-    return _as_out(action)
+    return _as_out(action, db)
 
 
 @router.post("/actions/{action_id}/reject", response_model=schemas.AgentActionOut)
@@ -323,4 +325,4 @@ def reject_action(action_id: str, user: User = Depends(manager), db: Session = D
     crud.mark_action_decided(db, action, "rejected")
     db.commit()
     db.refresh(action)
-    return _as_out(action)
+    return _as_out(action, db)

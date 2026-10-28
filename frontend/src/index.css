@@ -3377,6 +3377,44 @@ a.sidebar-user:hover {
   white-space: nowrap;
 }
 
+.pi-row-change {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex: none;
+  text-align: right;
+}
+
+.pi-row-caption {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.pi-intro {
+  margin: 8px 0 0;
+  max-width: 60ch;
+}
+
+.pi-summary {
+  margin: 0 0 8px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  font-size: 15px;
+  line-height: 22px;
+}
+
+@media (max-width: 520px) {
+  .pi-row-caption {
+    white-space: normal;
+    max-width: 150px;
+  }
+}
+
 .pi-row.pi-hidden {
   color: var(--text-secondary);
 }
@@ -3735,6 +3773,59 @@ a.sidebar-user:hover {
   font-size: 15px;
   line-height: 22px;
   color: var(--text-secondary);
+}
+
+/* The three parts under a proposal: issue, what approving changes, what to know. */
+.explain {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 8px 0 0;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+}
+
+.explain > div {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 4px 12px;
+}
+
+.explain dt {
+  color: var(--brand);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 20px;
+}
+
+.explain dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.explain-note {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.deck-card .explain dd {
+  font-size: 15px;
+  line-height: 22px;
+}
+
+@media (max-width: 520px) {
+  .explain > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
 }
 .deck-details {
   align-self: flex-start;

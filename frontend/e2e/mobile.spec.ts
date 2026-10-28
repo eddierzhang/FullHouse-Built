@@ -69,6 +69,10 @@ test('on a phone, recommendations come one card at a time with Approve and Not n
   const card = page.getByRole('group', { name: /^Proposal 1 of/ })
   await expect(card).toBeVisible()
   await expect(page.getByRole('button', { name: 'Approve' })).toBeVisible()
+  // Three parts under the proposal: the issue, what approving changes, what to know.
+  await expect(card.getByText('The issue', { exact: true })).toBeVisible()
+  await expect(card.getByText('If you approve', { exact: true })).toBeVisible()
+  await expect(card.getByText('Worth knowing', { exact: true })).toBeVisible()
   const notNow = page.getByRole('button', { name: /^Not now/ })
   await expect(notNow).toBeVisible()
   expect((await notNow.boundingBox())!.height).toBeGreaterThanOrEqual(44)

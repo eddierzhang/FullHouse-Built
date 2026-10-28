@@ -197,7 +197,11 @@ export type AgentAction = {
   appliable?: boolean
   /** Fields the proposal left for the operator to supply. */
   needs_input?: string[]
+  /** Three plain sentences: the issue, what approving changes, what the owner should know. */
+  explain?: ActionExplanation
 }
+
+export type ActionExplanation = { issue: string; change: string; know: string }
 
 export const fetchRuntime = () => get<Runtime>('/api/v1/agents/runtime')
 export const listAgentDefinitions = () => get<AgentDefinition[]>('/api/v1/agents/definitions')
@@ -1067,6 +1071,10 @@ export type PriceItem = {
   last_supplier: SupplierRef | null
   last_date: string | null
   change_8w: number | null
+  /** The change as a share of the earliest price in the window, and that price and its date. */
+  change_8w_pct?: number | null
+  first_price_8w?: number | null
+  first_date_8w?: string | null
   hidden_until: string | null
   questions_open: number
 }
@@ -1096,7 +1104,7 @@ export type OrderBrief = {
   quantity: number
   unit: string
   supplier_name: string | null
-  status: 'ordered' | 'shipped'
+  status: 'draft' | 'ordered' | 'shipped'
   expected_on: string | null
   overdue: boolean
 }

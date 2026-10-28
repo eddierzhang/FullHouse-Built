@@ -222,6 +222,9 @@ def test_approving_places_the_order_and_the_invoice_for_it_receives_it(client, d
     assert (order["item_name"], order["supplier_name"], order["packs"], order["quantity"], order["status"]) == (
         "Romaine Lettuce", "Sysco Foods", 2, 48, "draft")
     assert order["estimated_cost"] == 52.0 and order["action_id"] == romaine["id"]
+    # While it is still a draft the stock rows say so (and still load: a draft is a status the brief knows).
+    row = next(r for r in client.get(f"{API}/stock").json() if r["inventory_item_id"] == ids["Romaine Lettuce"])
+    assert row["on_order"]["status"] == "draft"
     # Placed by phone: marked sent. (A draft is not yet an order the supplier knows about.)
     assert client.post(f"{ORDERS}/{order['id']}/mark-sent").json()["status"] == "ordered"
     # On order, so not proposed again while the stock is still low.

@@ -23,8 +23,13 @@ Invoices & prices, start to finish:
   from it, and confirm any that needed a check before it counts.
 - **Questions**: the one human step. The agent asks about invoice lines it couldn't place: is this the same item, how
   many come in a pack. Tap an answer; the card goes, and the answer is kept for next time.
-- **Items**: the price history. Everything you buy, with the last price paid and how it moved over eight weeks, by
-  supplier. Open one for the chart, the invoice lines behind it, and "Draft message to supplier".
+- **Items**: the price history. Everything the invoices have been matched to, with the price you last paid per pack
+  (a case, a bag) and, on the right, how that price moved over eight weeks at the same supplier: red is up, green is
+  down, biggest moves first, with the share and the price it is measured from underneath. The line at the top counts
+  how many items cost more than eight weeks ago and by how much in all. What to take from it: the red items are where
+  your food cost is drifting, so open one for the chart by supplier, the invoice lines behind it, and "Draft message
+  to supplier"; a green item is a supplier to keep. "Steady" means the same price for eight weeks; "too new to
+  compare" means fewer than two matched invoices; a question open means the agent isn't sure which item a line is.
 - **Digest**: what the weekly check found: what changed in your supplier prices, what it cost, and what to do. Three
   lists, always in the same order: Switch supplier, Price went up, Owed to you.
 - **Conversation**: where the loop closes. Everything said between you and the agent: its questions and your answers, your questions
@@ -182,7 +187,10 @@ that breaks the restaurant's rules (too long, too little rest, too many hours in
 reason.
 
 **Recommendations** (owners and admins). One inbox for everything the agent proposes: reorders, recipes, agreed
-prices, dates, prices. On a phone it comes one card at a time: what it would change, why, and two buttons. **Approve**
+prices, dates, prices. Under every proposal, three parts: **The issue** (what the agent saw, with the stock on hand or the
+document or the forecast behind it), **If you approve** (exactly what changes in FullHouse, and what does not: an
+order is drafted, not sent; a menu record changes, not the POS), and **Worth knowing** (where the numbers come from, what
+would make the proposal wrong, and the step that stays yours). On a phone it comes one card at a time with two buttons. **Approve**
 carries it out; **Not now** sets it aside until next time (swipe left does the same); **Reject this one** drops it.
 From a keyboard, Enter approves and Esc sets aside. On a desktop the same queue is a list, and **One at a time** at
 the top switches; the choice is remembered. Approving a reorder drafts the order; the stock moves when it arrives. To

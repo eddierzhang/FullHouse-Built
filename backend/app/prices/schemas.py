@@ -183,6 +183,10 @@ class ItemRow(BaseModel):
     last_date: date | None
     #: Change per pack over the last 8 weeks at the current supplier; null when flat or unknown.
     change_8w: float | None
+    #: The same change as a share of the earliest price in the window, and that price and its date.
+    change_8w_pct: float | None = None
+    first_price_8w: float | None = None
+    first_date_8w: date | None = None
     hidden_until: date | None
     questions_open: int
 
@@ -224,7 +228,8 @@ class OrderBrief(BaseModel):
     quantity: float
     unit: str
     supplier_name: str | None
-    status: Literal["ordered", "shipped"]
+    #: A draft is approved but not yet sent to the rep; it still counts as on order so nothing is proposed twice.
+    status: Literal["draft", "ordered", "shipped"]
     expected_on: date | None
     overdue: bool
 

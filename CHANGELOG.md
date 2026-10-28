@@ -102,6 +102,23 @@ FullHouse gains price intelligence: an **Invoices & prices** section in the side
   Digest, Conversation), Menu, Agent, Records and Restaurant.
   Today is still the home page; `#archive` from an earlier build lands there.
 
+### Every proposal explained in three parts
+- Under every recommendation, three labelled parts: **The issue** (what the agent saw, with the stock on hand, the
+  document or the forecast behind it), **If you approve** (exactly what changes in FullHouse and what does not: an
+  order is drafted, not sent; a menu record changes, not the POS), and **Worth knowing** (where the numbers come from,
+  what would make it wrong, and the step that stays yours). Written by the server for every kind, so a model's
+  proposal and the rule-based assistant's read the same. Today's card shows the issue line; the list and the
+  one-at-a-time inbox show all three.
+- **Items** says what its numbers mean: the price last paid per pack, the eight-week change per pack with the share
+  and the starting price underneath, "Steady" for an unchanged item, and a summary line counting what went up and by
+  how much in all.
+
+### Fixed
+- The New task dialog lost what you had typed whenever the agents list refreshed in the background; it now resets
+  only when it opens.
+- The stock rows (Inventory and an item's page) failed to load while an approved reorder was still a draft; a draft
+  now shows as "Order drafted, not sent".
+
 ### Look
 - Warm paper instead of grey: a cream ground, brown ink, one orange for the brand and anything to press, warm
   borders and shadows, softer corners. Page and landing titles are set in Fraunces (a serif); everything else in

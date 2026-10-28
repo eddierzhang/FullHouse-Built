@@ -770,12 +770,14 @@ def _open_questions_by_item(db: Session, restaurant_id: str | None) -> dict[str,
 def _item_row(item: PriceItem, facts: ItemFacts | None, suppliers: dict[str, Supplier], open_count: int,
               today: date) -> schemas.ItemRow:
     latest = facts.latest if facts else None
-    change = None
+    change = pct = first_price = first_day = None
     if facts and latest:
         same = sorted((p for p in facts.priced if p.supplier_id == latest.supplier_id), key=lambda p: p.day)
         if len(same) >= 2 and same[0].day < latest.day:
+            first_price, first_day = round(per_pack(item, same[0].per_unit), 2), same[0].day
             delta = per_pack(item, latest.per_unit) - per_pack(item, same[0].per_unit)
             change = round(delta, 2) if abs(delta) >= 0.01 else None
+            pct = round(delta / per_pack(item, same[0].per_unit) * 100, 1) if change is not None and first_price else None
     if item.hidden_until and item.hidden_until > today:
         state = "hidden"
     elif open_count and (facts is None or len(facts.dates) < 2):
@@ -789,8 +791,8 @@ def _item_row(item: PriceItem, facts: ItemFacts | None, suppliers: dict[str, Sup
         unit=item.unit, state=state,
         last_price=per_pack(item, latest.per_unit) if latest else None,
         last_supplier=_ref(suppliers.get(latest.supplier_id)) if latest else None,
-        last_date=latest.day if latest else None, change_8w=change, hidden_until=item.hidden_until,
-        questions_open=open_count,
+        last_date=latest.day if latest else None, change_8w=change, change_8w_pct=pct, first_price_8w=first_price,
+        first_date_8w=first_day, hidden_until=item.hidden_until, questions_open=open_count,
     )
 
 

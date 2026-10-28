@@ -300,9 +300,9 @@ export function InventoryPage({ app, user }: { app: AppContext; user: User }) {
                                               document.getElementById('on-order')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
                                             }}
                                           >
-                                            On order: {qty(p.on_order.quantity)} {p.on_order.unit}
+                                            {p.on_order.status === 'draft' ? 'Order drafted, not sent' : 'On order'}: {qty(p.on_order.quantity)} {p.on_order.unit}
                                             {p.on_order.supplier_name && ` from ${p.on_order.supplier_name}`}
-                                            {p.on_order.expected_on && `, ${p.on_order.overdue ? 'was due' : 'due'} ${shortDate(p.on_order.expected_on)}`}
+                                            {p.on_order.status !== 'draft' && p.on_order.expected_on && `, ${p.on_order.overdue ? 'was due' : 'due'} ${shortDate(p.on_order.expected_on)}`}
                                           </a>
                                         </>
                                       )}

@@ -15,12 +15,20 @@ export function NewTaskModal({ open, agents, defaultAgentKey, onClose, onSubmit 
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Reset only when the dialog opens. The agents list is refreshed in the background while it is open, and a
+  // reset on every refresh would wipe what the person has typed.
   useEffect(() => {
     if (!open) return
     setAgentKey(defaultAgentKey ?? agents[0]?.key ?? '')
     setTask('')
     setError(null)
-  }, [open, defaultAgentKey, agents])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  // If the agents arrive after the dialog opened, pick one then, without touching the task text.
+  useEffect(() => {
+    if (open && !agentKey) setAgentKey(defaultAgentKey ?? agents[0]?.key ?? '')
+  }, [open, agentKey, defaultAgentKey, agents])
 
   useEffect(() => {
     if (!open) return

@@ -160,3 +160,13 @@ test('the inventory page shows what the invoices paid, and the item page says wh
   await expect(page.getByRole('heading', { level: 1, name: 'Tomatoes, 25 lb case' })).toBeVisible()
   await expect(page.getByText(/^Counted in Inventory as Tomatoes: \d+(\.\d)? lb on hand/)).toBeVisible()
 })
+
+test('Items says what its numbers mean: last price per pack, the eight-week change with its share, and a summary line', async ({ page }) => {
+  await page.goto('/#items')
+  await expect(page.getByRole('heading', { level: 1, name: 'Items' })).toBeVisible()
+  await expect(page.getByText(/The figure on the right is the change per pack/)).toBeVisible()
+  await expect(page.getByLabel('Items summary')).toContainText(/^\d+ items? matched from your invoices\./)
+  const rows = page.getByRole('listitem')
+  await expect(rows.first()).toContainText(/Last paid \$[\d,]+\.\d\d a \w+ at /)
+  await expect(rows.first()).toContainText(/a \w+, (up|down) \d+% from \$[\d,]+\.\d\d on /)
+})

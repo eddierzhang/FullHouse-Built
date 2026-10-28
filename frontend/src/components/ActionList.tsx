@@ -2,10 +2,10 @@ import { useState } from 'react'
 import type { AgentAction } from '../api/client'
 import type { AppContext } from '../app/context'
 import { relativeTime } from '../lib/format'
-import { ActionBody } from './ActionBody'
+import { ActionBody, ActionExplain } from './ActionBody'
 import { Icon } from './Icon'
 import { Empty } from './PageState'
-import { actionDetail, actionMeta, actionTitle, isPromotion } from './actions'
+import { actionMeta, actionTitle, isPromotion } from './actions'
 
 type Props = {
   app: AppContext
@@ -93,7 +93,7 @@ export function ActionList({ app, actions, compact = false, onChanged }: Props) 
               <div className="strong" style={{ marginTop: 6 }}>
                 {actionTitle(action)}
               </div>
-              {!compact && <div className="muted small" style={{ marginTop: 2 }}>{actionDetail(action)}</div>}
+              <ActionExplain action={action} compact={compact} />
               {!compact && <ActionBody action={action} />}
 
               {blocked && (

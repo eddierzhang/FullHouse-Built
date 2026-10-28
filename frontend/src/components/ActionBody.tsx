@@ -1,4 +1,32 @@
 import type { AgentAction } from '../api/client'
+import { actionDetail } from './actions'
+
+/**
+ * The three parts under every proposal: the issue the agent saw, what approving changes (and does not), and what
+ * the owner should know before deciding. Written by the server for every kind; an older row without them shows
+ * the agent's note alone.
+ */
+export function ActionExplain({ action, compact = false }: { action: AgentAction; compact?: boolean }) {
+  const e = action.explain
+  if (!e) return <p className="explain-note">{actionDetail(action)}</p>
+  if (compact) return <p className="explain-note">{e.issue}</p>
+  return (
+    <dl className="explain">
+      <div>
+        <dt>The issue</dt>
+        <dd>{e.issue}</dd>
+      </div>
+      <div>
+        <dt>If you approve</dt>
+        <dd>{e.change}</dd>
+      </div>
+      <div>
+        <dt>Worth knowing</dt>
+        <dd>{e.know}</dd>
+      </div>
+    </dl>
+  )
+}
 
 /** The detail a proposal carries, by kind: order lines, recipe lines, prep quantities, a plate cost before and after. */
 export function ActionBody({ action }: { action: AgentAction }) {
