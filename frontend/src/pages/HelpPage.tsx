@@ -64,6 +64,14 @@ const PRICE_GUIDE: { title: string; steps: ReactNode[] }[] = [
     ],
   },
   {
+    title: 'Hand over a price list, a recipe card or a permit',
+    steps: [
+      <>Under <a href="#documents">Documents</a> (switched on under Profile › Features), upload it or forward it to your inbound address. It is read for what it is.</>,
+      'A price list becomes agreed-price proposals; a recipe card a recipe proposal; a permit or warranty is kept with its dates. Approve what is right under Recommendations.',
+      <>From then on an invoice billed above an agreed price shows under Owed to you, and each dish with a recipe gets a plate cost on <a href="#recipes">Recipes</a>.</>,
+    ],
+  },
+  {
     title: 'Ask the agent anything about prices',
     steps: [
       'Type into the field at the top (or the bottom, on a phone): "what did I pay for tomatoes last month", "which supplier is cheapest on paper goods".',

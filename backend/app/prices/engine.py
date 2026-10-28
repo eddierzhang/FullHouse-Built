@@ -49,7 +49,7 @@ HIDE_WEEKS = 4
 #: A match question is asked when the best existing item overlaps the printed line this much.
 MATCH_THRESHOLD = 0.34
 
-SECTION_LABELS = {"switch": "Switch supplier", "up": "Price went up", "owed": "Owed to you"}
+SECTION_LABELS = {"switch": "Switch supplier", "up": "Price went up", "owed": "Owed to you", "margin": "Menu margin", "due": "Coming due"}
 
 #: Invoice shorthand, as broadline distributors print it.
 ABBREVIATIONS = {
@@ -596,8 +596,22 @@ def build_digest(db: Session, restaurant_id: str | None, today: date | None = No
     promote_held(db, restaurant_id, today)
     suppliers = {s.id: s for s in db.query(Supplier).filter(Supplier.restaurant_id == restaurant_id)}
     cards: list[dict] = []
+    from app.platform import flags
+    from app.prices import agreed
+
+    documents_on = flags.enabled(db, restaurant_id, flags.V2_DOCUMENTS)
     for facts in gather(db, restaurant_id, today).values():
         cards.extend(cards_for(db, facts, today, suppliers))
+        if documents_on and not (facts.item.hidden_until and facts.item.hidden_until > today):
+            over = agreed.overcharges(db, facts, today, suppliers)
+            if over is not None:
+                # The agreed price is the better basis for "owed": it replaces a short-delivery card for the same item.
+                cards = [c for c in cards if not (c["section"] == "owed" and c["item_id"] == facts.item.id)]
+                cards.append(over)
+    if documents_on:
+        from app.recipes import engine as recipes
+
+        cards.extend(recipes.menu_cards(db, restaurant_id, today))
     cards.sort(key=lambda c: -c["impact"])
     through = (
         db.query(Invoice.invoice_date).filter(Invoice.restaurant_id == restaurant_id, Invoice.invoice_date <= today)
@@ -612,7 +626,8 @@ def build_digest(db: Session, restaurant_id: str | None, today: date | None = No
     digest.cards = cards
     digest.total = round(sum(c["impact"] for c in cards), 2)
     digest.item_count = len({c["item_id"] for c in cards})
-    digest.supplier_count = len({s["label"].split(", ", 1)[1] for c in cards for s in c["sources"]})
+    digest.supplier_count = len({s["label"].split(", ", 1)[1] for c in cards for s in c["sources"]
+                                 if s.get("kind") == "invoice" and ", " in s["label"]})
     digest.invoices_through = through[0] if through else None
     digest.built_at = datetime.now(timezone.utc)
     db.flush()
@@ -628,6 +643,18 @@ def latest_digest(db: Session, restaurant_id: str | None, today: date | None = N
     return digest or build_digest(db, restaurant_id, today)
 
 
+def sections_for(db: Session, restaurant_id: str | None) -> list[str]:
+    """The three sections always; menu margin and coming due once their phases are on."""
+    from app.platform import flags
+
+    keys = ["switch", "up", "owed"]
+    if flags.enabled(db, restaurant_id, flags.V2_DOCUMENTS):
+        keys.append("margin")
+    if flags.enabled(db, restaurant_id, flags.V2_CALENDAR):
+        keys.append("due")
+    return keys
+
+
 def digest_out(db: Session, digest: PriceDigest) -> schemas.DigestOut:
     from app.sales import pnl
 
@@ -638,7 +665,7 @@ def digest_out(db: Session, digest: PriceDigest) -> schemas.DigestOut:
     sections = [
         schemas.DigestSection(key=key, label=label, total=round(sum(c.impact for c in cards if c.section == key), 2),
                               cards=[c for c in shown if c.section == key])
-        for key, label in SECTION_LABELS.items()
+        for key, label in SECTION_LABELS.items() if key in sections_for(db, digest.restaurant_id)
     ]
     open_count = (
         db.query(AgentQuestion).filter(AgentQuestion.restaurant_id == digest.restaurant_id, AgentQuestion.status == OPEN).count()
@@ -781,10 +808,31 @@ def item_detail(db: Session, item: PriceItem, today: date | None = None) -> sche
     moved = suppliers.get(item.moved_to_supplier_id) if item.moved_to_supplier_id else None
     from app.prices import stock as stock_module
 
+    from app.platform import flags
+    from app.prices import agreed as agreed_module
+
+    agreed_out = None
+    used_in: list[schemas.RecipeRef] = []
+    if flags.enabled(db, item.restaurant_id, flags.V2_DOCUMENTS):
+        current = agreed_module.current(db, item, today)
+        if current is not None:
+            agreed_out = schemas.AgreedOut(
+                id=current.id, supplier=_ref(suppliers.get(current.supplier_id)) or schemas.SupplierRef(id=current.supplier_id, name="Supplier"),
+                unit_price=current.unit_price, base_unit=current.base_unit, effective_from=current.effective_from,
+                effective_to=current.effective_to, source_document_id=current.source_document_id,
+            )
+        from app.recipes.models import Recipe, RecipeLine
+
+        used_in = [
+            schemas.RecipeRef(id=r.id, name=r.name, status=r.status)
+            for r in db.query(Recipe).join(RecipeLine, RecipeLine.recipe_id == Recipe.id)
+            .filter(Recipe.restaurant_id == item.restaurant_id, RecipeLine.item_id == item.id).distinct().order_by(Recipe.name)
+        ]
     return schemas.ItemDetail(
         **row.model_dump(), pack_sentence=f"Reading this as {unit_words(item.pack_size, item.unit)} per {item.pack_unit}.",
         card=card, note=note, series=series, lines=line_rows, moved_to=_ref(moved),
         stock=stock_module.link_out(db, item), inventory_link=item.inventory_link or "auto",
+        agreed=agreed_out, used_in=used_in,
     )
 
 

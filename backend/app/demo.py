@@ -298,8 +298,19 @@ def reset_demo_data(db: Session, now: datetime | None = None) -> dict:
                         gross_sales=None, covers=74 + (26 if weekend else 0), source="csv"))
         db.add(LaborDay(restaurant_id=restaurant_id, date=day, hours=round(62 + (14 if weekend else 0), 1),
                         dollars=round(880 + (190 if weekend else 0) + rng.uniform(-30, 30), 2), source="csv"))
+    from app.sales.models import SalesItem
+
+    for offset in range(1, 29):
+        day = today - timedelta(days=offset)
+        for pos_id, name, sold, price in (("MARG", "Margherita Pizza", 26, 14.0), ("CAESAR", "Caesar Salad", 18, 11.0), ("TIRA", "Tiramisu", 11, 8.0)):
+            units = sold + (6 if day.weekday() >= 4 else 0) + rng.randint(-2, 2)
+            db.add(SalesItem(restaurant_id=restaurant_id, date=day, pos_item_id=pos_id, pos_item_name=name, qty=units, net=round(units * price, 2), source="csv"))
     db.flush()
     pnl.compute_week(db, restaurant_id, pnl.last_complete_week(today))
+    # The top sellers get a recipe proposed, built from what the demo buys; the owner's first "Learn" step.
+    from app.recipes import engine as recipe_engine
+
+    proposals += len(recipe_engine.onboarding(db, restaurant_id, today))
 
     # The seed's own bookkeeping isn't history anyone made: a visitor starts with an empty record.
     from app.audit.models import ChangeLog

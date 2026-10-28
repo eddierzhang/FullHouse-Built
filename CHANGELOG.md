@@ -54,6 +54,16 @@ FullHouse gains price intelligence: an **Invoices & prices** section in the side
   webhook inbox, per-restaurant feature flags, encrypted connector credentials, file storage with signed
   links, structured logs, an ops endpoint, and an agent write guard enforced at flush time.
 
+### Documents, agreed prices, recipes, menu margin (v2, Phase B; `v2_documents`)
+- A document registry: anything uploaded or mailed in is classified (model or rules) and read with the schema for
+  its kind; the reviewer picks the type when the reader isn't sure.
+- Agreed prices from price lists or the item page, as proposals; invoices billed above an agreed price open an
+  "Owed to you" card citing the line and the price list.
+- Recipes proposed for top sellers from the POS name and what the restaurant buys, weekly plate cost from price
+  points with sub-recipes to depth four, a Menu margin section in the digest, and reprice suggestions that never
+  write to a menu. New agent tools: list_recipes, propose_recipe, propose_agreed_price, propose_menu_reprice,
+  explain_finding. Weekly caps per proposal kind.
+
 ### Inventory meets the invoices
 - An item on the invoices is counted as the Inventory item its name matches, or the one the owner picks on its page.
   A confirmed invoice's lines are booked into stock as deliveries, once, in the agent's name. An item at its reorder

@@ -20,7 +20,7 @@ bills and compares prices, and that is all.
 import uuid
 from datetime import date, datetime, timezone
 
-from sqlalchemy import JSON, Date, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Date, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -66,6 +66,30 @@ class PriceItem(Base):
         String(32), ForeignKey("inventory_items.id", ondelete="SET NULL"), nullable=True, index=True
     )
     inventory_link: Mapped[str] = mapped_column(String(8), default="auto", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now, nullable=False)
+
+
+class AgreedPrice(Base):
+    """A price the restaurant agreed with a supplier, from its own price list or quote. Never a market price.
+
+    The basis for "owed to you": a line billed above the agreed price, in effect on its date, by more
+    than 1% or two cents, is an overcharge.
+    """
+
+    __tablename__ = "agreed_prices"
+    __table_args__ = (Index("ix_agreed_prices_restaurant_item_supplier", "restaurant_id", "item_id", "supplier_id"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    restaurant_id: Mapped[str] = mapped_column(ForeignKey("restaurants.id", name="fk_agreed_prices_restaurant"), nullable=False)
+    supplier_id: Mapped[str] = mapped_column(String(32), ForeignKey("suppliers.id"), nullable=False)
+    item_id: Mapped[str] = mapped_column(String(32), ForeignKey("price_items.id"), nullable=False)
+    #: Per the item's unit (a bunch, a pound), so it compares with every pack.
+    unit_price: Mapped[float] = mapped_column(Float, nullable=False)
+    base_unit: Mapped[str] = mapped_column(String(32), nullable=False)
+    effective_from: Mapped[date] = mapped_column(Date, nullable=False)
+    effective_to: Mapped[date | None] = mapped_column(Date, nullable=True)
+    source_document_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    confirmed_by: Mapped[str | None] = mapped_column(String(254), nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now, nullable=False)
 
 

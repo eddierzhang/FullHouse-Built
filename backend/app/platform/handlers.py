@@ -65,9 +65,32 @@ def compute_pnl(db: Session, payload: dict) -> None:
 @handler("ingest")
 def ingest_document(db: Session, payload: dict) -> None:
     """A document that arrived by mail or upload: read it and make what it is."""
-    from app.connectors import inbound
+    from app.documents import registry
 
-    inbound.process(db, payload["document_id"])
+    registry.process(db, payload["document_id"], doc_type=payload.get("doc_type"))
+
+
+@handler("extract")
+def extract_document(db: Session, payload: dict) -> None:
+    """The same as ingest; kept as its own queue so a flood of uploads doesn't hold up mail."""
+    from app.documents import registry
+
+    registry.process(db, payload["document_id"], doc_type=payload.get("doc_type"))
+
+
+@handler("detect")
+def weekly_detect(db: Session, payload: dict) -> None:
+    """The weekly pass after the invoices: plate costs, menu margin, recipe onboarding, then the digest."""
+    from app.platform import flags
+    from app.prices import engine
+    from app.recipes import engine as recipes
+
+    restaurant_id = payload["restaurant_id"]
+    today = date.fromisoformat(payload["today"]) if payload.get("today") else date.today()
+    if flags.enabled(db, restaurant_id, flags.V2_DOCUMENTS):
+        recipes.compute_plate_costs(db, restaurant_id, today=today)
+        recipes.onboarding(db, restaurant_id, today)
+    engine.build_digest(db, restaurant_id, today)
 
 
 # --- events that cause jobs -------------------------------------------------------------------

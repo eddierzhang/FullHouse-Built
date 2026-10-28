@@ -293,7 +293,7 @@ export function DigestCardView({
 }) {
   return (
     <article className="pi-card" aria-label={card.item_name}>
-      <a className="pi-card-link" href={`#item/${card.item_id}`}>
+      <a className="pi-card-link" href={card.recipe_id ? `#recipe/${card.recipe_id}` : card.calendar_item_id ? '#calendar' : `#item/${card.item_id}`}>
         <div className="pi-card-l1">
           <span>{card.item_name}</span>
           <Money value={card.impact} className={sectionClass(card.section)} />

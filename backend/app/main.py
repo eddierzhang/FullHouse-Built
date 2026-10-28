@@ -21,6 +21,8 @@ from app.config import settings
 from app.connectors.routes import public_router as connect_public_router
 from app.connectors.routes import router as connect_router
 from app.customers.routes import router as customers_router
+from app.documents.routes import router as documents_router
+from app.recipes.routes import router as recipes_router
 from app.platform import handlers as _platform_handlers  # noqa: F401  registers the queue handlers
 from app.platform import jobs
 from app.platform.routes import router as platform_router
@@ -196,6 +198,8 @@ app.include_router(customers_router, dependencies=signed_in)
 app.include_router(prices_router, dependencies=signed_in)
 app.include_router(platform_router, dependencies=signed_in)
 app.include_router(connect_router, dependencies=signed_in)
+app.include_router(documents_router, dependencies=signed_in)
+app.include_router(recipes_router, dependencies=signed_in)
 # Webhooks, the cron route, mail links and OAuth returns: no session, their own checks.
 app.include_router(prices_public_router)
 app.include_router(connect_public_router)
