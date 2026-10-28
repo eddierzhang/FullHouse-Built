@@ -3579,3 +3579,100 @@ a.sidebar-user:hover {
   padding-top: 0;
   border-top: 0;
 }
+
+
+/* The approvals inbox, one card at a time. Sized for a phone held in one hand; roomy on a desktop. */
+.deck {
+  max-width: 560px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.deck-progress {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.deck-card {
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #e6e3dc);
+  border-radius: 16px;
+  padding: 20px 20px 16px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 220px;
+  outline: none;
+  transition: transform 0.16s ease, opacity 0.16s ease;
+  touch-action: pan-y;
+}
+.deck-card:focus-visible {
+  box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.12), 0 6px 24px rgba(0, 0, 0, 0.06);
+}
+.deck-leaving-left {
+  transform: translateX(-120%) rotate(-4deg);
+  opacity: 0;
+}
+.deck-leaving-right {
+  transform: translateX(120%) rotate(4deg);
+  opacity: 0;
+}
+.deck-title {
+  margin: 0;
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 600;
+}
+.deck-why {
+  margin: 0;
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--text-secondary);
+}
+.deck-details {
+  align-self: flex-start;
+  font-size: 13px;
+}
+.deck-actions {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr;
+  gap: 12px;
+}
+.deck-btn {
+  min-height: 52px;
+  font-size: 16px;
+  border-radius: 14px;
+}
+.deck-secondary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.deck-done {
+  align-items: center;
+  text-align: center;
+  padding: 40px 16px;
+}
+.deck-done-mark {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--success-bg, #e8f5ec);
+  color: var(--success, #1f7a3a);
+}
+@media (max-width: 860px) {
+  .deck-hint {
+    display: none;
+  }
+  .deck-card {
+    min-height: 260px;
+  }
+}

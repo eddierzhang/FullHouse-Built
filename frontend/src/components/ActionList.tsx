@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { AgentAction } from '../api/client'
 import type { AppContext } from '../app/context'
 import { relativeTime } from '../lib/format'
+import { ActionBody } from './ActionBody'
 import { Icon } from './Icon'
 import { Empty } from './PageState'
 import { actionDetail, actionMeta, actionTitle, isPromotion } from './actions'
@@ -15,7 +16,42 @@ type Props = {
   onChanged?: () => void
 }
 
-type Draft = { price: string; endsAt: string }
+export type Draft = { price: string; endsAt: string }
+
+/** What a proposal still needs from the operator, and the overrides to send, from the draft they typed. */
+export function inputsFor(action: AgentAction, draft: Draft) {
+  const blocked = action.appliable === false
+  const needsPrice = (action.needs_input ?? []).includes('new_price')
+  const priceOk = !needsPrice || (draft.price.trim() !== '' && Number(draft.price) >= 0)
+  const offersEnd = isPromotion(action) && !action.payload.promo_ends_at
+  const overrides: Record<string, unknown> = {}
+  if (needsPrice) overrides.new_price = Number(draft.price)
+  if (offersEnd && draft.endsAt) overrides.promo_ends_at = new Date(draft.endsAt).toISOString()
+  return { blocked, needsPrice, priceOk, offersEnd, overrides }
+}
+
+/** The fields a proposal asks for before Approve: a price, an end date for a promotion. */
+export function ActionInputs({ action, draft, setDraft, size = 'sm' }: { action: AgentAction; draft: Draft; setDraft: (patch: Partial<Draft>) => void; size?: 'sm' | 'lg' }) {
+  const { blocked, needsPrice, offersEnd } = inputsFor(action, draft)
+  if (blocked || (!needsPrice && !offersEnd)) return null
+  const cls = size === 'lg' ? 'input' : 'input input-sm'
+  return (
+    <div className="row wrap" style={{ marginTop: 10 }}>
+      {needsPrice && (
+        <label className="field" style={{ width: 130 }}>
+          <span className="field-label">New price</span>
+          <input className={cls} inputMode="decimal" placeholder="0.00" value={draft.price} onChange={(e) => setDraft({ price: e.target.value })} />
+        </label>
+      )}
+      {offersEnd && (
+        <label className="field" style={{ width: 200 }}>
+          <span className="field-label">Ends (optional)</span>
+          <input className={cls} type="datetime-local" value={draft.endsAt} onChange={(e) => setDraft({ endsAt: e.target.value })} />
+        </label>
+      )}
+    </div>
+  )
+}
 
 /**
  * Pending proposals with approve/reject.
@@ -38,16 +74,8 @@ export function ActionList({ app, actions, compact = false, onChanged }: Props) 
         const agent = app.agentsById.get(action.agent_definition_id)
         const draft = drafts[action.id] ?? { price: '', endsAt: '' }
         const setDraft = (patch: Partial<Draft>) => setDrafts({ ...drafts, [action.id]: { ...draft, ...patch } })
-
-        const blocked = action.appliable === false
-        const needsPrice = (action.needs_input ?? []).includes('new_price')
-        const priceOk = !needsPrice || (draft.price.trim() !== '' && Number(draft.price) >= 0)
-        const offersEnd = isPromotion(action) && !action.payload.promo_ends_at
+        const { blocked, needsPrice, priceOk, overrides } = inputsFor(action, draft)
         const busy = app.busyActionId === action.id
-
-        const overrides: Record<string, unknown> = {}
-        if (needsPrice) overrides.new_price = Number(draft.price)
-        if (offersEnd && draft.endsAt) overrides.promo_ends_at = new Date(draft.endsAt).toISOString()
 
         return (
           <li key={action.id} className="list-item" style={{ alignItems: 'flex-start' }}>
@@ -66,52 +94,7 @@ export function ActionList({ app, actions, compact = false, onChanged }: Props) 
                 {actionTitle(action)}
               </div>
               {!compact && <div className="muted small" style={{ marginTop: 2 }}>{actionDetail(action)}</div>}
-              {!compact && action.action_type === 'recipe' && Array.isArray(action.payload.lines) && (
-                <ul className="small" style={{ margin: '8px 0 0 16px', padding: 0 }} aria-label="Recipe lines">
-                  {(action.payload.lines as { ingredient_text: string; item_name: string | null; qty: number; unit: string; matched: boolean }[]).map((l, i) => (
-                    <li key={i} className={l.matched ? undefined : 'muted'}>
-                      {l.qty} {l.unit} {l.item_name ?? l.ingredient_text}
-                      {!l.matched && ' (not on the invoices; left out unless you add it later)'}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {!compact && action.action_type === 'purchase_order' && Array.isArray(action.payload.lines) && (
-                <table className="table small" style={{ marginTop: 8 }} aria-label="Order lines">
-                  <tbody>
-                    {(action.payload.lines as { description: string; qty: number; unit: string; unit_price_expected: number | null }[]).map((l, i) => (
-                      <tr key={i}>
-                        <td>{l.description}</td>
-                        <td className="num">{l.qty} {l.unit}</td>
-                        <td className="num">{l.unit_price_expected != null ? `$${l.unit_price_expected.toFixed(2)}` : ''}</td>
-                      </tr>
-                    ))}
-                    {action.payload.expected_total != null && (
-                      <tr>
-                        <td className="strong">Expected total</td>
-                        <td />
-                        <td className="num strong">${Number(action.payload.expected_total).toFixed(2)}</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              )}
-              {!compact && action.action_type === 'prep_sheet' && Array.isArray(action.payload.lines) && (
-                <ul className="small" style={{ margin: '8px 0 0 16px', padding: 0 }} aria-label="Prep lines">
-                  {(action.payload.lines as { item_name: string; qty: number; unit: string }[]).slice(0, 12).map((l, i) => (
-                    <li key={i}>
-                      {l.item_name}: {l.qty} {l.unit}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {!compact && action.action_type === 'menu_reprice' && (
-                <div className="small" style={{ marginTop: 6 }}>
-                  Plate cost {action.payload.plate_cost_before != null ? `$${Number(action.payload.plate_cost_before).toFixed(2)} → ` : ''}
-                  ${Number(action.payload.plate_cost_after ?? 0).toFixed(2)}
-                  {action.payload.current_price != null && ` · sells at $${Number(action.payload.current_price).toFixed(2)}`}
-                </div>
-              )}
+              {!compact && <ActionBody action={action} />}
 
               {blocked && (
                 <div className="negative small" style={{ marginTop: 6 }}>
@@ -119,33 +102,7 @@ export function ActionList({ app, actions, compact = false, onChanged }: Props) 
                 </div>
               )}
 
-              {!blocked && (needsPrice || offersEnd) && (
-                <div className="row wrap" style={{ marginTop: 10 }}>
-                  {needsPrice && (
-                    <label className="field" style={{ width: 130 }}>
-                      <span className="field-label">New price</span>
-                      <input
-                        className="input input-sm"
-                        inputMode="decimal"
-                        placeholder="0.00"
-                        value={draft.price}
-                        onChange={(e) => setDraft({ price: e.target.value })}
-                      />
-                    </label>
-                  )}
-                  {offersEnd && (
-                    <label className="field" style={{ width: 200 }}>
-                      <span className="field-label">Ends (optional)</span>
-                      <input
-                        className="input input-sm"
-                        type="datetime-local"
-                        value={draft.endsAt}
-                        onChange={(e) => setDraft({ endsAt: e.target.value })}
-                      />
-                    </label>
-                  )}
-                </div>
-              )}
+              {!blocked && <ActionInputs action={action} draft={draft} setDraft={setDraft} />}
             </div>
 
             <div className="row" style={{ alignSelf: 'center' }}>

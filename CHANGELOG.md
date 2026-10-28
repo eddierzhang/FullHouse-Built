@@ -75,6 +75,10 @@ FullHouse gains price intelligence: an **Invoices & prices** section in the side
 - Per-restaurant schedules (`workflows`) run on the restaurant's clock from one minute tick, each queued once per
   period; owners switch them on or off and run them now under Profile › Features.
 
+### Recommendations as an inbox
+- One card at a time on a phone: the proposal, why, Approve or Not now (swipe left), with Reject underneath. Enter
+  approves, Esc sets aside, Backspace brings the last one back. The list stays on a desktop; the choice is remembered.
+
 ### Calendar and equipment (v2, Phase D; `v2_calendar`)
 - Licenses, permits, inspection reports and warranties read from documents become calendar proposals; warranties add
   the equipment. A daily scan marks overdue items and proposes service dates; "Coming due" in the digest lists what is

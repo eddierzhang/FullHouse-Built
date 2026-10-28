@@ -124,7 +124,7 @@ const GUIDE: { title: string; steps: ReactNode[] }[] = [
   {
     title: 'Review the Assistant Manager’s recommendations',
     steps: [
-      <>Open <a href="#approvals">Recommendations</a>. Each one says what it would change and why.</>,
+      <>Open <a href="#approvals">Recommendations</a>. On a phone they come one card at a time: what it would change, why, <strong>Approve</strong> or <strong>Not now</strong>. Swipe left to set one aside.</>,
       <><strong>Approve</strong> carries it out; <strong>Reject</strong> drops it. Nothing changes until someone approves. Approving a reorder places the order; the stock moves when it arrives.</>,
       <>Ask it for something any time with <strong>New task</strong>, e.g. “Check stock and reorder anything low”.</>,
     ],

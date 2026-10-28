@@ -181,9 +181,12 @@ preview: problems are listed by line. Nothing is saved until every line is right
 that breaks the restaurant's rules (too long, too little rest, too many hours in the week) is refused with the
 reason.
 
-**Recommendations** (owners and admins). Each says what it would change and why. **Approve** carries it out;
-**Reject** drops it. Approving a reorder places the order; the stock moves when it arrives. To ask the Assistant
-Manager something, press **New task**, e.g. "Check stock and reorder anything low".
+**Recommendations** (owners and admins). One inbox for everything the agent proposes: reorders, recipes, agreed
+prices, dates, prices. On a phone it comes one card at a time: what it would change, why, and two buttons. **Approve**
+carries it out; **Not now** sets it aside until next time (swipe left does the same); **Reject this one** drops it.
+From a keyboard, Enter approves and Esc sets aside. On a desktop the same queue is a list, and **One at a time** at
+the top switches; the choice is remembered. Approving a reorder drafts the order; the stock moves when it arrives. To
+ask the Assistant Manager something, press **New task**, e.g. "Check stock and reorder anything low".
 
 **Track an order.** Inventory → **On order** lists every order drafted, placed and not yet here: the amount, the
 supplier, when it was ordered and when it's expected (the supplier's lead time unless you say otherwise). Approving

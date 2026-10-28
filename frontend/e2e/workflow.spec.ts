@@ -53,7 +53,7 @@ test('sign in, use stock, the agent proposes a reorder, a manager approves, and 
   const proposal = page.getByRole('listitem').filter({ hasText: `Reorder 20 × ${item}` })
   await expect(proposal).toBeVisible()
   await proposal.getByRole('button', { name: 'Approve' }).click()
-  await expect(page.getByText('Approved')).toBeVisible()
+  await expect(page.getByText('Approved', { exact: true })).toBeVisible()
   await expect(proposal).toHaveCount(0)
 
   // --- the order is placed; the stock moves when it is received
