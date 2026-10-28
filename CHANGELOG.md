@@ -44,6 +44,16 @@ FullHouse gains price intelligence: an **Invoices & prices** section in the side
 - The scripted provider answers price questions deterministically, so the demo, CI and the browser tests exercise the
   real tool path.
 
+### Connections and prime cost (v2, Phase A; `v2_connect`)
+- Square and Gusto by OAuth, QuickBooks for pushing bills, Bill.com behind the same connector interface, CSV
+  exports from Toast, Square and Clover and payroll read by their headers with a remembered mapping, and a
+  per-restaurant inbound address for invoices with a sender allow-list.
+- A weekly prime-cost P&L from the week's invoices, sales and labor, and a prime-cost line at the top of the
+  digest, or the connect prompt when a day is missing.
+- Under the hood (Phase 0): a job queue with worker threads or a separate worker process, an event log, a
+  webhook inbox, per-restaurant feature flags, encrypted connector credentials, file storage with signed
+  links, structured logs, an ops endpoint, and an agent write guard enforced at flush time.
+
 ### Inventory meets the invoices
 - An item on the invoices is counted as the Inventory item its name matches, or the one the owner picks on its page.
   A confirmed invoice's lines are booked into stock as deliveries, once, in the agent's name. An item at its reorder

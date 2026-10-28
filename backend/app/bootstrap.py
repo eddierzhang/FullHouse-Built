@@ -15,6 +15,8 @@ def setup() -> None:
     from app.restaurant import inventory
     from app.connectors import models as _connector_models  # noqa: F401  registered with the metadata
     from app.platform import models as _platform_models  # noqa: F401
+    from app.sales import models as _sales_models  # noqa: F401
+    from app.documents import models as _document_models  # noqa: F401
 
     from app.agents import guard
 

@@ -90,6 +90,9 @@ class Invoice(Base):
     review_reasons: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     #: Bill.com's id for the bill, so a second pull doesn't make a second invoice.
     external_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    #: The document it was read from (app.documents), and ids in systems it was pushed to ({"qbo": "bill id"}).
+    document_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    external_refs: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now, nullable=False)
 
     lines: Mapped[list["InvoiceLine"]] = relationship(

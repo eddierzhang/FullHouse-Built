@@ -10,6 +10,7 @@ import {
   approveAction,
   canEditRestaurant,
   fetchChangeVersion,
+  fetchFlags,
   fetchHealth,
   fetchRuntime,
   listActions,
@@ -29,6 +30,7 @@ import { relativeTime } from '../lib/format'
 import { announceDataChanged } from '../lib/useLoad'
 import { PRICE_ROUTES, type Route, useHashRoute } from '../lib/useHashRoute'
 import { AgentsPage } from '../pages/AgentsPage'
+import { ConnectPage } from '../pages/ConnectPage'
 import { CustomersPage } from '../pages/CustomersPage'
 import { DigestPage } from '../pages/DigestPage'
 import { DraftPage } from '../pages/DraftPage'
@@ -173,6 +175,7 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
   const [inventory, setInventory] = useState<InventoryItem[]>([])
   const [questions, setQuestions] = useState<AgentQuestion[]>([])
   const [runtime, setRuntime] = useState<Runtime | null>(null)
+  const [flags, setFlags] = useState<Record<string, boolean>>({})
 
   const [toastState, setToastState] = useState<ToastState>(null)
   const [taskAgent, setTaskAgent] = useState<string | null | undefined>(undefined)
@@ -189,6 +192,7 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
     listInventoryItems().then(setInventory).catch(() => {})
     listQuestions().then(setQuestions).catch(() => {})
     fetchRuntime().then(setRuntime).catch(() => {})
+    fetchFlags().then((f) => setFlags(f.flags)).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -251,6 +255,7 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
     setRestaurant,
     apiStatus,
     canManage: canEditRestaurant(user),
+    flags,
     navigate,
     refresh,
     toast,
@@ -330,6 +335,8 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
         return <StaffPage app={app} user={user} />
       case 'customers':
         return <CustomersPage app={app} />
+      case 'connect':
+        return <ConnectPage app={app} user={user} />
       case 'profit':
         return app.canManage ? <ProfitPage app={app} /> : <OverviewPage app={app} />
       case 'overview':
@@ -372,6 +379,7 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
           <nav key={group.label ?? 'main'} className="nav-group" aria-label={group.label ?? 'Today'}>
             {group.label && <div className="nav-label">{group.label}</div>}
             {group.items.filter(allowed).map(navLink)}
+            {group.label === 'Restaurant' && flags.v2_connect && navLink({ route: 'connect', label: 'Connections', icon: 'suppliers' })}
           </nav>
         ))}
 

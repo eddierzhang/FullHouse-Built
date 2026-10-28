@@ -91,6 +91,10 @@ class Settings:
     log_format: str = os.getenv("LOG_FORMAT", "text").strip().lower()
     #: Where uploaded documents live when no object store is configured (app.storage).
     storage_dir: str = os.getenv("STORAGE_DIR", "./data/files").strip() or "./data/files"
+    #: Invoices by email: each restaurant gets {slug}@INBOUND_DOMAIN; deliveries POST to the inbound
+    #: webhook with X-Inbound-Secret. Unset, the address isn't offered.
+    inbound_domain: str | None = os.getenv("INBOUND_DOMAIN", "").strip() or None
+    inbound_secret: str | None = os.getenv("INBOUND_SECRET", "").strip() or None
 
     # Pause between the scripted provider's steps, so a demo run streams
     # visibly instead of finishing before the page can show it.

@@ -1,0 +1,16 @@
+[
+  {"date": "2026-10-13", "hours": 10.0, "dollars": 600.0, "source": "payroll"},
+  {"date": "2026-10-14", "hours": 10.0, "dollars": 600.0, "source": "payroll"},
+  {"date": "2026-10-15", "hours": 10.0, "dollars": 600.0, "source": "payroll"},
+  {"date": "2026-10-16", "hours": 10.0, "dollars": 600.0, "source": "payroll"},
+  {"date": "2026-10-17", "hours": 10.0, "dollars": 600.0, "source": "payroll"},
+  {"date": "2026-10-18", "hours": 10.0, "dollars": 600.0, "source": "payroll"},
+  {"date": "2026-10-19", "hours": 10.0, "dollars": 600.0, "source": "payroll"},
+  {"date": "2026-10-20", "hours": 12.0, "dollars": 700.0, "source": "payroll"},
+  {"date": "2026-10-21", "hours": 12.0, "dollars": 700.0, "source": "payroll"},
+  {"date": "2026-10-22", "hours": 12.0, "dollars": 700.0, "source": "payroll"},
+  {"date": "2026-10-23", "hours": 12.0, "dollars": 700.0, "source": "payroll"},
+  {"date": "2026-10-24", "hours": 12.0, "dollars": 700.0, "source": "payroll"},
+  {"date": "2026-10-25", "hours": 12.0, "dollars": 700.0, "source": "payroll"},
+  {"date": "2026-10-26", "hours": 12.0, "dollars": 700.0, "source": "payroll"}
+]
