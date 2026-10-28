@@ -954,7 +954,7 @@ const PRICES = '/api/v1/prices'
 export type SupplierRef = { id: string; name: string }
 export type PriceCategory = 'food' | 'dry' | 'paper' | 'beer' | 'wine' | 'liquor'
 export type InvoiceSource = 'billcom' | 'email' | 'photo' | 'pdf' | 'typed'
-export type DigestSectionKey = 'switch' | 'up' | 'owed'
+export type DigestSectionKey = 'switch' | 'up' | 'owed' | 'margin' | 'due'
 export type DraftKind = 'price_challenge' | 'credit_claim' | 'short_delivery'
 
 export type Reader = 'claude' | 'openai' | 'text'
@@ -979,12 +979,15 @@ export type PriceStatus = {
 /** A chip under an agent message: the invoice or item it used. */
 export type MessageSource = { kind: 'invoice' | 'item' | 'digest'; id: string; label: string }
 
-export type CardAction = { kind: 'move' | 'draft'; label: string; draft_kind: DraftKind | null; supplier_id: string | null }
+export type CardAction = { kind: 'move' | 'draft' | 'reprice' | 'calendar'; label: string; draft_kind: DraftKind | null; supplier_id: string | null }
 
 export type DigestCard = {
   section: DigestSectionKey
   item_id: string
   item_name: string
+  /** For a menu-margin card: the recipe the card is about. */
+  recipe_id?: string | null
+  calendar_item_id?: string | null
   impact: number
   sentence: string
   action: CardAction
@@ -1099,6 +1102,19 @@ export type PriceItemDetail = PriceItem & {
   stock: StockLink | null
   /** "owner" once the owner chose what it is counted as; "auto" while the name match stands. */
   inventory_link: 'auto' | 'owner'
+  /** The agreed price in effect, per unit, when documents are on. */
+  agreed: AgreedPrice | null
+  used_in: { id: string; name: string; status: string }[]
+}
+
+export type AgreedPrice = {
+  id: string
+  supplier: SupplierRef
+  unit_price: number
+  base_unit: string
+  effective_from: string
+  effective_to: string | null
+  source_document_id: string | null
 }
 
 /** For the Inventory page: what the invoices say about one stock item. */
@@ -1365,3 +1381,71 @@ export const oauthStart = (provider: string) => get<{ url: string }>(`${CONNECT}
 export const syncNow = (provider: string) => send<{ queued: boolean }>('POST', `${CONNECT}/${provider}/sync`)
 export const disconnect = (connectionId: string) => send<{ ok: boolean }>('DELETE', `${CONNECT}/connections/${connectionId}`)
 export const pushInvoiceToAccounting = (invoiceId: string) => send<{ queued: boolean; already_pushed: boolean }>('POST', `${CONNECT}/accounting/push/${invoiceId}`)
+
+
+// --- v2: documents, recipes, agreed prices -----------------------------------------------------
+
+export type DocType = 'invoice' | 'price_list' | 'recipe' | 'prep_sheet' | 'license' | 'permit' | 'inspection' | 'warranty' | 'other'
+export type DocumentRow = {
+  id: string
+  doc_type: DocType
+  type_confidence: number | null
+  filename: string | null
+  media_type: string | null
+  source: 'upload' | 'email' | 'connector'
+  status: 'received' | 'extracted' | 'needs_review' | 'complete'
+  confidence: number | null
+  result_table: string | null
+  result_id: string | null
+  note: string | null
+  extracted_summary: Record<string, unknown>
+  file_url: string | null
+  created_at: string
+  updated_at: string
+}
+const DOCUMENTS = '/api/v1/documents'
+export const listDocuments = () => get<DocumentRow[]>(DOCUMENTS)
+export const uploadDocument = (filename: string, media_type: string, content: string, doc_type?: DocType | null) =>
+  send<DocumentRow>('POST', DOCUMENTS, { filename, media_type, content, doc_type: doc_type ?? null })
+export const setDocumentType = (id: string, doc_type: DocType) => send<DocumentRow>('POST', `${DOCUMENTS}/${id}/type`, { doc_type })
+
+export type DishRecipeLine = {
+  id: string
+  ingredient_text: string | null
+  item_id: string | null
+  item_name: string | null
+  sub_recipe_id: string | null
+  sub_recipe_name: string | null
+  qty: number
+  unit: string
+  cost: number | null
+}
+export type DishRecipe = {
+  id: string
+  name: string
+  pos_item_id: string | null
+  yield_qty: number
+  yield_unit: string
+  status: 'proposed' | 'confirmed'
+  source: string
+  lines: DishRecipeLine[]
+  plate_cost: number | null
+  plate_cost_week: string | null
+  unpriced: string[]
+  basis: { item_id?: string; item_name?: string; line_id?: string; per_unit?: number; qty?: number; unit?: string; cost?: number; sub_recipe_id?: string }[]
+  history: { week_of: string; cost: number }[]
+  sold_a_week: number | null
+  price_a_plate: number | null
+  margin_pct: number | null
+}
+export type DishRecipeLineIn = { ingredient_text?: string | null; item_id?: string | null; sub_recipe_id?: string | null; qty: number; unit: string }
+const RECIPES = '/api/v1/recipes'
+export const listDishRecipes = () => get<DishRecipe[]>(RECIPES)
+export const getDishRecipe = (id: string) => get<DishRecipe>(`${RECIPES}/${id}`)
+export const costDishRecipe = (id: string) => send<DishRecipe>('POST', `${RECIPES}/${id}/cost`)
+export const editDishRecipe = (id: string, lines: DishRecipeLineIn[], extra?: { name?: string; yield_qty?: number; yield_unit?: string }) =>
+  send<{ proposal_id: string }>('POST', `${RECIPES}/${id}/edit`, { lines, ...(extra ?? {}) })
+export const repriceDishRecipe = (id: string) => send<{ proposal_id: string; note: string }>('POST', `${RECIPES}/${id}/reprice`)
+export const runRecipeOnboarding = () => send<{ proposed: number }>('POST', `${RECIPES}/onboarding/run`)
+export const setAgreedPrice = (itemId: string, input: { supplier_id: string; per_pack?: number | null; unit_price?: number | null; effective_from?: string | null; cited?: string | null }) =>
+  send<{ proposed: boolean }>('POST', `${PRICES}/items/${itemId}/agreed-price`, input)

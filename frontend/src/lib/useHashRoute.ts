@@ -11,8 +11,11 @@ export const ROUTES = [
   'draft',
   'invoices',
   'bookkeeper',
-  // v2: connected systems (behind the v2_connect flag).
+  // v2: connected systems (behind the v2_connect flag), documents and recipes (v2_documents).
   'connect',
+  'documents',
+  'recipes',
+  'recipe',
   'approvals',
   'runs',
   'agents',
@@ -30,7 +33,7 @@ export const ROUTES = [
 export type Route = (typeof ROUTES)[number]
 
 /** The price pages: where the agent's question field replaces the Assistant Manager's controls. */
-export const PRICE_ROUTES: ReadonlySet<Route> = new Set<Route>(['digest', 'items', 'item', 'questions', 'thread', 'draft', 'invoices'])
+export const PRICE_ROUTES: ReadonlySet<Route> = new Set<Route>(['digest', 'items', 'item', 'questions', 'thread', 'draft', 'invoices', 'documents', 'recipes', 'recipe'])
 
 /** Earlier URLs, kept working so old links and bookmarks still land. */
 const ALIASES: Record<string, Route> = {

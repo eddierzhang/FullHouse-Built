@@ -31,6 +31,9 @@ import { announceDataChanged } from '../lib/useLoad'
 import { PRICE_ROUTES, type Route, useHashRoute } from '../lib/useHashRoute'
 import { AgentsPage } from '../pages/AgentsPage'
 import { ConnectPage } from '../pages/ConnectPage'
+import { DocumentsPage } from '../pages/DocumentsPage'
+import { RecipePage } from '../pages/RecipePage'
+import { RecipesPage } from '../pages/RecipesPage'
 import { CustomersPage } from '../pages/CustomersPage'
 import { DigestPage } from '../pages/DigestPage'
 import { DraftPage } from '../pages/DraftPage'
@@ -337,6 +340,12 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
         return <CustomersPage app={app} />
       case 'connect':
         return <ConnectPage app={app} user={user} />
+      case 'documents':
+        return <DocumentsPage app={app} />
+      case 'recipes':
+        return <RecipesPage app={app} />
+      case 'recipe':
+        return <RecipePage app={app} />
       case 'profit':
         return app.canManage ? <ProfitPage app={app} /> : <OverviewPage app={app} />
       case 'overview':
@@ -380,6 +389,8 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
             {group.label && <div className="nav-label">{group.label}</div>}
             {group.items.filter(allowed).map(navLink)}
             {group.label === 'Restaurant' && flags.v2_connect && navLink({ route: 'connect', label: 'Connections', icon: 'suppliers' })}
+            {group.label === 'Invoices & prices' && flags.v2_documents && navLink({ route: 'documents', label: 'Documents', icon: 'clock' })}
+            {group.label === 'Menu' && flags.v2_documents && navLink({ route: 'recipes', label: 'Recipes', icon: 'menu' })}
           </nav>
         ))}
 

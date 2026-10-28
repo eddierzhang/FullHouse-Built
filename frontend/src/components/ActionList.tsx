@@ -66,6 +66,23 @@ export function ActionList({ app, actions, compact = false, onChanged }: Props) 
                 {actionTitle(action)}
               </div>
               {!compact && <div className="muted small" style={{ marginTop: 2 }}>{actionDetail(action)}</div>}
+              {!compact && action.action_type === 'recipe' && Array.isArray(action.payload.lines) && (
+                <ul className="small" style={{ margin: '8px 0 0 16px', padding: 0 }} aria-label="Recipe lines">
+                  {(action.payload.lines as { ingredient_text: string; item_name: string | null; qty: number; unit: string; matched: boolean }[]).map((l, i) => (
+                    <li key={i} className={l.matched ? undefined : 'muted'}>
+                      {l.qty} {l.unit} {l.item_name ?? l.ingredient_text}
+                      {!l.matched && ' (not on the invoices; left out unless you add it later)'}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {!compact && action.action_type === 'menu_reprice' && (
+                <div className="small" style={{ marginTop: 6 }}>
+                  Plate cost {action.payload.plate_cost_before != null ? `$${Number(action.payload.plate_cost_before).toFixed(2)} → ` : ''}
+                  ${Number(action.payload.plate_cost_after ?? 0).toFixed(2)}
+                  {action.payload.current_price != null && ` · sells at $${Number(action.payload.current_price).toFixed(2)}`}
+                </div>
+              )}
 
               {blocked && (
                 <div className="negative small" style={{ marginTop: 6 }}>

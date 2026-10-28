@@ -9,6 +9,7 @@ import {
   fetchPriceStatus,
   hidePriceItem,
   movePriceItem,
+  repriceDishRecipe,
   unhidePriceItem,
 } from '../api/client'
 import type { AppContext } from '../app/context'
@@ -22,6 +23,8 @@ const EMPTY: Record<DigestSectionKey, string> = {
   switch: 'Nothing to move this week.',
   up: 'No price went up.',
   owed: 'Nothing owed to you.',
+  margin: 'No dish lost margin this week.',
+  due: 'Nothing coming due.',
 }
 
 type Collapsed = { kind: 'hidden'; until: string } | { kind: 'moved' }
@@ -44,6 +47,12 @@ export function DigestPage({ app }: { app: AppContext }) {
         await movePriceItem(card.item_id, card.action.supplier_id)
         setCollapsed((c) => ({ ...c, [card.item_id]: { kind: 'moved' } }))
         app.refresh()
+      } else if (card.action.kind === 'reprice' && card.recipe_id) {
+        const out = await repriceDishRecipe(card.recipe_id)
+        app.toast('Reprice suggested', 'Under Recommendations: ' + out.note)
+        app.refresh()
+      } else if (card.action.kind === 'calendar') {
+        window.location.hash = '#calendar'
       } else {
         const draft = await createDraft(card.item_id, card.action.draft_kind, card.action.supplier_id)
         window.location.hash = `#draft/${draft.id}`

@@ -41,8 +41,10 @@ def test_the_proposal_queue_covers_every_kind_including_one_missing_its_price(db
 
     pending = db.query(AgentAction).filter_by(status="pending").all()
     assert sorted(a.action_type for a in pending) == [
-        "inventory_reorder", "menu_change", "purchase_order", "purchase_order", "shift_change",
+        "inventory_reorder", "menu_change", "purchase_order", "purchase_order", "recipe", "recipe", "recipe", "shift_change",
     ]
+    # Recipe proposals for the demo's three top sellers, from what it buys: pizza, salad, tiramisu.
+    assert sorted(a.payload["name"] for a in pending if a.action_type == "recipe") == ["Caesar Salad", "Margherita Pizza", "Tiramisu"]
     # One purchase order is the agent's own; the other comes from the invoices: romaine is at its reorder
     # point, and Sysco charged less for it than Green Valley last month. Tomatoes and chicken, which the
     # agent already proposed, are not proposed twice.

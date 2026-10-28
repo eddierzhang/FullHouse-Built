@@ -43,8 +43,8 @@ is a branch `v2/phase-<x>-<name>` merged back when its acceptance test passes. N
 - [ ] I6 The digest is the product: new modules add cards or one line; no new dashboards for them.
 - [ ] I7 Nothing new requires inventory counts.
 - [ ] I8 Humans send: no agent path emails a supplier, sends a PO, pushes to payroll or calls a connector write.
-- [ ] I9 Every extracted field carries a confidence; under 0.8 or failing validation goes to review.
-- [ ] I10 Pending-proposal caps per kind per restaurant per week (mappings 5, recipes 5, purchase orders 3, calendar items 10); beyond the cap, held silently and logged.
+- [x] I9 Every extracted field carries a confidence; under 0.8 or failing validation goes to review.
+- [x] I10 Pending-proposal caps (recipes, agreed prices, reprices; purchase orders and calendar items with their phases) per kind per restaurant per week (mappings 5, recipes 5, purchase orders 3, calendar items 10); beyond the cap, held silently and logged.
 
 ## Phase 0: platform (branch `v2/phase-0-platform`, flag: none; always on)
 
@@ -82,12 +82,17 @@ link were mounted behind the sign-in dependency, so outside callers got 401; the
 
 ## Phase B: documents, agreed prices, recipes, menu margin (branch `v2/phase-b-documents`, flag `v2_documents`)
 
-- [ ] B.1 `documents` registry with doc-type classification (confidence; under 0.9 the reviewer picks) and schemas: price_list, recipe, license/permit/inspection/warranty.
-- [ ] B.2 `agreed_prices`, `agreed_price_check` on normalized invoices → `credit_owed` cards with dollar impact citing both the line and the price list.
-- [ ] B.3 `recipes`, `recipe_lines`, `plate_costs`, weekly `recipes/cost` (sub-recipes to depth 4), `menu` findings (`menu_margin` section).
-- [ ] B.4 Tools `propose_recipe`, `propose_agreed_price`, `propose_menu_reprice` with caps; appliers for the new proposal kinds; `recipe_onboarding` workflow.
-- [ ] B.5 Pages: Documents, Recipe, the agreed-price sentence on the item page, renderers per proposal kind in Recommendations.
-- [ ] B.6 Acceptance: the price-list → agreed price → credit_owed chain; Square CSV "Kale Caesar" → recipe proposal → plate cost citing price points; a 10% kale rise → menu_margin finding → menu_reprice proposal with no POS write; the agent cannot write recipes directly.
+- [x] B.1 `documents` registry with doc-type classification (confidence; under 0.9 the reviewer picks) and schemas: price_list, recipe, license/permit/inspection/warranty.
+- [x] B.2 `agreed_prices`, `agreed_price_check` on normalized invoices → `credit_owed` cards with dollar impact citing both the line and the price list.
+- [x] B.3 `recipes`, `recipe_lines`, `plate_costs`, weekly `recipes/cost` (sub-recipes to depth 4), `menu` findings (`menu_margin` section).
+- [x] B.4 Tools `propose_recipe`, `propose_agreed_price`, `propose_menu_reprice` with caps; appliers for the new proposal kinds; `recipe_onboarding` workflow.
+- [x] B.5 Pages: Documents, Recipe, the agreed-price sentence on the item page, renderers per proposal kind in Recommendations.
+- [x] B.6 Acceptance (`test_acceptance_price_list_to_agreed_price_to_credit_owed`, `test_acceptance_recipe_onboarding_plate_cost_menu_margin_and_reprice`): the price-list → agreed price → credit_owed chain; Square CSV "Kale Caesar" → recipe proposal → plate cost citing price points; a 10% kale rise → menu_margin finding → menu_reprice proposal with no POS write; the agent cannot write recipes directly.
+
+Notes. Recipe inference without a model uses the dish's name, a small lexicon of common dishes and what the restaurant
+buys; quantities are starting points flagged for the owner, and anything not on the invoices is a question. With a
+model key the same tool can be given the lines. Compliance documents are read in this phase and become calendar
+proposals in Phase D.
 
 ## Phase C: purchase orders, forecasting, prep, workflows (branch `v2/phase-c-orders`, flag `v2_orders`)
 

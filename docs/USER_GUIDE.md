@@ -100,6 +100,32 @@ connect instead of a wrong number.
 **Accounting.** With QuickBooks connected, a checked invoice can be pushed as a bill by a manager or bookkeeper,
 once; nothing is pulled and nothing is paid.
 
+## Documents, agreed prices and recipes
+
+Switched on under **Profile → Features**. **Documents** appears under Invoices & prices, **Recipes** under Menu.
+
+**Documents.** Upload anything, or forward it to your inbound address: it is read for what it is. An invoice goes to
+Invoices as an upload would. A supplier's price list becomes **agreed price** proposals, one per line that matches an
+item you already buy. A recipe card becomes a **recipe** proposal. A license, permit, inspection report or warranty is
+read with its dates for the calendar. When the reader isn't sure what a file is, it waits under "Needs a look" and
+you say which it is.
+
+**Agreed prices.** A price you agreed with a supplier, from their price list or quote, or set on an item's page with
+**Set agreed price**. Each is a proposal until approved. From then on any invoice line billed above it by more than 1%
+or two cents shows under **Owed to you** in the digest, with the dollars over and both the invoice and the price list
+it rests on. Nothing is ever compared with a "market" price; only with your own agreements.
+
+**Recipes and plate cost.** Once sales are connected, the agent proposes a recipe for each top-selling dish, built
+from the dish's name and what you actually buy; ingredients it can't find on your invoices are a question on the
+proposal, never a guess. Approve it (edit quantities first if you like) and the dish gets a plate cost each week from
+the latest price your most-used supplier charged for each ingredient, with the invoice lines behind it on the recipe's
+page. Editing a recipe is itself a proposal.
+
+**Menu margin.** A dish whose plate cost rose 5% or more in a week, or whose margin fell below your median, gets a
+card under **Menu margin** in the digest with the weekly dollars. **Reprice or reduce portion** suggests a new price
+as a proposal, with the plate cost before and after. You change the price in your POS; FullHouse never writes to a
+menu.
+
 ## Everyday jobs
 
 **Log a delivery.** Inventory → find the item → **Record change** → **Delivery received** → enter the amount →

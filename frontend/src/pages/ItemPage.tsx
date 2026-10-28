@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from 'react'
-import { type PriceItemDetail, type PriceSeries, createDraft, movePriceItem, setInventoryLink, setPackSize, getPriceItem } from '../api/client'
+import { type PriceItemDetail, type PriceSeries, createDraft, listSuppliers, movePriceItem, setAgreedPrice, setInventoryLink, setPackSize, getPriceItem } from '../api/client'
 import type { AppContext } from '../app/context'
 import { Icon } from '../components/Icon'
 import { Loaded } from '../components/PageState'
@@ -201,6 +201,93 @@ function StockLine({ item, app, onSaved }: { item: PriceItemDetail; app: AppCont
   )
 }
 
+/** "Agreed with Worldwide Produce: $1.30 a bunch from Oct 1." and the form that proposes one. */
+function AgreedLine({ item, app, onSaved }: { item: PriceItemDetail; app: AppContext; onSaved: () => void }) {
+  const [editing, setEditing] = useState(false)
+  const suppliers = useLoad(listSuppliers, [])
+  const [supplierId, setSupplierId] = useState(item.last_supplier?.id ?? '')
+  const [perPack, setPerPack] = useState('')
+  const [from, setFrom] = useState('')
+  const [busy, setBusy] = useState(false)
+  if (!app.flags.v2_documents) return null
+
+  const save = async (event: FormEvent) => {
+    event.preventDefault()
+    const n = Number(perPack)
+    if (!supplierId) return app.toast('Pick the supplier')
+    if (!Number.isFinite(n) || n <= 0) return app.toast('Enter the agreed price per pack')
+    setBusy(true)
+    try {
+      const out = await setAgreedPrice(item.id, { supplier_id: supplierId, per_pack: n, effective_from: from || null, cited: 'Set on the item page' })
+      app.toast(out.proposed ? 'Agreed price proposed' : 'Already proposed', out.proposed ? 'Approve it under Recommendations.' : 'The same price is waiting there, or the weekly cap is reached.')
+      setEditing(false)
+      onSaved()
+      app.refresh()
+    } catch (err) {
+      app.toast('Couldn’t save', err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!editing)
+    return (
+      <p className="pi-secondary">
+        {item.agreed
+          ? `Agreed with ${item.agreed.supplier.name}: ${usd(item.agreed.unit_price * item.pack_size)} a ${item.pack_unit} (${usd(item.agreed.unit_price)} per ${item.unit}) from ${shortDate(item.agreed.effective_from)}.`
+          : 'No agreed price on the books.'}{' '}
+        {item.used_in.length > 0 && (
+          <>
+            Used in{' '}
+            {item.used_in.map((r, i) => (
+              <span key={r.id}>
+                {i > 0 && ', '}
+                <a className="pi-link pi-link-inline" href={`#recipe/${r.id}`}>
+                  {r.name}
+                </a>
+              </span>
+            ))}
+            .{' '}
+          </>
+        )}
+        {app.canManage && (
+          <button type="button" className="pi-link pi-link-inline" onClick={() => setEditing(true)}>
+            Set agreed price
+          </button>
+        )}
+      </p>
+    )
+  return (
+    <form className="pi-answers" onSubmit={save} aria-label="Set agreed price" style={{ alignItems: 'center' }}>
+      <label className="visually-hidden" htmlFor="agreed-supplier">
+        Supplier
+      </label>
+      <select id="agreed-supplier" className="pi-input pi-input-sm" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
+        <option value="">Supplier</option>
+        {(suppliers.data ?? []).map((s) => (
+          <option key={s.id} value={s.id}>
+            {s.name}
+          </option>
+        ))}
+      </select>
+      <label className="visually-hidden" htmlFor="agreed-price">
+        Agreed price per {item.pack_unit}
+      </label>
+      <input id="agreed-price" className="pi-input pi-input-sm" type="number" inputMode="decimal" min={0.01} step="any" placeholder={`$ per ${item.pack_unit}`} value={perPack} onChange={(e) => setPerPack(e.target.value)} style={{ width: 120 }} />
+      <label className="visually-hidden" htmlFor="agreed-from">
+        From
+      </label>
+      <input id="agreed-from" className="pi-input pi-input-sm" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+      <button type="submit" className="pi-btn" disabled={busy}>
+        Propose
+      </button>
+      <button type="button" className="pi-link" onClick={() => setEditing(false)}>
+        Cancel
+      </button>
+    </form>
+  )
+}
+
 /** One item: its recommendation, eight weeks of prices, and every invoice line behind them. */
 export function ItemPage({ app }: { app: AppContext }) {
   const id = useHashParam()
@@ -250,6 +337,7 @@ export function ItemPage({ app }: { app: AppContext }) {
                 <h1 className="pi-h1">{d.name}</h1>
                 <PackSentence item={d} onSaved={() => void item.reload()} onError={(m) => app.toast('Couldn’t save', m)} />
                 <StockLine item={d} app={app} onSaved={() => void item.reload()} />
+                <AgreedLine item={d} app={app} onSaved={() => void item.reload()} />
               </header>
 
               <section className="pi-stack">
