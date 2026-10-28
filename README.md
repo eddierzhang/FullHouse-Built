@@ -100,6 +100,14 @@ The screenshots above are of the operations pages; the design for the price scre
   history pages from the first product are the main dashboard, with the same agent and the same complete,
   revertible change history. Nothing in the price product counts inventory, sets par levels or automates purchasing.
 
+## v2: the back office
+
+The v2 build spec (connections and prime cost, documents and agreed prices, recipes and plate cost, order drafts,
+forecasting and prep sheets, the compliance calendar) is implemented on this stack behind per-restaurant flags.
+[docs/V2_TASKS.md](docs/V2_TASKS.md) is the task list with each phase's notes;
+[docs/V2_COMPLETION.md](docs/V2_COMPLETION.md) has the commands, every credential, the flags, the load-test figures and
+the invariant tests.
+
 ## Architecture
 
 ```mermaid
