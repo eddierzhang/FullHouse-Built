@@ -1493,3 +1493,39 @@ export type WorkflowRow = { id: string; kind: string; cron: string; enabled: boo
 export const listWorkflows = () => get<WorkflowRow[]>('/api/v1/platform/workflows')
 export const setWorkflow = (kind: string, enabled: boolean, cron?: string | null) => send<WorkflowRow[]>('PUT', '/api/v1/platform/workflows', { kind, enabled, cron: cron ?? null })
 export const runWorkflowNow = (kind: string) => send<{ queued: boolean }>('POST', `/api/v1/platform/workflows/${kind}/run`)
+
+
+// --- v2: calendar and equipment ----------------------------------------------------------------
+
+export type CalendarItem = {
+  id: string
+  kind: string
+  title: string
+  due_on: string
+  recurrence: string | null
+  status: 'open' | 'done' | 'overdue'
+  days_left: number
+  source_document_id: string | null
+  proof_document_id: string | null
+  asset_id: string | null
+  note: string | null
+}
+export type Asset = {
+  id: string
+  name: string
+  category: string | null
+  vendor: string | null
+  purchased_on: string | null
+  warranty_until: string | null
+  service_interval_days: number | null
+  last_service_on: string | null
+}
+const CALENDAR = '/api/v1/calendar'
+export const fetchCalendar = () => get<{ items: CalendarItem[]; assets: Asset[] }>(CALENDAR)
+export const addCalendarItem = (input: { kind: string; title: string; due_on: string; recurrence?: string | null; note?: string | null }) =>
+  send<CalendarItem>('POST', `${CALENDAR}/items`, input)
+export const attachProof = (itemId: string, filename: string, media_type: string, content: string) =>
+  send<CalendarItem>('POST', `${CALENDAR}/items/${itemId}/proof`, { filename, media_type, content })
+export const addAsset = (input: { name: string; vendor?: string | null; warranty_until?: string | null; service_interval_days?: number | null; last_service_on?: string | null }) =>
+  send<Asset>('POST', `${CALENDAR}/assets`, input)
+export const scanCalendar = () => send<{ overdue: number; proposed: number }>('POST', `${CALENDAR}/scan`)

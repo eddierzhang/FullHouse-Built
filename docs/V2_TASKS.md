@@ -109,9 +109,12 @@ Sunday draft at load, to keep its Recommendations queue readable.
 
 ## Phase D: calendar and assets (branch `v2/phase-d-calendar`, flag `v2_calendar`)
 
-- [ ] D.1 `calendar_items`, `assets`, `referrals`; daily `calendar` job; `propose_calendar_item`.
-- [ ] D.2 Calendar page (a list), "Coming due" digest section, proof attachment, overdue styling.
-- [ ] D.3 Acceptance per the spec.
+- [x] D.1 `calendar_items`, `assets`, `referrals`; daily `calendar` job; `propose_calendar_item`.
+- [x] D.2 Calendar page (a list), "Coming due" digest section, proof attachment, overdue styling.
+- [x] D.3 Acceptance (`test_acceptance_permit_and_warranty_to_calendar_to_coming_due_to_proof_to_overdue`); the red styling is the page's `negative` class on overdue rows.
+
+Notes. The spec's "one asset proposal" rides inside the warranty's calendar proposal (one approval makes both the date
+and the equipment), so there are two proposals, not three. Referrals are a table and two routes; no reward is paid.
 
 ## Phase E: scale proof (branch `v2/phase-e-scale`)
 

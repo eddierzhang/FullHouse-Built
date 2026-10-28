@@ -75,6 +75,11 @@ FullHouse gains price intelligence: an **Invoices & prices** section in the side
 - Per-restaurant schedules (`workflows`) run on the restaurant's clock from one minute tick, each queued once per
   period; owners switch them on or off and run them now under Profile › Features.
 
+### Calendar and equipment (v2, Phase D; `v2_calendar`)
+- Licenses, permits, inspection reports and warranties read from documents become calendar proposals; warranties add
+  the equipment. A daily scan marks overdue items and proposes service dates; "Coming due" in the digest lists what is
+  within thirty days; proof attached clears an item and makes the next recurrence. Referrals are recorded.
+
 ### Inventory meets the invoices
 - An item on the invoices is counted as the Inventory item its name matches, or the one the owner picks on its page.
   A confirmed invoice's lines are booked into stock as deliveries, once, in the agent's name. An item at its reorder

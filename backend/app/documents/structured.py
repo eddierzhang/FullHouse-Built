@@ -45,6 +45,7 @@ RULES = [
     ("inspection", ("inspection report", "health inspection", "inspector", "violations", "food safety inspection")),
     ("permit", ("permit",)),
     ("license", ("license", "licence", "liquor license")),
+    # An equipment invoice that carries a warranty is read for the warranty: the price side has nothing to compare.
     ("warranty", ("warranty", "warranted", "coverage period")),
     ("recipe", ("recipe", "ingredients", "yield", "method", "prep list", "portions")),
     ("invoice", ("invoice", "bill to", "remit to", "amount due", "invoice #", "invoice no")),
@@ -222,6 +223,7 @@ COMPLIANCE_TOOL = {
             "expires_on": {"type": ["string", "null"], "description": "YYYY-MM-DD; for an inspection, when the next is due if stated."},
             "asset_name": {"type": ["string", "null"], "description": "For a warranty: the equipment it covers."},
             "vendor": {"type": ["string", "null"], "description": "For a warranty: who sold the equipment."},
+            "term": {"type": ["string", "null"], "description": "For a warranty: its length as printed, e.g. 12 months."},
             "confidence": {"type": "number", "minimum": 0, "maximum": 1},
         },
         "required": ["confidence"],
@@ -302,7 +304,7 @@ def recipe_by_rule(text: str) -> dict:
 
 
 def compliance_by_rule(text: str) -> dict:
-    issuer = title = issued = expires = asset = None
+    issuer = title = issued = expires = asset = term = vendor = None
     for raw in text.splitlines():
         line = raw.strip()
         low = line.lower()
@@ -316,12 +318,40 @@ def compliance_by_rule(text: str) -> dict:
         found = [next(d for d in g if d) for g in dates] if dates else []
         if found and any(w in low for w in ("expire", "valid until", "valid through", "through", "ends", "until")):
             expires = _parse_date(found[-1]) or expires
-        elif found and any(w in low for w in ("issued", "effective", "date of inspection", "inspected", "purchased", "start")):
+        elif found and any(w in low for w in ("issued", "effective", "date of inspection", "inspected", "purchased", "start", "date:", "invoice date", "sold on")):
             issued = _parse_date(found[0]) or issued
-        if asset is None and any(w in low for w in ("model", "equipment", "unit:", "serial")):
+        # The equipment: a keyed line ("Equipment: ...", "Model: ...") wins over a header that merely says the word.
+        if any(low.startswith(k) for k in ("equipment:", "model:", "unit:", "item:", "product:")):
+            asset = line.split(":", 1)[1].strip()
+        elif asset is None and "model" in low and ":" not in line:
             asset = line
-    return {"issuer": issuer, "title": title, "issued_on": issued, "expires_on": expires, "asset_name": asset, "vendor": None,
+        if term is None and "warrant" in low:
+            m = re.search(r"(\d+)\s*(?:-|\s)?(years?|yrs?|months?|mos?|days?)", low)
+            if m:
+                term = f"{m.group(1)} {m.group(2)}"
+        if vendor is None and any(w in low for w in ("sold by", "vendor", "dealer", "supplier:")):
+            vendor = line.split(":", 1)[-1].strip() if ":" in line else line
+    if expires is None and term and issued:
+        expires = add_term(date.fromisoformat(issued), term).isoformat()
+    return {"issuer": issuer, "title": title, "issued_on": issued, "expires_on": expires, "asset_name": asset, "vendor": vendor, "term": term,
             "confidence": 0.9 if (title and expires) else 0.6 if (title or expires) else 0.3}
+
+
+def add_term(start: date, term: str) -> date:
+    """`start` plus "12 months", "2 years" or "90 days": whole months and years by the calendar, not 30-day months."""
+    from calendar import monthrange
+    from datetime import timedelta
+
+    m = re.search(r"(\d+)\s*(year|yr|month|mo|day)", term.lower())
+    if not m:
+        return start
+    n, unit = int(m.group(1)), m.group(2)
+    if unit.startswith("d"):
+        return start + timedelta(days=n)
+    months = n * 12 if unit.startswith("y") else n
+    year = start.year + (start.month - 1 + months) // 12
+    month = (start.month - 1 + months) % 12 + 1
+    return date(year, month, min(start.day, monthrange(year, month)[1]))
 
 
 def as_date(value: Any) -> date | None:

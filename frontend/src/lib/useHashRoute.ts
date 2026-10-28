@@ -18,6 +18,7 @@ export const ROUTES = [
   'recipe',
   'po',
   'prep',
+  'calendar',
   'approvals',
   'runs',
   'agents',

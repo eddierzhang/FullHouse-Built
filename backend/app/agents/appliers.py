@@ -120,6 +120,18 @@ def apply_purchase_order(db: Session, payload: dict, action: AgentAction | None 
     return _place_order(db, payload, action)
 
 
+def apply_calendar_item(db: Session, payload: dict) -> str:
+    from app.calendar import engine as calendar
+    from app.restaurant.inventory import site_scope
+
+    try:
+        item = calendar.write_item(db, site_scope(db), payload)
+    except (KeyError, ValueError) as exc:
+        raise ApplyError(f"The proposal has no usable date: {exc}") from exc
+    extra = " The equipment was added to the register." if payload.get("asset") else ""
+    return f"On the calendar: {item.title}, {item.kind.replace('_', ' ')} due {item.due_on.isoformat()}.{extra}"
+
+
 def apply_prep_sheet(db: Session, payload: dict, action: AgentAction | None = None) -> str:
     from app.forecast import prep
     from app.restaurant.inventory import site_scope
@@ -313,6 +325,7 @@ APPLIERS = {
     "agreed_price": apply_agreed_price,
     "menu_reprice": apply_menu_reprice,
     "prep_sheet": apply_prep_sheet,
+    "calendar_item": apply_calendar_item,
 }
 
 
