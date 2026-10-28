@@ -122,9 +122,26 @@ class DigestSection(BaseModel):
     cards: list[Card]
 
 
+class PrimeLine(BaseModel):
+    """The week's prime cost at the top of the digest, or what to connect to see it."""
+
+    week_of: date
+    complete: bool
+    prime_pct: float | None
+    food_pct: float | None
+    paper_pct: float | None
+    labor_pct: float | None
+    sales_net: float | None
+    labor_dollars: float | None
+    purchases: float
+    prompt: str | None
+
+
 class DigestOut(BaseModel):
     id: str
     week_start: date
+    #: Present when connections are on for the restaurant.
+    prime: PrimeLine | None = None
     total: float
     item_count: int
     supplier_count: int

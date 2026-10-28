@@ -134,6 +134,15 @@ def render(db: Session, digest_row: PriceDigest, restaurant: Restaurant | None, 
         f'<div style="font-family:{FONT};color:{INK};max-width:560px;margin:0 auto;padding:24px 16px;'
         f'font-variant-numeric:tabular-nums;font-feature-settings:\'tnum\'">'
     )
+    if digest.prime is not None:
+        if digest.prime.complete:
+            line = (f"Prime cost {digest.prime.prime_pct:g}% last week: food {digest.prime.food_pct:g}%, "
+                    f"labor {digest.prime.labor_pct:g}%, on {_money(digest.prime.sales_net or 0)} in sales.")
+        else:
+            line = digest.prime.prompt or ""
+        parts.append(f'<div style="font-size:15px;line-height:20px;font-weight:600;margin-bottom:16px">{e(line)}</div>')
+        text.append(line)
+        text.append("")
     parts.append(f'<div style="font-size:32px;line-height:40px;font-weight:600">{e(_money(digest.total))}</div>')
     parts.append(
         f'<div style="font-size:17px;line-height:24px;color:{MUTED};margin-top:4px">at stake this week, across '
@@ -276,6 +285,15 @@ def send_digest(
 
 
 def send_weekly(db: Session, restaurant_id: str | None, today: date | None = None) -> bool:
+    from app.platform import flags
+    from app.sales import pnl
+
+    if restaurant_id and flags.enabled(db, restaurant_id, flags.V2_CONNECT):
+        pnl.compute_week(db, restaurant_id, pnl.last_complete_week(today))
+    return _send_weekly(db, restaurant_id, today)
+
+
+def _send_weekly(db: Session, restaurant_id: str | None, today: date | None = None) -> bool:
     """The Monday mail for one restaurant, unless this week's already went. Returns whether one was sent."""
     today = today or date.today()
     week = engine.week_start(today)

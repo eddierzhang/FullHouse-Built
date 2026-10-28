@@ -31,7 +31,7 @@ from app.platform.models import ACTIVE, DONE, FAILED, QUEUED, Job
 
 logger = logging.getLogger(__name__)
 
-QUEUES = ("ingest", "extract", "normalize", "detect", "digest", "sync", "forecast", "agent")
+QUEUES = ("ingest", "extract", "normalize", "detect", "digest", "sync", "forecast", "agent", "pnl")
 #: Agent runs in flight per restaurant at once; beyond this they wait in the queue.
 AGENT_RUNS_PER_RESTAURANT = 2
 BACKOFF_BASE_SECONDS = 5

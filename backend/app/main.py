@@ -18,10 +18,13 @@ from app.audit.routes import router as changes_router
 from app.auth.deps import current_user
 from app.auth.routes import router as auth_router
 from app.config import settings
+from app.connectors.routes import public_router as connect_public_router
+from app.connectors.routes import router as connect_router
 from app.customers.routes import router as customers_router
 from app.platform import handlers as _platform_handlers  # noqa: F401  registers the queue handlers
 from app.platform import jobs
 from app.platform.routes import router as platform_router
+from app.prices.routes import public_router as prices_public_router
 from app.prices.routes import router as prices_router
 from app.restaurant.routes import router as restaurant_router
 from app.restaurant.profile_routes import router as profile_router
@@ -192,6 +195,10 @@ app.include_router(support_router, dependencies=signed_in)
 app.include_router(customers_router, dependencies=signed_in)
 app.include_router(prices_router, dependencies=signed_in)
 app.include_router(platform_router, dependencies=signed_in)
+app.include_router(connect_router, dependencies=signed_in)
+# Webhooks, the cron route, mail links and OAuth returns: no session, their own checks.
+app.include_router(prices_public_router)
+app.include_router(connect_public_router)
 
 
 @app.get("/health")

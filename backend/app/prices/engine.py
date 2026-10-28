@@ -629,6 +629,10 @@ def latest_digest(db: Session, restaurant_id: str | None, today: date | None = N
 
 
 def digest_out(db: Session, digest: PriceDigest) -> schemas.DigestOut:
+    from app.sales import pnl
+
+    # Monday's digest reports on the week just ended: the one before the digest's own week.
+    prime = pnl.prime_line(db, digest.restaurant_id, digest.week_start)
     cards = [schemas.Card(**c) for c in digest.cards]
     shown, hidden = cards[:MAX_CARDS], cards[MAX_CARDS:]
     sections = [
@@ -644,6 +648,7 @@ def digest_out(db: Session, digest: PriceDigest) -> schemas.DigestOut:
         if any(src.label.endswith(f", {s.name}") for c in cards for src in c.sources)
     })
     return schemas.DigestOut(
+        prime=schemas.PrimeLine(**prime) if prime else None,
         id=digest.id, week_start=digest.week_start, total=digest.total, item_count=digest.item_count,
         supplier_count=digest.supplier_count, sections=sections, hidden_count=len(hidden), questions_open=open_count,
         built_at=digest.built_at, invoices_through=digest.invoices_through, supplier_names=names,

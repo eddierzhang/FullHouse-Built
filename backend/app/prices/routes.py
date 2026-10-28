@@ -44,6 +44,9 @@ from app.restaurant.inventory import scope_for
 from app.restaurant.models import Restaurant, Supplier
 
 router = APIRouter(prefix="/api/v1/prices", tags=["prices"])
+#: Routes an outside caller reaches with a secret or a signed token, not a session: webhooks,
+#: the Monday cron, the "Not useful" link in the mail. Mounted without the sign-in dependency.
+public_router = APIRouter(prefix="/api/v1/prices", tags=["prices"])
 
 logger = logging.getLogger(__name__)
 
@@ -501,7 +504,7 @@ def preview_digest_email(request: Request, user: User = Depends(manager), db: Se
     return HTMLResponse(body)
 
 
-@router.post("/digest/cron", response_model=schemas.CronOut)
+@public_router.post("/digest/cron", response_model=schemas.CronOut)
 def digest_cron(request: Request, db: Session = Depends(get_db)):
     """For an outside scheduler: mail every restaurant's digest that hasn't gone this week. Needs X-Cron-Secret."""
     if not settings.cron_secret or request.headers.get("x-cron-secret") != settings.cron_secret:
@@ -521,7 +524,7 @@ def digest_cron(request: Request, db: Session = Depends(get_db)):
     return schemas.CronOut(sent=sent, skipped=skipped)
 
 
-@router.get("/digest/not-useful/{token}", response_class=HTMLResponse)
+@public_router.get("/digest/not-useful/{token}", response_class=HTMLResponse)
 def not_useful_link(token: str, db: Session = Depends(get_db)):
     """The "Not useful" link in the mail: the item is out of the digest for four weeks."""
     item = mail.apply_not_useful(db, token)
@@ -570,7 +573,7 @@ def billcom_sync(user: User = Depends(manager), db: Session = Depends(get_db)):
     return out
 
 
-@router.post("/billcom/webhook")
+@public_router.post("/billcom/webhook")
 async def billcom_webhook(request: Request, db: Session = Depends(get_db)):
     """Bill.com says a bill was created or updated. Needs X-Billcom-Secret.
 

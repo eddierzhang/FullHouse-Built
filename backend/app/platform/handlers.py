@@ -38,6 +38,9 @@ def sync_connector(db: Session, payload: dict) -> None:
     """Pull from one connected system for one restaurant, through its adapter."""
     from app.connectors import registry
 
+    if payload.get("push_invoice_id"):
+        registry.push_invoice(db, payload["restaurant_id"], payload["push_invoice_id"])
+        return
     registry.run_sync(db, payload["restaurant_id"], payload["provider"], connection_id=payload.get("connection_id"))
 
 
@@ -48,6 +51,23 @@ def build_digest(db: Session, payload: dict) -> None:
 
     today = date.fromisoformat(payload["today"]) if payload.get("today") else None
     engine.build_digest(db, payload["restaurant_id"], today)
+
+
+@handler("pnl")
+def compute_pnl(db: Session, payload: dict) -> None:
+    """The weekly P&L for one restaurant and week (default: the last complete week)."""
+    from app.sales import pnl
+
+    week_of = date.fromisoformat(payload["week_of"]) if payload.get("week_of") else pnl.last_complete_week()
+    pnl.compute_week(db, payload["restaurant_id"], week_of)
+
+
+@handler("ingest")
+def ingest_document(db: Session, payload: dict) -> None:
+    """A document that arrived by mail or upload: read it and make what it is."""
+    from app.connectors import inbound
+
+    inbound.process(db, payload["document_id"])
 
 
 # --- events that cause jobs -------------------------------------------------------------------

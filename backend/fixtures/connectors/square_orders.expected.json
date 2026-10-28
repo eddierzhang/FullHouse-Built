@@ -1,0 +1,56 @@
+{
+  "sales_days": [
+    {
+      "date": "2026-10-20",
+      "net_sales": 71.74,
+      "gross_sales": 86.5,
+      "tax": 6.76,
+      "tips": 8.0,
+      "covers": 2,
+      "source": "pos"
+    },
+    {
+      "date": "2026-10-21",
+      "net_sales": 12.2,
+      "gross_sales": 15.4,
+      "tax": 1.2,
+      "tips": 2.0,
+      "covers": 1,
+      "source": "pos"
+    }
+  ],
+  "sales_items": [
+    {
+      "date": "2026-10-20",
+      "pos_item_id": "KALE-CAESAR",
+      "pos_item_name": "Kale Caesar",
+      "qty": 3.0,
+      "net": 38.64,
+      "source": "pos"
+    },
+    {
+      "date": "2026-10-20",
+      "pos_item_id": "MARGHERITA",
+      "pos_item_name": "Margherita Pizza",
+      "qty": 1.0,
+      "net": 13.16,
+      "source": "pos"
+    },
+    {
+      "date": "2026-10-20",
+      "pos_item_id": "TIRAMISU",
+      "pos_item_name": "Tiramisu",
+      "qty": 2.0,
+      "net": 14.72,
+      "source": "pos"
+    },
+    {
+      "date": "2026-10-21",
+      "pos_item_id": "Soup of the day",
+      "pos_item_name": "Soup of the day",
+      "qty": 2.0,
+      "net": 11.04,
+      "source": "pos"
+    }
+  ]
+}
