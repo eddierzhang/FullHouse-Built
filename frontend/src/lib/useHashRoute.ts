@@ -11,6 +11,8 @@ export const ROUTES = [
   'draft',
   'invoices',
   'bookkeeper',
+  // v2: connected systems (behind the v2_connect flag).
+  'connect',
   'approvals',
   'runs',
   'agents',

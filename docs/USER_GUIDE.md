@@ -78,6 +78,28 @@ against pounds) is priced but never booked, and the page says so.
 to a table of clients (questions waiting, last digest, dollars flagged this month) and can answer any client's
 questions. Owners see those questions as resolved, not as answered by the bookkeeper.
 
+## Connections and prime cost
+
+Switched on under **Profile → Features** by the owner. **Connections** then appears under Restaurant.
+
+**Point of sale and payroll.** Connect Square or Gusto with their buttons (the owner signs in there once), or
+drop a CSV export in: sales by day or by item from Toast, Square or Clover, or payroll hours and dollars by day.
+The columns are matched from the headers and shown back before anything is imported; correct a column and the
+mapping is remembered for next time. A file with a bad row is imported whole or not at all, and says which line.
+
+**Invoices by email.** Each restaurant has its own address on the Connections page, with a copy button. Add the
+senders allowed to use it (an address, or `@supplier.com` for everyone there); mail from anyone else is kept but not
+read, and the page says who it was from. Attachments are read by the same reader as an upload and land under
+Invoices, checked the same way.
+
+**Prime cost.** Once a week has sales and labor for every day, the Monday digest opens with one line: prime cost as
+a share of net sales, with food and labor beside it. Food is the week's invoice lines (food, dry goods and
+beverages), paper is paper, labor is what payroll says. A week missing any day's sales or labor shows what to
+connect instead of a wrong number.
+
+**Accounting.** With QuickBooks connected, a checked invoice can be pushed as a bill by a manager or bookkeeper,
+once; nothing is pulled and nothing is paid.
+
 ## Everyday jobs
 
 **Log a delivery.** Inventory → find the item → **Record change** → **Delivery received** → enter the amount →

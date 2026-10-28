@@ -13,7 +13,7 @@ import {
 } from '../api/client'
 import type { AppContext } from '../app/context'
 import { Loaded } from '../components/PageState'
-import { DigestCardView, Money, sectionClass } from '../components/prices'
+import { DigestCardView, Money, sectionClass, usd } from '../components/prices'
 import { shortDate } from '../lib/format'
 import { useLoad } from '../lib/useLoad'
 
@@ -134,6 +134,21 @@ export function DigestPage({ app }: { app: AppContext }) {
           {(d) => (
             <>
               <header className="pi-stack-sm">
+                {d.prime && (
+                  <p className="pi-label-strong" data-testid="prime-line">
+                    {d.prime.complete
+                      ? `Prime cost ${d.prime.prime_pct}% last week: food ${d.prime.food_pct}%, labor ${d.prime.labor_pct}%, on ${usd(d.prime.sales_net ?? 0)} in sales.`
+                      : d.prime.prompt}
+                    {!d.prime.complete && app.flags.v2_connect && (
+                      <>
+                        {' '}
+                        <a className="pi-link pi-link-inline" href="#connect">
+                          Connections
+                        </a>
+                      </>
+                    )}
+                  </p>
+                )}
                 <h1 className="pi-headline">
                   <Money value={d.total} />
                 </h1>

@@ -56,6 +56,14 @@ const PRICE_GUIDE: { title: string; steps: ReactNode[] }[] = [
     ],
   },
   {
+    title: 'Connect your POS and payroll for prime cost',
+    steps: [
+      <>The owner switches it on under <a href="#profile/features">Profile › Features</a>; <strong>Connections</strong> then appears under Restaurant.</>,
+      'Connect Square or Gusto, or drop in a CSV export of sales or payroll: the columns are matched from the headers and shown back before anything is imported.',
+      'Once a week has sales and labor for every day, the Monday digest opens with prime cost as a share of sales. A missing day shows what to connect instead of a number.',
+    ],
+  },
+  {
     title: 'Ask the agent anything about prices',
     steps: [
       'Type into the field at the top (or the bottom, on a phone): "what did I pay for tomatoes last month", "which supplier is cheapest on paper goods".',

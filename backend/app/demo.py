@@ -284,6 +284,23 @@ def reset_demo_data(db: Session, now: datetime | None = None) -> dict:
 
     proposals += len(stock.sync(db, restaurant_id, today, trigger="demo loaded").proposed)
 
+    # Every v2 phase on, and two weeks of sales and labor as a POS and payroll would deliver them,
+    # so the digest opens on a prime-cost line rather than the connect prompt.
+    from app.platform import flags
+    from app.sales import pnl
+    from app.sales.models import LaborDay, SalesDay
+
+    flags.enable_all(db, restaurant_id)
+    for offset in range(1, 15):
+        day = today - timedelta(days=offset)
+        weekend = day.weekday() >= 4
+        db.add(SalesDay(restaurant_id=restaurant_id, date=day, net_sales=round(2650 + (900 if weekend else 0) + rng.uniform(-150, 150), 2),
+                        gross_sales=None, covers=74 + (26 if weekend else 0), source="csv"))
+        db.add(LaborDay(restaurant_id=restaurant_id, date=day, hours=round(62 + (14 if weekend else 0), 1),
+                        dollars=round(880 + (190 if weekend else 0) + rng.uniform(-30, 30), 2), source="csv"))
+    db.flush()
+    pnl.compute_week(db, restaurant_id, pnl.last_complete_week(today))
+
     # The seed's own bookkeeping isn't history anyone made: a visitor starts with an empty record.
     from app.audit.models import ChangeLog
 

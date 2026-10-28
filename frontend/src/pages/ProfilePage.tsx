@@ -29,8 +29,12 @@ import {
   saveRestaurantDetails,
   saveSection,
   setTeamRole,
+  fetchFlags,
+  setFlag,
 } from '../api/client'
 import type { AppContext } from '../app/context'
+import { Loaded } from '../components/PageState'
+import { useLoad } from '../lib/useLoad'
 import { Icon } from '../components/Icon'
 import { LoadError } from '../components/PageState'
 import { BackupCodes, MfaSetup } from '../components/MfaSetup'
@@ -38,12 +42,13 @@ import { dateTime, relativeTime } from '../lib/format'
 import { DetailsFields, HoursFields, SECTION_META, SectionFields, initialValues, payload, timezones } from '../restaurant/sections'
 import { type Errors, normalizeWebsite, validateDetails, validateHours } from '../restaurant/validation'
 
-type Tab = 'details' | 'rules' | 'team' | 'security' | 'account'
+type Tab = 'details' | 'rules' | 'team' | 'features' | 'security' | 'account'
 
-const TABS: { id: Tab; label: string; managersOnly?: boolean }[] = [
+const TABS: { id: Tab; label: string; managersOnly?: boolean; ownerOnly?: boolean }[] = [
   { id: 'details', label: 'Restaurant details' },
   { id: 'rules', label: 'Operating rules' },
   { id: 'team', label: 'Team access', managersOnly: true },
+  { id: 'features', label: 'Features', ownerOnly: true },
   { id: 'security', label: 'Security log', managersOnly: true },
   { id: 'account', label: 'Your account' },
 ]
@@ -59,7 +64,7 @@ const ROLE_LABELS: Record<Role, string> = { owner: 'Owner', admin: 'Admin', memb
 /** The restaurant's profile: its details, the rules it runs by, and who may change them. */
 export function ProfilePage({ app, user }: { app: AppContext; user: User }) {
   const [tab, setTab] = useState<Tab>(readTab)
-  const tabs = TABS.filter((t) => !t.managersOnly || canEditRestaurant(user))
+  const tabs = TABS.filter((t) => (!t.managersOnly || canEditRestaurant(user)) && (!t.ownerOnly || user.role === 'owner'))
   const current = tabs.some((t) => t.id === tab) ? tab : 'details'
 
   useEffect(() => {
@@ -121,10 +126,75 @@ export function ProfilePage({ app, user }: { app: AppContext; user: User }) {
         {current === 'details' && <DetailsTab app={app} />}
         {current === 'rules' && <RulesTab app={app} />}
         {current === 'team' && <TeamTab app={app} user={user} />}
+        {current === 'features' && <FeaturesTab app={app} />}
         {current === 'security' && <SecurityTab />}
         {current === 'account' && <AccountTab app={app} user={user} />}
       </div>
     </main>
+  )
+}
+
+// --- Features (v2 phases, switched on per restaurant) ----------------------------------
+
+const FEATURE_LABELS: Record<string, string> = {
+  v2_connect: 'Connections and prime cost',
+  v2_documents: 'Documents, agreed prices, recipes',
+  v2_orders: 'Order drafts, forecasting, prep sheets',
+  v2_calendar: 'Licenses, permits and warranties calendar',
+}
+
+function FeaturesTab({ app }: { app: AppContext }) {
+  const load = useLoad(fetchFlags, [])
+  const [busy, setBusy] = useState<string | null>(null)
+  const toggle = async (flag: string, enabled: boolean) => {
+    setBusy(flag)
+    try {
+      await setFlag(flag, enabled)
+      await load.reload()
+      app.refresh()
+      app.toast(enabled ? 'Switched on' : 'Switched off', FEATURE_LABELS[flag] ?? flag)
+    } catch (err) {
+      app.toast('Couldn’t change that', err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(null)
+    }
+  }
+  return (
+    <div className="stack settings-stack">
+      <section className="card" aria-labelledby="features-title">
+        <div className="card-header">
+          <div>
+            <h2 className="card-title" id="features-title">
+              Features
+            </h2>
+            <div className="card-subtitle">Each part of the back office is off until you switch it on. Nothing is lost by switching one off.</div>
+          </div>
+        </div>
+        <Loaded load={load} what="features" placeholderHeight={120}>
+          {(f) => (
+            <ul className="list" aria-label="Features">
+              {Object.entries(f.descriptions).map(([flag, description]) => (
+                <li key={flag} className="list-item">
+                  <div className="list-item-main">
+                    <div className="strong">{FEATURE_LABELS[flag] ?? flag}</div>
+                    <div className="muted small">{description}</div>
+                  </div>
+                  <button
+                    className={`btn btn-sm ${f.flags[flag] ? 'btn-secondary' : 'btn-primary'}`}
+                    disabled={busy === flag}
+                    aria-pressed={f.flags[flag]}
+                    aria-label={`${f.flags[flag] ? 'Switch off' : 'Switch on'} ${FEATURE_LABELS[flag] ?? flag}`}
+                    onClick={() => void toggle(flag, !f.flags[flag])}
+                  >
+                    {f.flags[flag] ? 'On' : 'Off'}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Loaded>
+      </section>
+    </div>
   )
 }
 

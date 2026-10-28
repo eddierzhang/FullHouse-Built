@@ -37,8 +37,8 @@ is a branch `v2/phase-<x>-<name>` merged back when its acceptance test passes. N
 
 - [x] I1 The agent writes only proposals: a session guard raises on any other tenant-table write inside a tool call; the forbidden-write test iterates every tenant table.
 - [x] I2 Every tenant table has `restaurant_id` and an index that leads with it (schema-driven test); scope helpers on every route (separation test).
-- [ ] I3 Every action lands in `change_log` with before/after; connector syncs log as `system`.
-- [ ] I4 Every outside write (webhook, sync, inbound mail, cron) is idempotent on an external key (replay tests).
+- [x] I3 Every action lands in `change_log` with before/after; connector syncs log as `system`.
+- [x] I4 Every outside write (webhook, sync, inbound mail, cron) is idempotent on an external key (replay tests).
 - [x] I5 No price on `price_item_aliases`; no "market" price anywhere; agreed prices are restaurant-scoped and come from the restaurant's documents.
 - [ ] I6 The digest is the product: new modules add cards or one line; no new dashboards for them.
 - [ ] I7 Nothing new requires inventory counts.
@@ -66,13 +66,19 @@ for on the web process.
 
 ## Phase A: connect and prime cost (branch `v2/phase-a-connect`, flag `v2_connect`)
 
-- [ ] A.1 Tables `connections` (used), `sales_days`, `sales_items`, `labor_days`, `pnl_weeks`, `csv_profiles`.
-- [ ] A.2 `csv` adapter: Toast, Square and Clover exports by header sniffing; a generic column mapper saved per restaurant.
-- [ ] A.3 `resend_inbound`: per-restaurant inbound address, sender allow-list, attachments become documents and invoices.
-- [ ] A.4 `square` (OAuth, orders with cursor pagination, webhook) and `gusto` (OAuth, pay periods allocated to days) adapters with golden-file tests; `qbo` push behind the interface (never pull).
-- [ ] A.5 `pnl` job weekly before the digest; `pnl_weeks`; the prime-cost line at the top of the digest, or the connect prompt when inputs are missing.
-- [ ] A.6 Connections page (providers from `connector_providers`, OAuth, CSV drop zone with mapping preview, inbound address with copy, last sync and one-line errors).
-- [ ] A.7 Acceptance: 14 days of Square-format sales CSV and a payroll CSV, one invoice by inbound mail, `pnl` within 0.1 point of hand-computed fixtures, "Prime cost" first in the digest, and the connect prompt after one labor day is removed.
+- [x] A.1 Tables `connections` (used), `sales_days`, `sales_items`, `labor_days`, `pnl_weeks`, `csv_profiles`.
+- [x] A.2 `csv` adapter: Toast, Square and Clover exports by header sniffing; a generic column mapper saved per restaurant.
+- [x] A.3 `resend_inbound`: per-restaurant inbound address, sender allow-list, attachments become documents and invoices.
+- [x] A.4 `square` (OAuth, orders with cursor pagination, webhook) and `gusto` (OAuth, pay periods allocated to days) adapters with golden-file tests; `qbo` push behind the interface (never pull).
+- [x] A.5 `pnl` job weekly before the digest; `pnl_weeks`; the prime-cost line at the top of the digest, or the connect prompt when inputs are missing.
+- [x] A.6 Connections page (providers from `connector_providers`, OAuth, CSV drop zone with mapping preview, inbound address with copy, last sync and one-line errors).
+- [x] A.7 Acceptance (`test_acceptance_prime_cost_from_fixtures_and_the_connect_prompt_when_a_day_is_missing`): 14 days of Square-format sales CSV and a payroll CSV, one invoice by inbound mail, `pnl` within 0.1 point of hand-computed fixtures, "Prime cost" first in the digest, and the connect prompt after one labor day is removed.
+
+Notes. Square, Gusto and QuickBooks adapters run against golden fixtures and stubbed APIs; none has been exercised
+against a live sandbox (no credentials here). Clover and Toast are listed, not built. The Connections page has no
+browser test yet because the flag-gated nav item would race the navigation-order test; the backend acceptance covers
+the flow end to end. Found and fixed on the way: the Bill.com webhook, the Monday cron route and the "Not useful" mail
+link were mounted behind the sign-in dependency, so outside callers got 401; they are on a public router now.
 
 ## Phase B: documents, agreed prices, recipes, menu margin (branch `v2/phase-b-documents`, flag `v2_documents`)
 

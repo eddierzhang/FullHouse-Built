@@ -993,9 +993,25 @@ export type DigestCard = {
 
 export type DigestSection = { key: DigestSectionKey; label: string; total: number; cards: DigestCard[] }
 
+/** The week's prime cost at the top of the digest, or what to connect to see it. */
+export type PrimeLine = {
+  week_of: string
+  complete: boolean
+  prime_pct: number | null
+  food_pct: number | null
+  paper_pct: number | null
+  labor_pct: number | null
+  sales_net: number | null
+  labor_dollars: number | null
+  purchases: number
+  prompt: string | null
+}
+
 export type Digest = {
   id: string
   week_start: string
+  /** Present when connections are switched on for the restaurant. */
+  prime: PrimeLine | null
   total: number
   item_count: number
   supplier_count: number
@@ -1296,3 +1312,56 @@ export const listBookkeeperClients = () => get<BookkeeperClient[]>(`${PRICES}/bo
 export const listClientQuestions = (restaurantId: string) => get<AgentQuestion[]>(`${PRICES}/bookkeeper/clients/${restaurantId}/questions`)
 export const answerClientQuestion = (restaurantId: string, id: string, body: QuestionAnswer) =>
   send<AgentQuestion>('POST', `${PRICES}/bookkeeper/clients/${restaurantId}/questions/${id}/answer`, body)
+
+
+// --- v2: feature flags and connections --------------------------------------------------------
+
+export type Flags = { flags: Record<string, boolean>; descriptions: Record<string, string> }
+export const fetchFlags = () => get<Flags>('/api/v1/platform/flags')
+export const setFlag = (flag: string, enabled: boolean) => send<Flags>('PUT', '/api/v1/platform/flags', { flag, enabled })
+
+export type Provider = {
+  provider: string
+  kind: 'pos' | 'accounting' | 'payroll' | 'ap' | 'email'
+  label: string
+  auth: 'oauth' | 'api_key' | 'none' | 'partner'
+  capabilities: string[]
+  available: boolean
+  notes: string | null
+}
+export type Connection = {
+  id: string
+  provider: string
+  kind: string
+  status: 'active' | 'error' | 'revoked'
+  last_sync_at: string | null
+  error: string | null
+  settings: Record<string, unknown>
+}
+export type Inbound = { address: string | null; allowed_senders: string[]; last_refused_sender: string | null }
+export type ConnectOverview = { providers: Provider[]; connections: Connection[]; inbound: Inbound; csv_profiles: Record<string, unknown>[] }
+export type CsvPlan = {
+  format: string
+  capability: 'sales_days' | 'sales_items' | 'labor_days'
+  mapping: Record<string, string>
+  headers: string[]
+  row_count: number
+  days: number
+  first_date: string | null
+  last_date: string | null
+  preview: Record<string, unknown>[]
+  problems: { line: number; message: string }[]
+  ok: boolean
+  fields: { field: string; required: boolean }[]
+}
+export type CsvIn = { text: string; capability?: string | null; mapping?: Record<string, string> | null; save_profile?: boolean }
+
+const CONNECT = '/api/v1/connect'
+export const fetchConnect = () => get<ConnectOverview>(CONNECT)
+export const csvPreview = (input: CsvIn) => send<CsvPlan>('POST', `${CONNECT}/csv/preview`, input)
+export const csvImport = (input: CsvIn) => send<{ written: Record<string, number>; plan: CsvPlan }>('POST', `${CONNECT}/csv/import`, input)
+export const setInbound = (allowed_senders: string[]) => send<Inbound>('PUT', `${CONNECT}/inbound`, { allowed_senders })
+export const oauthStart = (provider: string) => get<{ url: string }>(`${CONNECT}/oauth/${provider}/start`)
+export const syncNow = (provider: string) => send<{ queued: boolean }>('POST', `${CONNECT}/${provider}/sync`)
+export const disconnect = (connectionId: string) => send<{ ok: boolean }>('DELETE', `${CONNECT}/connections/${connectionId}`)
+export const pushInvoiceToAccounting = (invoiceId: string) => send<{ queued: boolean; already_pushed: boolean }>('POST', `${CONNECT}/accounting/push/${invoiceId}`)
