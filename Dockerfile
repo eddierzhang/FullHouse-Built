@@ -31,6 +31,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     STATIC_DIR=/app/static \
     DEMO_MODE=true \
     SCRIPTED_STEP_DELAY_SECONDS=0.8 \
+    LOG_FORMAT=json \
+    STORAGE_DIR=/data/files \
     PORT=8000
 
 WORKDIR /app

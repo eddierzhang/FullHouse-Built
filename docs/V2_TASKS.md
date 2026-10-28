@@ -35,11 +35,11 @@ is a branch `v2/phase-<x>-<name>` merged back when its acceptance test passes. N
 
 ## Invariants (a test for each; every phase keeps them green)
 
-- [ ] I1 The agent writes only proposals: a session guard raises on any other tenant-table write inside a tool call; the forbidden-write test iterates every tenant table.
-- [ ] I2 Every tenant table has `restaurant_id` and an index that leads with it (schema-driven test); scope helpers on every route (separation test).
+- [x] I1 The agent writes only proposals: a session guard raises on any other tenant-table write inside a tool call; the forbidden-write test iterates every tenant table.
+- [x] I2 Every tenant table has `restaurant_id` and an index that leads with it (schema-driven test); scope helpers on every route (separation test).
 - [ ] I3 Every action lands in `change_log` with before/after; connector syncs log as `system`.
 - [ ] I4 Every outside write (webhook, sync, inbound mail, cron) is idempotent on an external key (replay tests).
-- [ ] I5 No price on `price_item_aliases`; no "market" price anywhere; agreed prices are restaurant-scoped and come from the restaurant's documents.
+- [x] I5 No price on `price_item_aliases`; no "market" price anywhere; agreed prices are restaurant-scoped and come from the restaurant's documents.
 - [ ] I6 The digest is the product: new modules add cards or one line; no new dashboards for them.
 - [ ] I7 Nothing new requires inventory counts.
 - [ ] I8 Humans send: no agent path emails a supplier, sends a PO, pushes to payroll or calls a connector write.
@@ -48,16 +48,21 @@ is a branch `v2/phase-<x>-<name>` merged back when its acceptance test passes. N
 
 ## Phase 0: platform (branch `v2/phase-0-platform`, flag: none; always on)
 
-- [ ] 0.1 `restaurant_flags` table, `app/flags.py`, `GET/PUT /api/v1/restaurant/flags` (owner), `python -m app.flags enable <email-or-id> <flag>`.
-- [ ] 0.2 `events` table and `app/events.py` (`emit`, subscribers → jobs).
-- [ ] 0.3 `jobs` table and `app/jobs` (enqueue with singleton key; worker loop with leasing, retries, backoff, lease recovery; queues ingest, extract, normalize, detect, digest, sync, forecast, agent; in-process worker thread; `python -m app.worker`).
-- [ ] 0.4 Agent runs execute as `agent` jobs; `agent_runs` gains tokens_in, tokens_out, cost_usd; at most 2 concurrent runs per restaurant; the web process only enqueues.
-- [ ] 0.5 `webhook_inbox`; the Bill.com webhook writes raw and enqueues a sync job; the same webhook twice yields one invoice.
-- [ ] 0.6 `app/connectors`: `Connector` interface, `TenantContext`, `connector_providers` (global) and `connections` tables, credentials encrypted at rest with decryption only in the worker module, Bill.com behind the interface unchanged.
-- [ ] 0.7 `app/storage.py`: local disk by default, S3 when configured, keys `{restaurant_id}/{doc_type}/{uuid}`, signed 15-minute URLs.
-- [ ] 0.8 Agent write guard (I1) and the schema-driven invariant tests (I2, I5).
-- [ ] 0.9 Structured JSON logs carrying restaurant_id / job_id / run_id; `/healthz`; `/api/v1/admin/ops` (superusers) with plain tables.
-- [ ] 0.10 Acceptance: the existing suites pass with the worker executing; a worker killed mid-run and restarted completes the run with no duplicate rows; the same Bill.com webhook twice yields one invoice.
+- [x] 0.1 `restaurant_flags` table, `app/flags.py`, `GET/PUT /api/v1/restaurant/flags` (owner), `python -m app.flags enable <email-or-id> <flag>`.
+- [x] 0.2 `events` table and `app/events.py` (`emit`, subscribers → jobs).
+- [x] 0.3 `jobs` table and `app/jobs` (enqueue with singleton key; worker loop with leasing, retries, backoff, lease recovery; queues ingest, extract, normalize, detect, digest, sync, forecast, agent; in-process worker thread; `python -m app.worker`).
+- [x] 0.4 Agent runs execute as `agent` jobs; `agent_runs` gains tokens_in, tokens_out, cost_usd; at most 2 concurrent runs per restaurant; the web process only enqueues.
+- [x] 0.5 `webhook_inbox`; the Bill.com webhook writes raw and enqueues a sync job; the same webhook twice yields one invoice.
+- [x] 0.6 `app/connectors`: `Connector` interface, `TenantContext`, `connector_providers` (global) and `connections` tables, credentials encrypted at rest with decryption only in the worker module, Bill.com behind the interface unchanged.
+- [x] 0.7 `app/storage.py`: local disk by default, S3 when configured, keys `{restaurant_id}/{doc_type}/{uuid}`, signed 15-minute URLs.
+- [x] 0.8 Agent write guard (I1) and the schema-driven invariant tests (I2, I5).
+- [x] 0.9 Structured JSON logs carrying restaurant_id / job_id / run_id; `/healthz`; `/api/v1/admin/ops` (superusers) with plain tables.
+- [ ] 0.10 Acceptance: the existing suites pass with the worker executing (backend 569 green; browser suite running); a worker killed mid-run and restarted completes the run with no duplicate rows (`test_a_lease_left_by_a_dead_worker_is_recovered_and_the_job_runs_once_more`); the same Bill.com webhook twice yields one invoice (`test_the_same_billcom_webhook_twice_yields_one_pull_and_one_invoice`).
+
+Notes. The agent's own summaries of customer requests (`customer_service_reviews`, `customer_action_items`) are
+allowed through the write guard beside the conversation: they are the agent's words for managers to read, not a
+change to operations. Cancellation of a run is in-process; a separate worker process does not see a cancel asked
+for on the web process.
 
 ## Phase A: connect and prime cost (branch `v2/phase-a-connect`, flag `v2_connect`)
 
