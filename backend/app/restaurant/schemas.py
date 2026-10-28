@@ -394,11 +394,29 @@ class StockChangeOut(BaseModel):
     adjustment: StockAdjustmentOut | None
 
 
+class PurchaseOrderLineOut(BaseModel):
+    id: str
+    item_id: str | None
+    inventory_item_id: str | None
+    description: str
+    qty: float
+    unit: str
+    units: float | None
+    unit_price_expected: float | None
+    received_qty: float | None
+    invoice_line_id: str | None
+
+
 class PurchaseOrderOut(BaseModel):
-    """An order placed with a supplier, wherever it is between placing and receipt."""
+    """An order with a supplier, wherever it is between drafting and receipt."""
 
     id: str
-    inventory_item_id: str
+    lines: list[PurchaseOrderLineOut] = []
+    sent_at: datetime | None = None
+    sent_by: str | None = None
+    rep_email: str | None = None
+    #: Empty for an order with lines.
+    inventory_item_id: str | None
     item_name: str
     unit: str
     quantity: float
@@ -407,7 +425,7 @@ class PurchaseOrderOut(BaseModel):
     supplier_id: str | None
     supplier_name: str | None
     estimated_cost: float | None
-    status: Literal["ordered", "shipped", "received", "cancelled"]
+    status: Literal["draft", "ordered", "shipped", "received", "cancelled"]
     ordered_at: datetime
     expected_on: date | None
     shipped_at: datetime | None
@@ -437,6 +455,12 @@ class PurchaseOrderCreate(BaseModel):
 
 class OrderShippedIn(BaseModel):
     expected_on: date | None = None
+
+
+class OrderSendIn(BaseModel):
+    """Who to mail it to; unset means the supplier's remembered rep."""
+
+    to: str | None = Field(default=None, max_length=254)
 
 
 class OrderReceiveIn(BaseModel):

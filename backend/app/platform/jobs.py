@@ -31,7 +31,7 @@ from app.platform.models import ACTIVE, DONE, FAILED, QUEUED, Job
 
 logger = logging.getLogger(__name__)
 
-QUEUES = ("ingest", "extract", "normalize", "detect", "digest", "sync", "forecast", "agent", "pnl")
+QUEUES = ("ingest", "extract", "normalize", "detect", "digest", "sync", "forecast", "agent", "pnl", "workflow")
 #: Agent runs in flight per restaurant at once; beyond this they wait in the queue.
 AGENT_RUNS_PER_RESTAURANT = 2
 BACKOFF_BASE_SECONDS = 5
@@ -58,13 +58,19 @@ def _now() -> datetime:
 def enqueue(db: Session, queue: str, singleton_key: str, payload: dict | None = None, *,
             restaurant_id: str | None = None, run_after: datetime | None = None, max_attempts: int = 5) -> Job:
     """Queue a job, or return the one already queued or active under the same key. Flushes, doesn't commit."""
+    return enqueue_new(db, queue, singleton_key, payload, restaurant_id=restaurant_id, run_after=run_after, max_attempts=max_attempts)[0]
+
+
+def enqueue_new(db: Session, queue: str, singleton_key: str, payload: dict | None = None, *,
+                restaurant_id: str | None = None, run_after: datetime | None = None, max_attempts: int = 5) -> tuple[Job, bool]:
+    """Like `enqueue`, and says whether this call made the job (False: one was already open under the key)."""
     if queue not in QUEUES:
         raise ValueError(f"Unknown queue {queue!r}")
     existing = (
         db.query(Job).filter(Job.singleton_key == singleton_key, Job.status.in_((QUEUED, ACTIVE))).first()
     )
     if existing is not None:
-        return existing
+        return existing, False
     job = Job(restaurant_id=restaurant_id, queue=queue, singleton_key=singleton_key, payload=payload or {},
               run_after=run_after or _now(), max_attempts=max_attempts)
     db.add(job)
@@ -74,8 +80,8 @@ def enqueue(db: Session, queue: str, singleton_key: str, payload: dict | None = 
     except IntegrityError:
         # Two requests enqueued the same key at once: the other one is the job.
         db.expunge(job)
-        return db.query(Job).filter(Job.singleton_key == singleton_key, Job.status.in_((QUEUED, ACTIVE))).one()
-    return job
+        return db.query(Job).filter(Job.singleton_key == singleton_key, Job.status.in_((QUEUED, ACTIVE))).one(), False
+    return job, True
 
 
 def recover_leases(db: Session) -> int:

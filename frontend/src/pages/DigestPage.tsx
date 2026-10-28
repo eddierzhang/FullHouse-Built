@@ -189,6 +189,16 @@ export function DigestPage({ app }: { app: AppContext }) {
                 </a>
               )}
 
+              {(d.forecast_accuracy !== null && d.forecast_accuracy !== undefined) && (
+                <p className="pi-secondary" data-testid="forecast-accuracy">
+                  Forecast accuracy last week: {d.forecast_accuracy}%
+                </p>
+              )}
+              {!!d.recovered_to_date && (
+                <p className="pi-secondary" data-testid="recovered">
+                  Recovered to date: <Money value={d.recovered_to_date} />
+                </p>
+              )}
               <p className="pi-label">
                 Week of {shortDate(d.week_start)}.
                 {d.invoices_through && ` Invoices through ${shortDate(d.invoices_through)}`}

@@ -612,6 +612,10 @@ def build_digest(db: Session, restaurant_id: str | None, today: date | None = No
         from app.recipes import engine as recipes
 
         cards.extend(recipes.menu_cards(db, restaurant_id, today))
+    if flags.enabled(db, restaurant_id, flags.V2_ORDERS):
+        from app.restaurant import orders as orders_module
+
+        cards.extend(orders_module.short_delivery_cards(db, restaurant_id, today))
     cards.sort(key=lambda c: -c["impact"])
     through = (
         db.query(Invoice.invoice_date).filter(Invoice.restaurant_id == restaurant_id, Invoice.invoice_date <= today)
@@ -643,6 +647,28 @@ def latest_digest(db: Session, restaurant_id: str | None, today: date | None = N
     return digest or build_digest(db, restaurant_id, today)
 
 
+def recovered_to_date(db: Session, restaurant_id: str | None) -> float | None:
+    """The dollars a week of every card that was acted on: the item moved, or a message to the rep sent.
+    Summed over past digests; None until there is one."""
+    rows = db.query(PriceDigest).filter(PriceDigest.restaurant_id == restaurant_id).order_by(PriceDigest.week_start).all()
+    if not rows:
+        return None
+    sent_after: dict[str, date] = {}
+    for draft in db.query(OutreachDraft).filter(OutreachDraft.restaurant_id == restaurant_id, OutreachDraft.sent_at.isnot(None)):
+        day = draft.sent_at.date()
+        sent_after[draft.item_id] = min(sent_after.get(draft.item_id, day), day)
+    moved: dict[str, date] = {i.id: i.moved_at.date() for i in db.query(PriceItem).filter(PriceItem.restaurant_id == restaurant_id, PriceItem.moved_at.isnot(None))}
+    total = 0.0
+    for digest in rows:
+        for card in digest.cards:
+            item_id = card.get("item_id")
+            acted = (card["section"] == "switch" and item_id in moved and moved[item_id] >= digest.week_start) or \
+                    (card["section"] in ("up", "owed") and item_id in sent_after and sent_after[item_id] >= digest.week_start)
+            if acted:
+                total += float(card.get("impact") or 0)
+    return round(total, 2)
+
+
 def sections_for(db: Session, restaurant_id: str | None) -> list[str]:
     """The three sections always; menu margin and coming due once their phases are on."""
     from app.platform import flags
@@ -656,6 +682,7 @@ def sections_for(db: Session, restaurant_id: str | None) -> list[str]:
 
 
 def digest_out(db: Session, digest: PriceDigest) -> schemas.DigestOut:
+    from app.platform import flags
     from app.sales import pnl
 
     # Monday's digest reports on the week just ended: the one before the digest's own week.
@@ -674,8 +701,12 @@ def digest_out(db: Session, digest: PriceDigest) -> schemas.DigestOut:
         s.name for s in db.query(Supplier).filter(Supplier.restaurant_id == digest.restaurant_id)
         if any(src.label.endswith(f", {s.name}") for c in cards for src in c.sources)
     })
+    from app.forecast import engine as forecast
+
+    accuracy = forecast.accuracy_last_week(db, digest.restaurant_id, digest.week_start) if flags.enabled(db, digest.restaurant_id, flags.V2_ORDERS) else None
     return schemas.DigestOut(
         prime=schemas.PrimeLine(**prime) if prime else None,
+        forecast_accuracy=accuracy, recovered_to_date=recovered_to_date(db, digest.restaurant_id),
         id=digest.id, week_start=digest.week_start, total=digest.total, item_count=digest.item_count,
         supplier_count=digest.supplier_count, sections=sections, hidden_count=len(hidden), questions_open=open_count,
         built_at=digest.built_at, invoices_through=digest.invoices_through, supplier_names=names,

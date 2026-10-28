@@ -56,7 +56,7 @@ EXCLUDED_TABLES = frozenset({
     # connections, whose row holds encrypted credentials that must never be copied into a history.
     "jobs", "events", "webhook_inbox", "connections",
     # Day totals from connectors arrive by the hundred; the sync is the event, logged as system.
-    "sales_days", "sales_items", "labor_days", "pnl_weeks", "plate_costs",
+    "sales_days", "sales_items", "labor_days", "pnl_weeks", "plate_costs", "forecasts", "forecast_errors",
 })
 
 #: Key under which half-built rows wait on `Session.info` between the two events.

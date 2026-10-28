@@ -143,21 +143,36 @@ def book_deliveries(db: Session, restaurant_id: str | None, today: date) -> list
     with actor_context(Actor(type=AGENT, id=AGENT_KEY, restaurant_id=restaurant_id)):
         for line, invoice in rows:
             item = db.get(PriceItem, line.item_id)
-            stock = db.get(InventoryItem, item.inventory_item_id) if item and item.inventory_item_id else None
-            if stock is None or stock.restaurant_id != restaurant_id:
+            if item is None:
                 continue
-            factor = units_factor(item, stock)
+            stock = db.get(InventoryItem, item.inventory_item_id) if item.inventory_item_id else None
+            if stock is not None and stock.restaurant_id != restaurant_id:
+                stock = None
+            factor = units_factor(item, stock) if stock is not None else None
+            packs = line.delivered_qty if line.delivered_qty is not None else line.qty
+            supplier_name = suppliers.get(line.supplier_id, "Supplier")
+            note = f"{supplier_name} invoice of {engine.short_date(invoice.invoice_date)}: {line.description}"
+            # A line of an order sent from here: the invoice is its delivery, and receives that line, whether or
+            # not the item is counted in Inventory.
+            found = orders.open_line_for(db, restaurant_id, item.id, stock.id if stock else None, line.supplier_id, invoice.invoice_date)
+            if found is not None:
+                order, po_line = found
+                units = round(packs * line.pack_size * factor, 6) if factor else 0.0
+                orders.receive_line(db, order, po_line, packs, units, note, AGENT_KEY, invoice_line_id=line.id)
+                line.stocked_at = now
+                booked.append(line)
+                continue
+            if stock is None:
+                line.stocked_at = now  # not counted in Inventory: nothing to book, and no need to look again
+                continue
             if factor is None:
                 continue  # counted in a unit the invoice can't be read in; said on the item's page
-            packs = line.delivered_qty if line.delivered_qty is not None else line.qty
             units = round(packs * line.pack_size * factor, 6)
             if units <= 0:
                 line.stocked_at = now
                 continue
-            supplier_name = suppliers.get(line.supplier_id, "Supplier")
-            note = f"{supplier_name} invoice of {engine.short_date(invoice.invoice_date)}: {line.description}"
             # An order placed for this item: the invoice is its delivery, and receives it.
-            order = orders.open_for(db, restaurant_id, stock.id, line.supplier_id)
+            order = orders.open_for(db, restaurant_id, stock.id, line.supplier_id, invoice.invoice_date)
             if order is not None:
                 orders.receive(db, order, quantity=units, note=note, received_by=AGENT_KEY, invoice_line_id=line.id)
                 line.stocked_at = now

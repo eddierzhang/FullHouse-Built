@@ -49,14 +49,16 @@ def test_approving_a_reorder_places_an_order_and_receiving_it_restocks(client, d
     response = client.post(f"/api/v1/agents/actions/{action.id}/approve")
     assert response.status_code == 200
 
-    # Approval places the order. The stock figure waits for the delivery.
+    # Approval drafts the order; a person sends it. The stock figure waits for the delivery.
     db.refresh(stock)
     assert stock.quantity_on_hand == 8.0
     assert response.json()["status"] == "approved"
-    assert response.json()["applied_result"].startswith("Ordered 20 lb of Chicken Breast, expected ")
+    assert response.json()["applied_result"].startswith("Drafted an order for 20 lb of Chicken Breast, expected ")
     assert "booked when it is received" in response.json()["applied_result"]
     order = db.query(PurchaseOrder).one()
-    assert (order.status, order.quantity, order.unit, order.action_id) == ("ordered", 20, "lb", action.id)
+    assert (order.status, order.quantity, order.unit, order.action_id, order.sent_at) == ("draft", 20, "lb", action.id, None)
+    placed = client.post(f"/api/v1/restaurant/purchase-orders/{order.id}/mark-sent")
+    assert placed.status_code == 200 and placed.json()["status"] == "ordered" and placed.json()["sent_by"]
     assert changes(entity_type="inventory_items", operation="update") == []
     assert changes(entity_type="purchase_orders", operation="insert")[-1].agent_action_id == action.id
 
@@ -223,8 +225,8 @@ def test_purchase_order_places_the_order_with_the_supplier_named(db, proposal, s
 
     result = apply_action(db, action)
 
-    assert result.startswith("Ordered 12 lb of Chicken Breast from Bay Foods, expected ")
+    assert result.startswith("Drafted an order for 12 lb of Chicken Breast from Bay Foods, expected ")
     db.refresh(stock)
     assert stock.quantity_on_hand == 8.0
     order = db.query(PurchaseOrder).one()
-    assert (order.supplier_name, order.quantity, order.status) == ("Bay Foods", 12, "ordered")
+    assert (order.supplier_name, order.quantity, order.status) == ("Bay Foods", 12, "draft")

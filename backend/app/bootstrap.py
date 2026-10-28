@@ -18,6 +18,7 @@ def setup() -> None:
     from app.sales import models as _sales_models  # noqa: F401
     from app.documents import models as _document_models  # noqa: F401
     from app.recipes import models as _recipe_models  # noqa: F401
+    from app.forecast import models as _forecast_models  # noqa: F401
 
     from app.agents import guard
 

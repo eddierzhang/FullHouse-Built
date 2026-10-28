@@ -77,7 +77,7 @@ def _place_order(db: Session, payload: dict, action: AgentAction | None) -> str:
         order = orders.place(
             db, item, quantity, supplier=supplier, packs=packs, pack_unit=payload.get("pack_unit") if packs else None,
             estimated_cost=cost, note=payload.get("note") or None, action_id=action.id if action else None,
-            supplier_name=payload.get("supplier_name") or None,
+            supplier_name=payload.get("supplier_name") or None, status=orders.DRAFT,
         )
     except orders.OrderError as exc:
         raise ApplyError(str(exc)) from exc
@@ -87,9 +87,27 @@ def _place_order(db: Session, payload: dict, action: AgentAction | None) -> str:
     where = f" from {order.supplier_name}" if order.supplier_name else ""
     due = f", expected {order.expected_on.strftime('%a %b %-d')}" if order.expected_on else ""
     return (
-        f"Ordered {amount} of {item.name}{where}{due}. Stock is booked when it is received: "
-        f"on the Inventory page under On order, or by its invoice."
+        f"Drafted an order for {amount} of {item.name}{where}{due}. Send it to the rep, or mark it placed, under On order on "
+        f"the Inventory page; stock is booked when it is received, there or by its invoice."
     )
+
+
+def _draft_lines(db: Session, payload: dict, action: AgentAction | None) -> str:
+    """A drafted order of several lines to one supplier, from the weekly draft or the agent's tool."""
+    from app.restaurant.inventory import site_scope
+
+    supplier = restaurant_crud.get_supplier(db, _require(payload, "supplier_id"))
+    if supplier is None:
+        raise ApplyError("No such supplier")
+    try:
+        order = orders.draft_with_lines(db, site_scope(db), supplier, list(payload.get("lines") or []),
+                                        note=(payload.get("note") or "")[:255] or None, action_id=action.id if action else None)
+    except orders.OrderError as exc:
+        raise ApplyError(str(exc)) from exc
+    lines = len(order.lines)
+    cost = f", about {order.estimated_cost:.2f}" if order.estimated_cost else ""
+    return (f"Drafted an order of {lines} line{'s' if lines != 1 else ''} to {supplier.name}{cost}. Send it to the rep from On order "
+            f"on the Inventory page, or from the order's own page. Nothing has been sent.")
 
 
 def apply_inventory_reorder(db: Session, payload: dict, action: AgentAction | None = None) -> str:
@@ -97,7 +115,17 @@ def apply_inventory_reorder(db: Session, payload: dict, action: AgentAction | No
 
 
 def apply_purchase_order(db: Session, payload: dict, action: AgentAction | None = None) -> str:
+    if payload.get("lines"):
+        return _draft_lines(db, payload, action)
     return _place_order(db, payload, action)
+
+
+def apply_prep_sheet(db: Session, payload: dict, action: AgentAction | None = None) -> str:
+    from app.forecast import prep
+    from app.restaurant.inventory import site_scope
+
+    sheet = prep.write_sheet(db, site_scope(db), payload, action.id if action else None)
+    return f"Prep sheet for {sheet.date.isoformat()} confirmed: {len(sheet.lines)} ingredients. Print it from its page."
 
 
 def apply_shift_change(db: Session, payload: dict) -> str:
@@ -284,6 +312,7 @@ APPLIERS = {
     "recipe": apply_recipe,
     "agreed_price": apply_agreed_price,
     "menu_reprice": apply_menu_reprice,
+    "prep_sheet": apply_prep_sheet,
 }
 
 
@@ -298,7 +327,7 @@ def apply_action(db: Session, action: AgentAction) -> str:
             f"No applier for action_type {action.action_type!r}; "
             f"known types: {', '.join(sorted(APPLIERS))}"
         )
-    if action.action_type in ("inventory_reorder", "purchase_order"):
+    if action.action_type in ("inventory_reorder", "purchase_order", "prep_sheet"):
         return applier(db, action.payload or {}, action)
     return applier(db, action.payload or {})
 

@@ -167,6 +167,9 @@ def complete_setup(db: Session, user: User) -> Restaurant:
         _stamp(restaurant, user)
         user.restaurant_id = restaurant.id
         _schedule_agents(db, restaurant)
+        from app.platform import workflows
+
+        workflows.ensure_defaults(db, restaurant.id)
         db.commit()
         db.refresh(restaurant)
         _resync_scheduler()

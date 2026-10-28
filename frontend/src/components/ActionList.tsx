@@ -76,6 +76,35 @@ export function ActionList({ app, actions, compact = false, onChanged }: Props) 
                   ))}
                 </ul>
               )}
+              {!compact && action.action_type === 'purchase_order' && Array.isArray(action.payload.lines) && (
+                <table className="table small" style={{ marginTop: 8 }} aria-label="Order lines">
+                  <tbody>
+                    {(action.payload.lines as { description: string; qty: number; unit: string; unit_price_expected: number | null }[]).map((l, i) => (
+                      <tr key={i}>
+                        <td>{l.description}</td>
+                        <td className="num">{l.qty} {l.unit}</td>
+                        <td className="num">{l.unit_price_expected != null ? `$${l.unit_price_expected.toFixed(2)}` : ''}</td>
+                      </tr>
+                    ))}
+                    {action.payload.expected_total != null && (
+                      <tr>
+                        <td className="strong">Expected total</td>
+                        <td />
+                        <td className="num strong">${Number(action.payload.expected_total).toFixed(2)}</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              )}
+              {!compact && action.action_type === 'prep_sheet' && Array.isArray(action.payload.lines) && (
+                <ul className="small" style={{ margin: '8px 0 0 16px', padding: 0 }} aria-label="Prep lines">
+                  {(action.payload.lines as { item_name: string; qty: number; unit: string }[]).slice(0, 12).map((l, i) => (
+                    <li key={i}>
+                      {l.item_name}: {l.qty} {l.unit}
+                    </li>
+                  ))}
+                </ul>
+              )}
               {!compact && action.action_type === 'menu_reprice' && (
                 <div className="small" style={{ marginTop: 6 }}>
                   Plate cost {action.payload.plate_cost_before != null ? `$${Number(action.payload.plate_cost_before).toFixed(2)} → ` : ''}

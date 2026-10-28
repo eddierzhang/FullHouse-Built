@@ -238,8 +238,12 @@ def record_stock_change(
 # --- purchase orders -------------------------------------------------------------------
 
 
-def _order_out(order: PurchaseOrder, today: date | None = None) -> schemas.PurchaseOrderOut:
+def _order_out(order: PurchaseOrder, today: date | None = None, rep_email: str | None = None) -> schemas.PurchaseOrderOut:
     return schemas.PurchaseOrderOut(
+        lines=[schemas.PurchaseOrderLineOut(id=l.id, item_id=l.item_id, inventory_item_id=l.inventory_item_id, description=l.description,
+                                            qty=l.qty, unit=l.unit, units=l.units, unit_price_expected=l.unit_price_expected,
+                                            received_qty=l.received_qty, invoice_line_id=l.invoice_line_id) for l in order.lines],
+        sent_at=order.sent_at, sent_by=order.sent_by, rep_email=rep_email,
         id=order.id, inventory_item_id=order.inventory_item_id, item_name=order.item_name, unit=order.unit,
         quantity=order.quantity, packs=order.packs, pack_unit=order.pack_unit, supplier_id=order.supplier_id,
         supplier_name=order.supplier_name, estimated_cost=order.estimated_cost, status=order.status,
@@ -286,6 +290,45 @@ def place_purchase_order(payload: schemas.PurchaseOrderCreate, user: User = Depe
         raise HTTPException(422, str(exc)) from exc
     db.commit()
     _after_stock_change(db, item.restaurant_id, f"{item.name} ordered")
+    return _order_out(order)
+
+
+@router.get("/purchase-orders/{order_id}", response_model=schemas.PurchaseOrderOut)
+def get_purchase_order(order_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from app.restaurant import po_mail
+
+    order = _order_or_404(db, user, order_id)
+    return _order_out(order, rep_email=po_mail.rep_email(db, order))
+
+
+@router.post("/purchase-orders/{order_id}/send", response_model=schemas.PurchaseOrderOut)
+def send_purchase_order(order_id: str, payload: schemas.OrderSendIn | None = None, user: User = Depends(manager), db: Session = Depends(get_db)):
+    """Mail a drafted order to the rep, with a PDF, and mark it sent. Owners and admins; never the agent."""
+    from app.restaurant import po_mail
+
+    order = _order_or_404(db, user, order_id)
+    to = (payload.to.strip() if payload and payload.to else None) or po_mail.rep_email(db, order)
+    if not to:
+        raise HTTPException(422, "No address for the rep. Give one, or remember the rep on a draft message first.")
+    if order.status != orders.DRAFT:
+        raise HTTPException(409, f"This order is already {order.status}.")
+    restaurant = db.get(profile.Restaurant, order.restaurant_id) if order.restaurant_id else None
+    delivered = po_mail.send(db, order, [to], restaurant)
+    orders.mark_sent(db, order, sent_by=user.email)
+    order.note = f"{order.note + '. ' if order.note else ''}{'Sent' if delivered else 'Written to the server log (no mailbox on this site)'} to {to}."[:255]
+    db.commit()
+    return _order_out(order, rep_email=to)
+
+
+@router.post("/purchase-orders/{order_id}/mark-sent", response_model=schemas.PurchaseOrderOut)
+def mark_purchase_order_sent(order_id: str, user: User = Depends(manager), db: Session = Depends(get_db)):
+    """Placed by phone or in the supplier's portal: the draft becomes an order without a mail."""
+    order = _order_or_404(db, user, order_id)
+    try:
+        orders.mark_sent(db, order, sent_by=user.email)
+    except orders.OrderError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    db.commit()
     return _order_out(order)
 
 

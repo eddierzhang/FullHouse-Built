@@ -20,6 +20,7 @@ from app.connectors import models as connector_models  # noqa: E402,F401
 from app.sales import models as sales_models  # noqa: E402,F401
 from app.documents import models as document_models  # noqa: E402,F401
 from app.recipes import models as recipe_models  # noqa: E402,F401
+from app.forecast import models as forecast_models  # noqa: E402,F401
 from app.support import models as support_models  # noqa: E402,F401
 from app.restaurant import models as restaurant_models  # noqa: E402,F401
 from app.db.session import Base, normalize_database_url  # noqa: E402

@@ -11,6 +11,8 @@ import {
   canEditRestaurant,
   cancelOrder,
   createInventoryItem,
+  markOrderSent,
+  sendOrder,
   fetchSupplyChain,
   listInventoryItems,
   listPurchaseOrders,
@@ -483,6 +485,7 @@ export function InventoryPage({ app, user }: { app: AppContext; user: User }) {
 }
 
 const ORDER_BADGE: Record<PurchaseOrder['status'], { label: string; badge: string }> = {
+  draft: { label: 'Draft', badge: 'badge-brand' },
   ordered: { label: 'Ordered', badge: 'badge-warning' },
   shipped: { label: 'Shipped', badge: 'badge-info' },
   received: { label: 'Received', badge: 'badge-success' },
@@ -531,7 +534,16 @@ function OrdersCard({
   }
 
   const amount = (o: PurchaseOrder) =>
-    o.packs && o.pack_unit ? `${qty(o.packs)} ${plural(o.pack_unit, o.packs)} (${qty(o.quantity)} ${o.unit})` : `${qty(o.quantity)} ${o.unit}`
+    o.lines.length > 0
+      ? `${o.lines.length} ${o.lines.length === 1 ? 'line' : 'lines'}`
+      : o.packs && o.pack_unit
+        ? `${qty(o.packs)} ${plural(o.pack_unit, o.packs)} (${qty(o.quantity)} ${o.unit})`
+        : `${qty(o.quantity)} ${o.unit}`
+  const sendTo = async (o: PurchaseOrder) => {
+    const to = o.rep_email ?? window.prompt(`Send the order to ${o.supplier_name ?? 'the supplier'} at which address?`)
+    if (!to) return
+    await act(o.id, () => sendOrder(o.id, to), `${o.item_name}: sent to ${to}`)
+  }
 
   return (
     <section className="card" id="on-order" aria-labelledby="orders-title">
@@ -541,7 +553,7 @@ function OrdersCard({
             On order
           </h2>
           <div className="card-subtitle">
-            Placed with suppliers and not yet here. Receiving one books it into stock; the invoice for it does the same on its own.
+            Drafted, placed with suppliers, and not yet here. A draft is sent to the rep from here (or marked placed by phone); receiving one books it into stock, and the invoice for it does the same on its own.
           </div>
         </div>
         <div className="row">
@@ -592,14 +604,19 @@ function OrdersCard({
                 </thead>
                 <tbody>
                   {orders.map((o) => {
-                    const open = o.status === 'ordered' || o.status === 'shipped'
+                    const open = o.status === 'draft' || o.status === 'ordered' || o.status === 'shipped'
                     const badge = o.overdue ? { label: 'Overdue', badge: 'badge-danger' } : ORDER_BADGE[o.status]
                     const busy = busyId === o.id
                     return (
                       <Fragment key={o.id}>
                         <tr className={o.overdue ? 'highlight' : undefined}>
                           <td data-label="Item">
-                            <div className="cell-title">{o.item_name}</div>
+                            <div className="cell-title">
+                              <a href={`#po/${o.id}`}>{o.item_name}</a>
+                            </div>
+                            {o.lines.length > 0 && (
+                              <div className="cell-sub">{o.lines.map((l) => `${qty(l.qty)} ${l.unit} ${l.description}`).slice(0, 3).join(' · ')}{o.lines.length > 3 ? ' · …' : ''}</div>
+                            )}
                             {o.note && <div className="cell-sub">{o.note}</div>}
                           </td>
                           <td data-label="Amount">
@@ -641,6 +658,21 @@ function OrdersCard({
                                 >
                                   Receive
                                 </button>
+                                {o.status === 'draft' && canManage && (
+                                  <>
+                                    <button className="btn btn-primary btn-sm" disabled={busy} aria-label={`Send ${o.item_name} to the rep`} onClick={() => void sendTo(o)}>
+                                      Send to rep
+                                    </button>
+                                    <button
+                                      className="btn btn-ghost btn-sm"
+                                      disabled={busy}
+                                      aria-label={`Mark ${o.item_name} as placed`}
+                                      onClick={() => void act(o.id, () => markOrderSent(o.id), `${o.item_name}: marked as placed`)}
+                                    >
+                                      Placed by phone
+                                    </button>
+                                  </>
+                                )}
                                 {o.status === 'ordered' && (
                                   <button
                                     className="btn btn-ghost btn-sm"

@@ -7,6 +7,7 @@ from sqlalchemy import (
     Date,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -65,9 +66,10 @@ class InventoryItem(Base):
     supplier: Mapped[Supplier | None] = relationship()
 
 
-#: A purchase order's life: placed, on its way, in the stock figures, or called off.
-ORDERED, SHIPPED, RECEIVED, CANCELLED = "ordered", "shipped", "received", "cancelled"
-OPEN_ORDER_STATUSES = (ORDERED, SHIPPED)
+#: A purchase order's life: drafted (approved, not yet sent), placed with the supplier, on its way,
+#: in the stock figures, or called off.
+DRAFT, ORDERED, SHIPPED, RECEIVED, CANCELLED = "draft", "ordered", "shipped", "received", "cancelled"
+OPEN_ORDER_STATUSES = (DRAFT, ORDERED, SHIPPED)
 
 
 class PurchaseOrder(Base):
@@ -86,9 +88,10 @@ class PurchaseOrder(Base):
         ForeignKey("restaurants.id", name="fk_purchase_orders_restaurant_id_restaurants"), nullable=True, index=True
     )
     supplier_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("suppliers.id"), nullable=True)
-    inventory_item_id: Mapped[str] = mapped_column(
+    #: The one stock item, for an order of one thing; an order with lines leaves it empty.
+    inventory_item_id: Mapped[str | None] = mapped_column(
         String(32), ForeignKey("inventory_items.id", name="fk_purchase_orders_inventory_item_id_inventory_items"),
-        nullable=False, index=True,
+        nullable=True, index=True,
     )
     #: As they read when the order was placed, so a renamed item or supplier doesn't rewrite the record.
     item_name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -100,6 +103,9 @@ class PurchaseOrder(Base):
     estimated_cost: Mapped[float | None] = mapped_column(Float, nullable=True)
     status: Mapped[str] = mapped_column(String(12), default=ORDERED, nullable=False, index=True)
     ordered_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now, nullable=False)
+    #: When a person sent it to the supplier (by mail from here, or marked as placed by phone), and who.
+    sent_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    sent_by: Mapped[str | None] = mapped_column(String(254), nullable=True)
     expected_on: Mapped[date | None] = mapped_column(Date, nullable=True)
     shipped_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
     received_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
@@ -115,8 +121,35 @@ class PurchaseOrder(Base):
     received_by: Mapped[str | None] = mapped_column(String(254), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now, onupdate=_now, nullable=False)
 
-    item: Mapped[InventoryItem] = relationship()
+    item: Mapped[InventoryItem | None] = relationship()
     supplier: Mapped[Supplier | None] = relationship()
+    lines: Mapped[list["PurchaseOrderLine"]] = relationship(back_populates="order", cascade="all, delete-orphan",
+                                                            order_by="PurchaseOrderLine.position")
+
+
+class PurchaseOrderLine(Base):
+    """One line of a drafted order: an item (as the invoices name it), how many packs, at what expected price."""
+
+    __tablename__ = "po_lines"
+    __table_args__ = (Index("ix_po_lines_restaurant_order", "restaurant_id", "po_id"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    restaurant_id: Mapped[str | None] = mapped_column(ForeignKey("restaurants.id", name="fk_po_lines_restaurant"), nullable=True)
+    po_id: Mapped[str] = mapped_column(ForeignKey("purchase_orders.id", name="fk_po_lines_order", ondelete="CASCADE"), nullable=False)
+    position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    #: The price item (what the invoices call it) and, when it is counted, the stock item.
+    item_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    inventory_item_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("inventory_items.id"), nullable=True)
+    description: Mapped[str] = mapped_column(String(200), nullable=False)
+    #: Packs ordered, and the pack's name; `units` is the quantity in the item's unit.
+    qty: Mapped[float] = mapped_column(Float, nullable=False)
+    unit: Mapped[str] = mapped_column(String(32), nullable=False)
+    units: Mapped[float | None] = mapped_column(Float, nullable=True)
+    unit_price_expected: Mapped[float | None] = mapped_column(Float, nullable=True)
+    received_qty: Mapped[float | None] = mapped_column(Float, nullable=True)
+    invoice_line_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    order: Mapped[PurchaseOrder] = relationship(back_populates="lines")
 
 
 class InventoryAdjustment(Base):

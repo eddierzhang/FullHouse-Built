@@ -298,6 +298,9 @@ def start() -> None:
         expire_promotions, "interval", minutes=1, id=PROMOTION_SWEEP_JOB,
         coalesce=True, max_instances=1,
     )
+    from app.platform import workflows
+
+    _scheduler.add_job(workflows.tick, "interval", minutes=1, id="workflows-tick", coalesce=True, max_instances=1)
     if settings.demo_mode:
         _scheduler.add_job(
             _reset_demo, parse_cron(settings.demo_reset_cron), id=DEMO_RESET_JOB,

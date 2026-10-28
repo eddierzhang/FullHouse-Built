@@ -46,6 +46,8 @@ STAFF_MAY = {
     ("DELETE", "/api/v1/connect/connections/{connection_id}"): "owners only, checked in the route",
     ("POST", "/api/v1/documents"): "staff hand over documents: a recipe card, a permit, an invoice photo",
     ("POST", "/api/v1/recipes/{recipe_id}/cost"): "a recomputation anyone may ask for; it writes only plate costs",
+    ("POST", "/api/v1/prep-sheets/{sheet_id}/printed"): "staff print the prep sheet",
+    ("PUT", "/api/v1/platform/workflows"): "owners only, checked in the route",
     ("POST", "/api/v1/restaurant/purchase-orders/{order_id}/receive"): "staff receive the deliveries",
     ("PATCH", "/api/v1/restaurant/inventory-items/{inventory_item_id}"): "item details are checked in the route",
     ("POST", "/api/v1/restaurant/orders"): "staff take orders",

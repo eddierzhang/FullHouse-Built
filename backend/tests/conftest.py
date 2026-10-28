@@ -39,6 +39,7 @@ from app.connectors import models as connector_models  # noqa: E402,F401
 from app.sales import models as sales_models  # noqa: E402,F401
 from app.documents import models as document_models  # noqa: E402,F401
 from app.recipes import models as recipe_models  # noqa: E402,F401
+from app.forecast import models as forecast_models  # noqa: E402,F401
 from app.support import models as support_models  # noqa: E402,F401
 from app.db import session as app_session  # noqa: E402
 from app.db.session import Base, get_db  # noqa: E402

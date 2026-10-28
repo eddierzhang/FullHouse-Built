@@ -145,6 +145,9 @@ class DigestOut(BaseModel):
     week_start: date
     #: Present when connections are on for the restaurant.
     prime: PrimeLine | None = None
+    #: "Forecast accuracy last week: N%" once forecasts exist; "Recovered to date: $N" from findings acted on.
+    forecast_accuracy: float | None = None
+    recovered_to_date: float | None = None
     total: float
     item_count: int
     supplier_count: int

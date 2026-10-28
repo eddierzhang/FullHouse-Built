@@ -7,6 +7,7 @@ from app.agents.tools import (
     employee_tools,
     inventory_tools,
     marketing_tools,
+    order_tools,
     price_tools,
     profit_tools,
     recipe_tools,
@@ -24,6 +25,7 @@ TOOL_AREAS = {
     "customers": customer_tools.build_tools,
     "prices": price_tools.build_tools,
     "recipes": recipe_tools.build_tools,
+    "orders": order_tools.build_tools,
 }
 
 

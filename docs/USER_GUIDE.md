@@ -126,6 +126,28 @@ card under **Menu margin** in the digest with the weekly dollars. **Reprice or r
 as a proposal, with the plate cost before and after. You change the price in your POS; FullHouse never writes to a
 menu.
 
+## Order drafts, forecast and prep sheets
+
+Switched on under **Profile → Features** (`Order drafts, forecasting, prep sheets`), with each schedule under
+**Schedules** on the same tab.
+
+**Order drafts.** On Sunday evening (or on request) the agent drafts this week's order to each supplier you have
+bought from at least four times in eight weeks: for each item, the median weekly quantity over those eight weeks at
+the latest price, with the invoice lines it came from. Each is a proposal under Recommendations; approving it makes
+a draft under On order, which you send to the rep or mark placed. Three drafts a week at most.
+
+**Forecast.** Nightly, for each dish with at least four weeks of sales: the expected quantity for each of the next
+seven days, from the same weekday over the last six weeks (recent weeks weigh more) and the trend of the last two
+weeks against the four before, with a low and high. When the day's sales arrive, the miss is recorded, and the
+digest ends with "Forecast accuracy last week". No weather or holidays: a plainer model, on purpose.
+
+**Prep sheets.** Daily (or on request), for the next two days: the forecast times each recipe's lines, per
+ingredient, as a proposal. Approve it and it is a printable page under Menu → Prep sheets. Nothing is subtracted for
+stock on hand, because nothing here counts stock.
+
+**Recovered to date.** The digest also ends with the dollars a week of every card acted on: an item you moved, a
+price rise or a credit you wrote to the rep about.
+
 ## Everyday jobs
 
 **Log a delivery.** Inventory → find the item → **Record change** → **Delivery received** → enter the amount →
@@ -151,14 +173,17 @@ reason.
 **Reject** drops it. Approving a reorder places the order; the stock moves when it arrives. To ask the Assistant
 Manager something, press **New task**, e.g. "Check stock and reorder anything low".
 
-**Track an order.** Inventory → **On order** lists every order placed and not yet here: the amount, the supplier, when
-it was ordered and when it's expected (the supplier's lead time unless you say otherwise). Approved reorders land
-there on their own; an order placed by phone or email is added with **Record an order** (owners and admins). **Mark
-shipped** when the supplier says it's on its way. One past its expected date shows as overdue, here and on Today.
-**Receive** when it arrives: enter what actually came (all of it by default) and a note, and it is booked into stock,
-once, under "Order received" in the history. If the invoice for the order is added first, the invoice receives it,
-and an order received by hand is matched to its invoice when that comes, so nothing is counted twice. **Cancel**
-drops an order that was never placed or never came (owners and admins). **Show received** lists the recent record.
+**Track an order.** Inventory → **On order** lists every order drafted, placed and not yet here: the amount, the
+supplier, when it was ordered and when it's expected (the supplier's lead time unless you say otherwise). Approving
+a reorder **drafts** the order; it is not an order the supplier knows about until you **Send to rep** (a mail with
+the lines and a PDF, to the rep remembered on a draft message or an address you give) or mark it **Placed by phone**.
+Open the order's own page from its name to print it. An order placed outside the app is added with **Record an
+order** (owners and admins). **Mark shipped** when the supplier says it's on its way. One past its expected date
+shows as overdue, here and on Today. **Receive** when it arrives: enter what actually came (all of it by default)
+and a note, and it is booked into stock, once, under "Order received" in the history. If the invoice for the order
+is added first, the invoice receives it line by line, and an order received by hand is matched to its invoice when
+that comes, so nothing is counted twice. An invoice that brings less than was ordered shows under **Owed to you** in
+the digest as a short delivery. **Cancel** drops an order that was never placed or never came (owners and admins).
 
 **Undo a mistake** (owners and admins). History & undo → find the change → **Undo**. If something has changed
 since, you'll be asked before it's undone anyway.

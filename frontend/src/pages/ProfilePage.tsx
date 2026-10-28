@@ -30,7 +30,10 @@ import {
   saveSection,
   setTeamRole,
   fetchFlags,
+  listWorkflows,
+  runWorkflowNow,
   setFlag,
+  setWorkflow,
 } from '../api/client'
 import type { AppContext } from '../app/context'
 import { Loaded } from '../components/PageState'
@@ -143,6 +146,82 @@ const FEATURE_LABELS: Record<string, string> = {
   v2_calendar: 'Licenses, permits and warranties calendar',
 }
 
+const WORKFLOW_LABELS: Record<string, string> = {
+  digest: 'Rebuild the digest before Monday’s mail',
+  pnl: 'Weekly prime-cost P&L',
+  calendar_scan: 'Daily calendar scan for things coming due',
+  recipe_onboarding: 'Weekly recipe proposals for top sellers',
+  forecast: 'Nightly demand forecast',
+  po_draft: 'Sunday order drafts per supplier',
+  prep_sheet: 'Daily prep sheet from the forecast',
+}
+
+function WorkflowsCard({ app }: { app: AppContext }) {
+  const load = useLoad(listWorkflows, [])
+  const [busy, setBusy] = useState<string | null>(null)
+  const toggle = async (kind: string, enabled: boolean) => {
+    setBusy(kind)
+    try {
+      await setWorkflow(kind, enabled)
+      await load.reload()
+    } catch (err) {
+      app.toast('Couldn’t change that', err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(null)
+    }
+  }
+  const run = async (kind: string) => {
+    setBusy(kind)
+    try {
+      await runWorkflowNow(kind)
+      app.toast('Queued', WORKFLOW_LABELS[kind] ?? kind)
+      await load.reload()
+    } catch (err) {
+      app.toast('Couldn’t run that', err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(null)
+    }
+  }
+  return (
+    <section className="card" aria-labelledby="workflows-title">
+      <div className="card-header">
+        <div>
+          <h2 className="card-title" id="workflows-title">
+            Schedules
+          </h2>
+          <div className="card-subtitle">What the agent does on its own, and when, on your clock. Each makes proposals for you to approve; none sends anything.</div>
+        </div>
+      </div>
+      <Loaded load={load} what="schedules" placeholderHeight={120}>
+        {(rows) => (
+          <ul className="list" aria-label="Schedules">
+            {rows.map((w) => (
+              <li key={w.kind} className="list-item">
+                <div className="list-item-main">
+                  <div className="strong">{WORKFLOW_LABELS[w.kind] ?? w.kind}</div>
+                  <div className="muted small">
+                    <code>{w.cron}</code>
+                    {!w.available && ' · its feature is off'}
+                    {w.last_run_at && ` · last ran ${relativeTime(w.last_run_at)}`}
+                  </div>
+                </div>
+                <div className="row">
+                  <button className="btn btn-ghost btn-sm" disabled={busy === w.kind || !w.available} onClick={() => void run(w.kind)}>
+                    Run now
+                  </button>
+                  <button className={`btn btn-sm ${w.enabled ? 'btn-secondary' : 'btn-primary'}`} disabled={busy === w.kind} aria-pressed={w.enabled} onClick={() => void toggle(w.kind, !w.enabled)}>
+                    {w.enabled ? 'On' : 'Off'}
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Loaded>
+    </section>
+  )
+}
+
 function FeaturesTab({ app }: { app: AppContext }) {
   const load = useLoad(fetchFlags, [])
   const [busy, setBusy] = useState<string | null>(null)
@@ -194,6 +273,7 @@ function FeaturesTab({ app }: { app: AppContext }) {
           )}
         </Loaded>
       </section>
+      <WorkflowsCard app={app} />
     </div>
   )
 }

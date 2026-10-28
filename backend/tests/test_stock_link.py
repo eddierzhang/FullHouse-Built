@@ -215,13 +215,15 @@ def test_approving_places_the_order_and_the_invoice_for_it_receives_it(client, d
     romaine = next(a for a in _pending(client) if a["payload"]["item_name"] == "Romaine Lettuce")
     approved = client.post(f"/api/v1/agents/actions/{romaine['id']}/approve")
     assert approved.status_code == 200, approved.text
-    assert approved.json()["applied_result"].startswith("Ordered 2 cases (48 head) of Romaine Lettuce from Sysco Foods, expected ")
+    assert approved.json()["applied_result"].startswith("Drafted an order for 2 cases (48 head) of Romaine Lettuce from Sysco Foods, expected ")
     assert _on_hand(client, ids["Romaine Lettuce"]) == 9
 
     (order,) = client.get(f"{ORDERS}").json()
     assert (order["item_name"], order["supplier_name"], order["packs"], order["quantity"], order["status"]) == (
-        "Romaine Lettuce", "Sysco Foods", 2, 48, "ordered")
+        "Romaine Lettuce", "Sysco Foods", 2, 48, "draft")
     assert order["estimated_cost"] == 52.0 and order["action_id"] == romaine["id"]
+    # Placed by phone: marked sent. (A draft is not yet an order the supplier knows about.)
+    assert client.post(f"{ORDERS}/{order['id']}/mark-sent").json()["status"] == "ordered"
     # On order, so not proposed again while the stock is still low.
     client.post(f"{STOCK}/{ids['Basil']}/adjustments", json={"reason": "used", "quantity": 1})
     assert "Romaine Lettuce" not in [a["payload"]["item_name"] for a in _pending(client)]

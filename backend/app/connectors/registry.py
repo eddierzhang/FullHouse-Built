@@ -132,6 +132,8 @@ def run_sync(db: Session, restaurant_id: str, provider: str, connection_id: str 
     db.flush()
     events.emit(db, restaurant_id, "connector.synced", "connections", connection.id if connection else provider,
                 {"provider": provider, "rows": written})
+    if written and adapter.capabilities and "sales_items" in adapter.capabilities:
+        events.emit(db, restaurant_id, "sales_items.synced", "connections", connection.id if connection else provider, {"rows": written})
     return written
 
 

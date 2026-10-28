@@ -40,9 +40,9 @@ is a branch `v2/phase-<x>-<name>` merged back when its acceptance test passes. N
 - [x] I3 Every action lands in `change_log` with before/after; connector syncs log as `system`.
 - [x] I4 Every outside write (webhook, sync, inbound mail, cron) is idempotent on an external key (replay tests).
 - [x] I5 No price on `price_item_aliases`; no "market" price anywhere; agreed prices are restaurant-scoped and come from the restaurant's documents.
-- [ ] I6 The digest is the product: new modules add cards or one line; no new dashboards for them.
-- [ ] I7 Nothing new requires inventory counts.
-- [ ] I8 Humans send: no agent path emails a supplier, sends a PO, pushes to payroll or calls a connector write.
+- [x] I6 The digest is the product: new work adds cards (margin, short delivery against an order) or one line (prime cost, forecast accuracy, recovered to date); the pages added are records (documents, recipes, orders, prep sheets), not dashboards: new modules add cards or one line; no new dashboards for them.
+- [x] I7 Nothing new requires inventory counts (prep sheets subtract nothing; order drafts come from invoice history).
+- [x] I8 Humans send: sending an order is a manager's button; the agent's tools cannot set `sent` (guard test) and no agent module imports the mail client: no agent path emails a supplier, sends a PO, pushes to payroll or calls a connector write.
 - [x] I9 Every extracted field carries a confidence; under 0.8 or failing validation goes to review.
 - [x] I10 Pending-proposal caps (recipes, agreed prices, reprices; purchase orders and calendar items with their phases) per kind per restaurant per week (mappings 5, recipes 5, purchase orders 3, calendar items 10); beyond the cap, held silently and logged.
 
@@ -96,11 +96,16 @@ proposals in Phase D.
 
 ## Phase C: purchase orders, forecasting, prep, workflows (branch `v2/phase-c-orders`, flag `v2_orders`)
 
-- [ ] C.1 `purchase_orders` gains `draft` and `sent` with lines (`po_lines`); `po_draft` workflow (8-week medians, ≥ 4 invoices); `propose_purchase_order` with cap 3; "Send to rep" is a human button (mail stub), sets `sent`; short delivery matches invoice lines to open PO lines.
-- [ ] C.2 `forecasts`, `forecast_errors`, nightly baseline forecast (weighted same-weekday mean × trend, ±1 MAD), the accuracy line in the digest.
-- [ ] C.3 `prep_sheets`, `prep` workflow and tool; a printable page on approval.
-- [ ] C.4 `workflows` table and runner on each restaurant's clock; default rows at onboarding.
-- [ ] C.5 Acceptance per the spec: PO median, send as manager, cost recorded, short delivery, forecast within ±1 MAD, forecast error row and digest line, prep quantities, agent cannot set `sent`, bookkeeper cannot send.
+- [x] C.1 `purchase_orders` gains `draft` and `sent` with lines (`po_lines`); `po_draft` workflow (8-week medians, ≥ 4 invoices); `propose_purchase_order` with cap 3; "Send to rep" is a human button (mail stub), sets `sent`; short delivery matches invoice lines to open PO lines.
+- [x] C.2 `forecasts`, `forecast_errors`, nightly baseline forecast (weighted same-weekday mean × trend, ±1 MAD), the accuracy line in the digest.
+- [x] C.3 `prep_sheets`, `prep` workflow and tool; a printable page on approval.
+- [x] C.4 `workflows` table and runner on each restaurant's clock; default rows at onboarding.
+- [x] C.5 Acceptance (`test_acceptance_order_draft_send_short_delivery_forecast_prep_and_roles`): PO median, send as manager, cost recorded, short delivery, forecast within ±1 MAD, forecast error row and digest line, prep quantities, agent cannot set `sent`, bookkeeper cannot send.
+
+Notes. The drafted run's `cost_usd` is recorded as 0 when the draft is by rule (no model billed); the acceptance asserts it
+is recorded rather than positive. Forecast "today" and workflow dates are the restaurant's local day; an order's
+sent time is UTC, so an invoice dated the local day before still counts as its delivery. The demo does not run the
+Sunday draft at load, to keep its Recommendations queue readable.
 
 ## Phase D: calendar and assets (branch `v2/phase-d-calendar`, flag `v2_calendar`)
 
