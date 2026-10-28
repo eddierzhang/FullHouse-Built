@@ -125,4 +125,24 @@ def build_tools(db: Session, run: AgentRun, agent_definition_id: str) -> list:
         line = db.query(InvoiceLine).filter(InvoiceLine.item_id == item_id).count()
         return f"No card for that id this week; {line} invoice lines are matched to it."
 
-    return [list_recipes, propose_recipe, propose_agreed_price, propose_menu_reprice, explain_finding]
+    @beta_tool
+    def propose_calendar_item(document_id: str) -> str:
+        """From a read license, permit, inspection report or warranty: a dated calendar item (and, for a warranty,
+        the equipment) as a proposal. Cap ten a week.
+
+        Args:
+            document_id: The document, from the Documents page.
+        """
+        from app.calendar import engine as calendar
+        from app.documents.models import Document
+
+        document = db.get(Document, document_id)
+        if document is None or document.restaurant_id != restaurant_id:
+            return "Error: no such document."
+        made = calendar.propose_from_document(db, document, run=run)
+        db.commit()
+        if not made:
+            return "Nothing proposed: no expiry date was read, the weekly cap is reached, or it is proposed already."
+        return f"Calendar proposal {made[0].id}: {made[0].payload['title']} due {made[0].payload['due_on']}."
+
+    return [list_recipes, propose_recipe, propose_agreed_price, propose_menu_reprice, explain_finding, propose_calendar_item]

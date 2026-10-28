@@ -30,6 +30,7 @@ import { relativeTime } from '../lib/format'
 import { announceDataChanged } from '../lib/useLoad'
 import { PRICE_ROUTES, type Route, readHashParam, useHashRoute } from '../lib/useHashRoute'
 import { AgentsPage } from '../pages/AgentsPage'
+import { CalendarPage } from '../pages/CalendarPage'
 import { ConnectPage } from '../pages/ConnectPage'
 import { DocumentsPage } from '../pages/DocumentsPage'
 import { PrepSheetPage, PrepSheetsPage } from '../pages/PrepSheetPage'
@@ -350,6 +351,8 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
         return <RecipePage app={app} />
       case 'po':
         return <PurchaseOrderPage app={app} />
+      case 'calendar':
+        return <CalendarPage app={app} />
       case 'prep':
         return readHashParam() ? <PrepSheetPage app={app} /> : <PrepSheetsPage app={app} />
       case 'profit':
@@ -394,6 +397,7 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
           <nav key={group.label ?? 'main'} className="nav-group" aria-label={group.label ?? 'Today'}>
             {group.label && <div className="nav-label">{group.label}</div>}
             {group.items.filter(allowed).map(navLink)}
+            {group.label === 'Restaurant' && flags.v2_calendar && navLink({ route: 'calendar', label: 'Calendar', icon: 'clock' })}
             {group.label === 'Restaurant' && flags.v2_connect && navLink({ route: 'connect', label: 'Connections', icon: 'suppliers' })}
             {group.label === 'Invoices & prices' && flags.v2_documents && navLink({ route: 'documents', label: 'Documents', icon: 'clock' })}
             {group.label === 'Menu' && flags.v2_documents && navLink({ route: 'recipes', label: 'Recipes', icon: 'menu' })}

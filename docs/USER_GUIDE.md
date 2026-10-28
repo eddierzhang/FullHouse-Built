@@ -148,6 +148,18 @@ stock on hand, because nothing here counts stock.
 **Recovered to date.** The digest also ends with the dollars a week of every card acted on: an item you moved, a
 price rise or a credit you wrote to the rep about.
 
+## Calendar
+
+Switched on under **Profile → Features** (`Licenses, permits and warranties calendar`). **Calendar** appears under
+Restaurant: one list by date, not a grid.
+
+A license, permit, inspection report or warranty uploaded under Documents is read with its dates and proposed as a
+calendar item (a warranty also adds the equipment to the register). Approve it and it sits on the list; within thirty
+days of its date it appears under **Coming due** in the digest, and past its date it is overdue, in red. **Attach
+proof**, the renewal or the report, to clear it; a yearly item then gets next year's date. Dates you know without a
+document are added by hand. Equipment with a service interval gets a service date proposed two weeks before it is
+due. The daily scan does this on its own; **Scan now** does it on request.
+
 ## Everyday jobs
 
 **Log a delivery.** Inventory → find the item → **Record change** → **Delivery received** → enter the amount →

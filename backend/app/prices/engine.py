@@ -616,6 +616,10 @@ def build_digest(db: Session, restaurant_id: str | None, today: date | None = No
         from app.restaurant import orders as orders_module
 
         cards.extend(orders_module.short_delivery_cards(db, restaurant_id, today))
+    if flags.enabled(db, restaurant_id, flags.V2_CALENDAR):
+        from app.calendar import engine as calendar
+
+        cards.extend(calendar.due_cards(db, restaurant_id, today))
     cards.sort(key=lambda c: -c["impact"])
     through = (
         db.query(Invoice.invoice_date).filter(Invoice.restaurant_id == restaurant_id, Invoice.invoice_date <= today)

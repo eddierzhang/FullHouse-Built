@@ -19,6 +19,7 @@ def setup() -> None:
     from app.documents import models as _document_models  # noqa: F401
     from app.recipes import models as _recipe_models  # noqa: F401
     from app.forecast import models as _forecast_models  # noqa: F401
+    from app.calendar import models as _calendar_models  # noqa: F401
 
     from app.agents import guard
 

@@ -72,6 +72,14 @@ const PRICE_GUIDE: { title: string; steps: ReactNode[] }[] = [
     ],
   },
   {
+    title: 'Keep permits, licenses and warranties from lapsing',
+    steps: [
+      <>Upload each under <a href="#documents">Documents</a>; it is proposed as a date on the <a href="#calendar">Calendar</a> (switched on under Profile › Features).</>,
+      'Within thirty days of a date the digest lists it under Coming due; past it, the calendar shows it in red.',
+      'Attach the renewal or the report as proof to clear it. Yearly items get next year’s date on their own.',
+    ],
+  },
+  {
     title: 'Ask the agent anything about prices',
     steps: [
       'Type into the field at the top (or the bottom, on a phone): "what did I pay for tomatoes last month", "which supplier is cheapest on paper goods".',
