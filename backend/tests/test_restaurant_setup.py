@@ -218,7 +218,7 @@ def test_scheduled_runs_fire_for_each_restaurant_on_its_own_clock(client, db, mo
     assert str(jobs[f"agent:maestro:{mine['id']}"].trigger.timezone) == "America/Los_Angeles"
     assert str(jobs[f"agent:maestro:{other.id}"].trigger.timezone) == "America/Denver"
 
-    monkeypatch.setattr("app.agents.executor.submit", lambda run_id: None)
+    monkeypatch.setattr("app.agents.executor.submit", lambda run_id, db=None: None)
     run = db.get(AgentRun, scheduler.run_scheduled_agent("maestro", db, restaurant_id=other.id))
     assert run.restaurant_id == other.id
     assert run.input == "Scheduled run (0 6 * * *, America/Denver)."

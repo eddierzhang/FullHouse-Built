@@ -77,6 +77,21 @@ class Settings:
     # where a background thread touching the database would be a flake source.
     scheduler_enabled: bool = os.getenv("SCHEDULER_ENABLED", "true").strip().lower() in ("1", "true", "yes")
 
+    # The job queue (app.platform.jobs). By default the web process runs worker threads itself,
+    # which is right for one free container; WORKER_INPROCESS=false and `python -m app.worker`
+    # run them apart.
+    worker_inprocess: bool = os.getenv("WORKER_INPROCESS", "true").strip().lower() in ("1", "true", "yes")
+    worker_threads: int = int(os.getenv("WORKER_THREADS", "2") or 2)
+    worker_poll_seconds: float = float(os.getenv("WORKER_POLL_SECONDS", "0.5") or 0.5)
+    #: A job whose worker goes quiet this long is leased to another.
+    job_lease_seconds: int = int(os.getenv("JOB_LEASE_SECONDS", "300") or 300)
+    #: Who may open the ops page: emails, comma-separated.
+    superuser_emails: list[str] = [e.strip().lower() for e in os.getenv("SUPERUSER_EMAILS", "").split(",") if e.strip()]
+    #: "json" for one JSON object per log line (hosts that collect stdout); anything else is readable text.
+    log_format: str = os.getenv("LOG_FORMAT", "text").strip().lower()
+    #: Where uploaded documents live when no object store is configured (app.storage).
+    storage_dir: str = os.getenv("STORAGE_DIR", "./data/files").strip() or "./data/files"
+
     # Pause between the scripted provider's steps, so a demo run streams
     # visibly instead of finishing before the page can show it.
     scripted_step_delay_seconds: float = float(os.getenv("SCRIPTED_STEP_DELAY_SECONDS", "0"))

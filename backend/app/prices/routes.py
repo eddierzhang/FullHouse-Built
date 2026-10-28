@@ -315,7 +315,7 @@ def ask(body: schemas.AskIn, user: User = Depends(current_user), db: Session = D
             db.add(reply)
             new.append(reply)
             db.commit()
-            executor.submit(run.id)
+            executor.submit(run.id, db)
     db.commit()
     return [engine.message_out(db, m) for m in new]
 
@@ -571,22 +571,50 @@ def billcom_sync(user: User = Depends(manager), db: Session = Depends(get_db)):
 
 
 @router.post("/billcom/webhook")
-def billcom_webhook(request: Request, db: Session = Depends(get_db)):
-    """Bill.com says a bill was created or updated: pull again. Needs X-Billcom-Secret.
+async def billcom_webhook(request: Request, db: Session = Depends(get_db)):
+    """Bill.com says a bill was created or updated. Needs X-Billcom-Secret.
 
-    One Bill.com organisation per site, so the pull is for the site's restaurant: the first one set up.
+    The payload is written raw to the webhook inbox, once per delivery, and a sync job is
+    queued for the site's restaurant (one Bill.com organisation per site: the first restaurant
+    set up). The handler itself writes no invoice, so the same webhook delivered twice, or a
+    flood of them, yields one pull.
     """
+    import hashlib
+    import json
+
+    from sqlalchemy.exc import IntegrityError
+
+    from app.platform import jobs
+    from app.platform.models import WebhookInbox
+
     if not settings.billcom_webhook_secret or request.headers.get("x-billcom-secret") != settings.billcom_webhook_secret:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Set BILLCOM_WEBHOOK_SECRET and send it as X-Billcom-Secret.")
+    if not settings.billcom_configured:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Bill.com isn't connected on this site.")
+    raw = await request.body()
+    try:
+        payload = json.loads(raw) if raw else {}
+    except ValueError:
+        payload = {"raw": raw.decode("utf-8", "replace")[:4000]}
+    if not isinstance(payload, dict):
+        payload = {"body": payload}
+    external_id = str(payload.get("eventId") or payload.get("id") or hashlib.sha256(raw).hexdigest())[:128]
     restaurant = db.query(Restaurant).filter(Restaurant.setup_completed_at.is_not(None)).order_by(Restaurant.created_at).first()
     if restaurant is None:
-        return {"ok": True, "added": 0}
+        return {"ok": True, "queued": False}
+    inbox = WebhookInbox(provider="billcom", external_id=external_id, restaurant_id=restaurant.id, payload=payload)
+    db.add(inbox)
     try:
-        out = billcom.sync(db, restaurant.id)
-    except billcom.BillcomError as err:
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(err))
+        with db.begin_nested():
+            db.flush()
+    except IntegrityError:
+        db.rollback()
+        return {"ok": True, "queued": False, "duplicate": True}
+    job = jobs.enqueue(db, "sync", f"sync:billcom:{restaurant.id}", {"provider": "billcom", "restaurant_id": restaurant.id},
+                       restaurant_id=restaurant.id)
+    inbox.job_id = job.id
     db.commit()
-    return {"ok": True, "added": out.added}
+    return {"ok": True, "queued": True, "job_id": job.id}
 
 
 # --- bookkeepers ------------------------------------------------------------------------

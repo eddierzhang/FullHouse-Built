@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 
+from app.agents import guard
 from app.agents.models import AgentDefinition, AgentRun
 from app.agents.tools import (
     customer_tools,
@@ -36,5 +37,5 @@ def resolve_tools(db: Session, run: AgentRun, defn: AgentDefinition) -> list:
             continue
         for tool in build(db, run, defn.id):
             tool.area = area
-            tools.append(tool)
+            tools.append(guard.guarded(tool))
     return tools

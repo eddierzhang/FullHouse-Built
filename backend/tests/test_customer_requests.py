@@ -176,7 +176,7 @@ def test_asking_for_a_summary_runs_the_agent_end_to_end(client, db, monkeypatch)
     booking = _log(client, kind="request", message="Table for 12 on Saturday, please call me back.")["id"]
 
     submitted = []
-    monkeypatch.setattr("app.agents.executor.submit", submitted.append)
+    monkeypatch.setattr("app.agents.executor.submit", lambda run_id, db=None: submitted.append(run_id))
     started = client.post(f"{API}/reviews")
     assert started.status_code == 202
     run_id = started.json()["id"]

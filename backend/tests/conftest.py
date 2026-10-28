@@ -11,7 +11,8 @@ import tempfile
 os.environ["SCHEDULER_ENABLED"] = "false"  # tests drive scheduled jobs directly
 os.environ["ALLOW_SIGNUP"] = "true"  # any number of restaurants may sign up; test_auth covers it turned off
 os.environ["REQUIRE_MFA"] = "false"  # test_mfa turns it on; elsewhere owners sign in with a password alone
-os.environ["LLM_PROVIDER"] = "scripted"  # tests that want another provider monkeypatch settings.llm_provider
+os.environ["LLM_PROVIDER"] = "scripted"
+os.environ["WORKER_INPROCESS"] = "false"  # tests run jobs themselves with jobs.drain(db)  # tests that want another provider monkeypatch settings.llm_provider
 
 TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
 if TEST_DATABASE_URL:
@@ -33,6 +34,8 @@ from app.audit import models as audit_models  # noqa: E402,F401
 from app.auth import models as auth_models  # noqa: E402,F401
 from app.customers import models as customer_models  # noqa: E402,F401
 from app.prices import models as price_models  # noqa: E402,F401
+from app.platform import models as platform_models  # noqa: E402,F401
+from app.connectors import models as connector_models  # noqa: E402,F401
 from app.support import models as support_models  # noqa: E402,F401
 from app.db import session as app_session  # noqa: E402
 from app.db.session import Base, get_db  # noqa: E402
@@ -43,6 +46,9 @@ from app.restaurant import inventory as inventory_listener  # noqa: E402
 # whole test session exactly as the app does at import time.
 audit_listener.install()
 inventory_listener.install()
+from app.agents import guard as agent_guard  # noqa: E402
+
+agent_guard.install()
 
 # The app-level engine needs tables even in SQLite mode, since startup
 # recovery queries it whenever a test starts the app.

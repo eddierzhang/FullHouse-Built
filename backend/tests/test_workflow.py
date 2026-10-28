@@ -16,7 +16,7 @@ def test_stock_change_to_agent_proposal_to_approval_to_dashboard(client, db, mon
     restaurant = _set_up(client, db)
     monkeypatch.setattr("app.agents.runner.get_provider", lambda: ScriptedProvider(step_delay=0))
     # The run is executed below, in this session; the background pool would run it a second time.
-    monkeypatch.setattr("app.agents.executor.submit", lambda run_id: None)
+    monkeypatch.setattr("app.agents.executor.submit", lambda run_id, db=None: None)
     agent = db.query(AgentDefinition).filter_by(key=AGENT_DEF["key"]).one()
 
     # 1. Staff update inventory: saffron is used until it runs low.

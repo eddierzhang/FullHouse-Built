@@ -19,6 +19,9 @@ from app.auth.deps import current_user
 from app.auth.routes import router as auth_router
 from app.config import settings
 from app.customers.routes import router as customers_router
+from app.platform import handlers as _platform_handlers  # noqa: F401  registers the queue handlers
+from app.platform import jobs
+from app.platform.routes import router as platform_router
 from app.prices.routes import router as prices_router
 from app.restaurant.routes import router as restaurant_router
 from app.restaurant.profile_routes import router as profile_router
@@ -49,7 +52,9 @@ def _recover_orphaned_runs(db=None) -> int:
     owns_session = db is None
     db = db or SessionLocal()
     try:
-        orphans = db.query(AgentRun).filter(AgentRun.status.in_(("queued", "running"))).all()
+        # Queued runs now wait in the job queue and will be picked up; only runs caught
+        # mid-flight died with the last process.
+        orphans = db.query(AgentRun).filter(AgentRun.status == "running").all()
         if not orphans:
             return 0
         with actor_context(SYSTEM_ACTOR):
@@ -110,11 +115,31 @@ async def lifespan(app: FastAPI):
                 "Set a long random SECRET_KEY before real people use this site, and never change it."
             )
     _log_what_runs_here()
+    _seed_platform()
     if settings.scheduler_enabled:
         scheduler.start()
+    if settings.worker_inprocess:
+        jobs.start_in_process()
     yield
     scheduler.shutdown()
+    jobs.stop_in_process()
     executor.shutdown()
+
+
+def _seed_platform() -> None:
+    """Providers the site offers, and leases left by a process that died."""
+    from app.connectors.registry import seed_providers
+    from app.db.session import SessionLocal
+
+    db = SessionLocal()
+    try:
+        seed_providers(db)
+        db.commit()
+        freed = jobs.recover_leases(db)
+        if freed:
+            logger.warning("re-queued %d job(s) whose worker went away", freed)
+    finally:
+        db.close()
 
 
 app = FastAPI(title="Restaurant Ops API", lifespan=lifespan)
@@ -166,9 +191,11 @@ app.include_router(profile_router, dependencies=signed_in)
 app.include_router(support_router, dependencies=signed_in)
 app.include_router(customers_router, dependencies=signed_in)
 app.include_router(prices_router, dependencies=signed_in)
+app.include_router(platform_router, dependencies=signed_in)
 
 
 @app.get("/health")
+@app.get("/healthz")
 def health():
     """Up and able to reach the database -- what the host's health check and an
     uptime monitor need to know. A 503 when the database is unreachable, so

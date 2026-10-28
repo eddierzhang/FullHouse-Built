@@ -121,7 +121,7 @@ def run_scheduled_agent(
                 db, defn.id, trigger_type="scheduled",
                 input=task or f"Scheduled run ({cron}, {getattr(agent_timezone(db), 'key', 'UTC')}).",
             )
-        executor.submit(run.id)
+        executor.submit(run.id, db)
         return run.id
     finally:
         if owns_session:

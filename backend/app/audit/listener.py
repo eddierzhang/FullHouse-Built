@@ -52,6 +52,9 @@ EXCLUDED_TABLES = frozenset({
     # invoice is one event), the digests (rebuilt after every change), the thread
     # (its own record), reps or bookkeeper links (app/prices/models.py).
     "supplier_invoice_lines", "price_digests", "supplier_reps", "agent_thread_messages", "bookkeeper_clients",
+    # The platform's own machinery: the queue, the event log and raw webhooks (app/platform/models.py), and
+    # connections, whose row holds encrypted credentials that must never be copied into a history.
+    "jobs", "events", "webhook_inbox", "connections",
 })
 
 #: Key under which half-built rows wait on `Session.info` between the two events.
