@@ -124,7 +124,7 @@ const GUIDE: { title: string; steps: ReactNode[] }[] = [
   {
     title: 'Track an order from approval to delivery',
     steps: [
-      <>Approving a reorder puts it under <strong>On order</strong> on <a href="#inventory">Inventory</a> with the supplier and the day it’s expected. Orders placed by phone go there too: <strong>Record an order</strong>.</>,
+      <>Approving a reorder drafts it under <strong>On order</strong> on <a href="#inventory">Inventory</a>. <strong>Send to rep</strong> mails the lines with a PDF, or <strong>Placed by phone</strong> marks it placed. Orders placed outside the app go there too: <strong>Record an order</strong>.</>,
       <><strong>Mark shipped</strong> when the supplier says it’s on its way. An order past its expected date shows as overdue, here and on Today.</>,
       <><strong>Receive</strong> when it arrives: enter what actually came and it is booked into stock, once. If the invoice for it is added first, the invoice receives it instead, and nothing is counted twice.</>,
     ],

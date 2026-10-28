@@ -287,12 +287,30 @@ export type StockAdjustment = {
   created_at: string
 }
 
-export type PurchaseOrderStatus = 'ordered' | 'shipped' | 'received' | 'cancelled'
+export type PurchaseOrderStatus = 'draft' | 'ordered' | 'shipped' | 'received' | 'cancelled'
 
 /** An order placed with a supplier, followed from approval to receipt. Placing it moves no stock; receiving it does. */
+export type PurchaseOrderLine = {
+  id: string
+  item_id: string | null
+  inventory_item_id: string | null
+  description: string
+  qty: number
+  unit: string
+  units: number | null
+  unit_price_expected: number | null
+  received_qty: number | null
+  invoice_line_id: string | null
+}
+
 export type PurchaseOrder = {
   id: string
-  inventory_item_id: string
+  /** Empty for an order with lines. */
+  inventory_item_id: string | null
+  lines: PurchaseOrderLine[]
+  sent_at: string | null
+  sent_by: string | null
+  rep_email: string | null
   item_name: string
   unit: string
   /** In the item's unit; `packs` and `pack_unit` say how it was ordered when known. */
@@ -337,6 +355,11 @@ export const markOrderShipped = (id: string, expected_on?: string | null) =>
 export const receiveOrder = (id: string, quantity?: number | null, note?: string | null) =>
   send<{ order: PurchaseOrder; item: InventoryItem }>('POST', `${ORDERS}/${id}/receive`, { quantity: quantity ?? null, note: note ?? null })
 export const cancelOrder = (id: string) => send<PurchaseOrder>('POST', `${ORDERS}/${id}/cancel`)
+export const getPurchaseOrder = (id: string) => get<PurchaseOrder>(`${ORDERS}/${id}`)
+/** Mail a drafted order to the rep (the remembered one, or `to`) with a PDF, and mark it sent. Owners and admins. */
+export const sendOrder = (id: string, to?: string | null) => send<PurchaseOrder>('POST', `${ORDERS}/${id}/send`, { to: to ?? null })
+/** Placed by phone or in the supplier's portal: the draft becomes an order without a mail. */
+export const markOrderSent = (id: string) => send<PurchaseOrder>('POST', `${ORDERS}/${id}/mark-sent`)
 
 export type Supplier = { id: string; name: string; contact_info: string | null; lead_time_days: number }
 export type SupplierInput = { name: string; contact_info?: string | null; lead_time_days?: number }
@@ -1015,6 +1038,8 @@ export type Digest = {
   week_start: string
   /** Present when connections are switched on for the restaurant. */
   prime: PrimeLine | null
+  forecast_accuracy?: number | null
+  recovered_to_date?: number | null
   total: number
   item_count: number
   supplier_count: number
@@ -1449,3 +1474,22 @@ export const repriceDishRecipe = (id: string) => send<{ proposal_id: string; not
 export const runRecipeOnboarding = () => send<{ proposed: number }>('POST', `${RECIPES}/onboarding/run`)
 export const setAgreedPrice = (itemId: string, input: { supplier_id: string; per_pack?: number | null; unit_price?: number | null; effective_from?: string | null; cited?: string | null }) =>
   send<{ proposed: boolean }>('POST', `${PRICES}/items/${itemId}/agreed-price`, input)
+
+
+// --- v2: forecast, prep sheets, workflows ------------------------------------------------------
+
+export type ForecastRow = { pos_item_id: string; pos_item_name: string; date: string; qty_pred: number; qty_lo: number; qty_hi: number }
+export type ForecastOut = { rows: ForecastRow[]; accuracy_last_week: number | null; computed_at: string | null }
+export const fetchForecast7 = () => get<ForecastOut>('/api/v1/forecast')
+export const runForecastNow = () => send<ForecastOut>('POST', '/api/v1/forecast/run')
+
+export type PrepSheetLine = { item_id: string; item_name: string; qty: number; unit: string; from: { recipe: string; plates: number }[] }
+export type PrepSheet = { id: string; date: string; status: 'proposed' | 'confirmed' | 'printed'; lines: PrepSheetLine[]; proposal_id: string | null }
+export const listPrepSheets = () => get<PrepSheet[]>('/api/v1/prep-sheets')
+export const getPrepSheet = (id: string) => get<PrepSheet>(`/api/v1/prep-sheets/${id}`)
+export const markPrepSheetPrinted = (id: string) => send<PrepSheet>('POST', `/api/v1/prep-sheets/${id}/printed`)
+
+export type WorkflowRow = { id: string; kind: string; cron: string; enabled: boolean; available: boolean; last_run_at: string | null }
+export const listWorkflows = () => get<WorkflowRow[]>('/api/v1/platform/workflows')
+export const setWorkflow = (kind: string, enabled: boolean, cron?: string | null) => send<WorkflowRow[]>('PUT', '/api/v1/platform/workflows', { kind, enabled, cron: cron ?? null })
+export const runWorkflowNow = (kind: string) => send<{ queued: boolean }>('POST', `/api/v1/platform/workflows/${kind}/run`)

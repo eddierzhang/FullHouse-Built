@@ -92,6 +92,28 @@ class Job(Base):
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
+class Workflow(Base):
+    """A scheduled agent run for one restaurant: what, when (cron, on the restaurant's clock), and whether it is on.
+
+    Default rows are made when setup finishes: digest and calendar_scan on; the rest off until the phase that
+    ships them is switched on by flag.
+    """
+
+    __tablename__ = "workflows"
+    __table_args__ = (UniqueConstraint("restaurant_id", "kind", name="uq_workflows_restaurant_kind"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    restaurant_id: Mapped[str] = mapped_column(
+        ForeignKey("restaurants.id", name="fk_workflows_restaurant_id_restaurants"), nullable=False, index=True
+    )
+    kind: Mapped[str] = mapped_column(String(24), nullable=False)  # digest|po_draft|prep_sheet|recipe_onboarding|calendar_scan|forecast|pnl
+    cron: Mapped[str] = mapped_column(String(40), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    approval_required: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    last_run_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now, onupdate=_now, nullable=False)
+
+
 class WebhookInbox(Base):
     """Every webhook as it arrived, once. The handler writes here and enqueues; it never writes typed
     tables, so a flood of webhooks cannot bypass idempotency."""

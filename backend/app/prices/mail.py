@@ -199,6 +199,15 @@ def render(db: Session, digest_row: PriceDigest, restaurant: Restaurant | None, 
     through = f" Invoices through {engine.short_date(digest.invoices_through)}" if digest.invoices_through else ""
     names = f" from {', '.join(digest.supplier_names)}" if digest.supplier_names else ""
     footer = f"Week of {engine.short_date(digest.week_start)}.{through}{names}."
+    closing = []
+    if digest.forecast_accuracy is not None:
+        closing.append(f"Forecast accuracy last week: {digest.forecast_accuracy:g}%")
+    if digest.recovered_to_date:
+        closing.append(f"Recovered to date: {_money(digest.recovered_to_date)}")
+    for line in closing:
+        parts.append(f'<div style="margin-top:16px;font-size:15px;line-height:20px">{e(line)}</div>')
+        text.append("")
+        text.append(line)
     parts.append(
         f'<div style="margin-top:32px;padding-top:16px;border-top:1px solid {RULE};font-size:13px;line-height:16px;color:{MUTED}">'
         f'<div>Reply to this email to ask about prices, invoices, or suppliers.</div>'
@@ -221,25 +230,33 @@ def render(db: Session, digest_row: PriceDigest, restaurant: Restaurant | None, 
 # --- sending ------------------------------------------------------------------------------
 
 
-def send(to: list[str], subject: str, body_html: str, body_text: str) -> bool:
+#: (filename, media type, bytes)
+Attachment = tuple[str, str, bytes]
+
+
+def send(to: list[str], subject: str, body_html: str, body_text: str, attachments: list[Attachment] | None = None) -> bool:
     """Deliver with Resend, else over SMTP, else print to the log. Returns whether it was delivered."""
     if not to:
         return False
     if settings.resend_api_key:
-        return _send_resend(to, subject, body_html, body_text)
+        return _send_resend(to, subject, body_html, body_text, attachments or [])
     if settings.smtp_configured:
-        return _send_smtp(to, subject, body_html, body_text)
-    logger.info("mail (no RESEND_API_KEY or SMTP_HOST, not sent) to=%s subject=%r\n%s", ", ".join(to), subject, body_text)
+        return _send_smtp(to, subject, body_html, body_text, attachments or [])
+    logger.info("mail (no RESEND_API_KEY or SMTP_HOST, not sent) to=%s subject=%r attachments=%s\n%s", ", ".join(to), subject,
+                [a[0] for a in attachments or []], body_text)
     return False
 
 
-def _send_smtp(to: list[str], subject: str, body_html: str, body_text: str) -> bool:
+def _send_smtp(to: list[str], subject: str, body_html: str, body_text: str, attachments: list[Attachment] = ()) -> bool:
     message = EmailMessage()
     message["From"] = settings.mail_from
     message["To"] = ", ".join(to)
     message["Subject"] = subject
     message.set_content(body_text)
     message.add_alternative(body_html, subtype="html")
+    for filename, media, data in attachments:
+        maintype, _, subtype = media.partition("/")
+        message.add_attachment(data, maintype=maintype or "application", subtype=subtype or "octet-stream", filename=filename)
     host, port = settings.smtp_host or "", settings.smtp_port
     if port == 465:
         server = smtplib.SMTP_SSL(host, port, timeout=20)
@@ -253,11 +270,15 @@ def _send_smtp(to: list[str], subject: str, body_html: str, body_text: str) -> b
     return True
 
 
-def _send_resend(to: list[str], subject: str, body_html: str, body_text: str) -> bool:
+def _send_resend(to: list[str], subject: str, body_html: str, body_text: str, attachments: list[Attachment] = ()) -> bool:
+    payload: dict = {"from": settings.mail_from, "to": to, "subject": subject, "html": body_html, "text": body_text}
+    if attachments:
+        payload["attachments"] = [{"filename": name, "content": base64.b64encode(data).decode("ascii"), "content_type": media}
+                                  for name, media, data in attachments]
     response = httpx.post(
         RESEND_URL,
         headers={"Authorization": f"Bearer {settings.resend_api_key}"},
-        json={"from": settings.mail_from, "to": to, "subject": subject, "html": body_html, "text": body_text},
+        json=payload,
         timeout=20,
     )
     response.raise_for_status()

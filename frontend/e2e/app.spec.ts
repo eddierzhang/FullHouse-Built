@@ -182,7 +182,7 @@ test('approving a reorder places an order, receiving it restocks, and reverting 
   const orders = page.getByRole('table', { name: 'Purchase orders' })
   const order = orders.getByRole('row').filter({ hasText: 'Tomatoes' }).first()
   await expect(order).toContainText('25 lb')
-  await expect(order.getByText('Ordered', { exact: true })).toBeVisible()
+  await expect(order.getByText('Draft', { exact: true })).toBeVisible()
   await order.getByRole('button', { name: 'Receive Tomatoes' }).click()
   const receive = page.getByRole('form', { name: 'Receive Tomatoes' })
   await expect(receive.getByLabel('Amount received (lb)')).toHaveValue('25')

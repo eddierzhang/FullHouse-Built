@@ -16,6 +16,8 @@ export const ROUTES = [
   'documents',
   'recipes',
   'recipe',
+  'po',
+  'prep',
   'approvals',
   'runs',
   'agents',

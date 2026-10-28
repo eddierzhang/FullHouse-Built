@@ -64,6 +64,17 @@ FullHouse gains price intelligence: an **Invoices & prices** section in the side
   write to a menu. New agent tools: list_recipes, propose_recipe, propose_agreed_price, propose_menu_reprice,
   explain_finding. Weekly caps per proposal kind.
 
+### Order drafts, forecasting, prep sheets, schedules (v2, Phase C; `v2_orders`)
+- Approving a reorder now drafts the order; a person sends it to the rep (mail with the lines and a PDF) or marks it
+  placed by phone. Orders with lines, drafted per supplier from eight weeks of invoices by a Sunday workflow or the
+  agent's `propose_purchase_order`; an invoice receives order lines one by one, and a short delivery against an order
+  shows under Owed to you.
+- A nightly baseline forecast per dish with a low and high, errors recorded as actuals arrive, and the digest's
+  "Forecast accuracy last week" and "Recovered to date" lines. Prep sheets from the forecast and the recipes, as
+  proposals, printable once confirmed.
+- Per-restaurant schedules (`workflows`) run on the restaurant's clock from one minute tick, each queued once per
+  period; owners switch them on or off and run them now under Profile › Features.
+
 ### Inventory meets the invoices
 - An item on the invoices is counted as the Inventory item its name matches, or the one the owner picks on its page.
   A confirmed invoice's lines are booked into stock as deliveries, once, in the agent's name. An item at its reorder
