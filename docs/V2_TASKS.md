@@ -118,12 +118,12 @@ and the equipment), so there are two proposals, not three. Referrals are a table
 
 ## Phase E: scale proof (branch `v2/phase-e-scale`)
 
-- [ ] E.1 Load script: 1,000 synthetic restaurants × 50 invoices on CSV connectors; the Monday pipeline on 4 workers; measured figures printed.
+- [x] E.1 Load script (`backend/scripts/load_test.py`; figures in V2_COMPLETION.md): 1,000 synthetic restaurants × 50 invoices on CSV connectors; the Monday pipeline on 4 workers; measured figures printed.
 
 ## Completion output
 
-- [ ] Commands to start, migrate, seed, test, load-test, start web and a worker.
-- [ ] Every place a key or credential is needed.
-- [ ] Flag names per phase and the command to enable one.
-- [ ] Phase E figures.
-- [ ] The list of invariant tests and what each covers.
+- [x] Commands to start, migrate, seed, test, load-test, start web and a worker (V2_COMPLETION.md §1).
+- [x] Every place a key or credential is needed (§2).
+- [x] Flag names per phase and the command to enable one (§3).
+- [x] Phase E figures (§4).
+- [x] The list of invariant tests and what each covers (§5).
