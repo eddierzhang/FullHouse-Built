@@ -191,6 +191,27 @@ def patch_item(item_id: str, body: schemas.ItemPatch, user: User = Depends(manag
     return engine.item_detail(db, item)
 
 
+@router.post("/items/{item_id}/agreed-price")
+def set_agreed_price(item_id: str, body: schemas.AgreedIn, user: User = Depends(manager), db: Session = Depends(get_db)):
+    """The owner says what they agreed: an `agreed_price` proposal, approved under Recommendations."""
+    from app.documents.registry import propose_agreed_price
+    from app.platform import flags
+
+    item = _item_for(db, user, item_id)
+    if not flags.enabled(db, item.restaurant_id, flags.V2_DOCUMENTS):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Documents and agreed prices aren't switched on for this restaurant.")
+    supplier = db.get(Supplier, body.supplier_id)
+    if supplier is None or supplier.restaurant_id != item.restaurant_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such supplier.")
+    if body.unit_price is None and body.per_pack is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Give the price per pack or per unit.")
+    per_unit = round(body.unit_price if body.unit_price is not None else body.per_pack / item.pack_size, 4)
+    made = propose_agreed_price(db, item.restaurant_id, supplier, item, per_unit, body.effective_from or date.today(), None,
+                                cited=body.cited or "the owner's word")
+    db.commit()
+    return {"proposed": made}
+
+
 @router.get("/stock", response_model=list[schemas.StockRow])
 def stock_rows(user: User = Depends(current_user), db: Session = Depends(get_db)):
     """For the Inventory page: the last price the invoices show for each stock item, and reorders waiting."""

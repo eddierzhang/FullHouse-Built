@@ -226,11 +226,64 @@ def apply_menu_change(db: Session, payload: dict) -> str:
 #: action_type -> applier. A proposal whose type is absent here cannot be
 #: approved, which is intentional: better a loud failure than an approval
 #: that quietly changes nothing.
+def apply_recipe(db: Session, payload: dict) -> str:
+    """A confirmed recipe from the proposal's lines (the operator may have edited quantities or dropped lines)."""
+    from app.audit.context import get_actor
+    from app.recipes import engine as recipes
+    from app.restaurant.inventory import site_scope
+
+    restaurant_id = site_scope(db)
+    recipe = recipes.write_recipe(db, restaurant_id, payload, confirmed_by=get_actor().id)
+    priced = len([line for line in recipe.lines])
+    return f"Recipe confirmed: {recipe.name}, {priced} line{'s' if priced != 1 else ''}. Plate cost is computed with the next weekly run, or now from its page."
+
+
+def apply_agreed_price(db: Session, payload: dict) -> str:
+    """An agreed price on the books: from the proposal's effective date, superseding any earlier one for the pair."""
+    from datetime import date as _date
+
+    from app.audit.context import get_actor
+    from app.prices.models import AgreedPrice, PriceItem
+    from app.restaurant.inventory import site_scope
+
+    restaurant_id = site_scope(db)
+    item = db.get(PriceItem, _require(payload, "item_id"))
+    if item is None or item.restaurant_id != restaurant_id:
+        raise ApplyError("No such item for this restaurant")
+    supplier = restaurant_crud.get_supplier(db, _require(payload, "supplier_id"))
+    if supplier is None:
+        raise ApplyError("No such supplier")
+    try:
+        unit_price = float(_require(payload, "unit_price"))
+        effective = _date.fromisoformat(str(payload.get("effective_from") or _date.today().isoformat())[:10])
+    except (TypeError, ValueError) as exc:
+        raise ApplyError(f"Bad price or date in the proposal: {exc}") from exc
+    if unit_price <= 0:
+        raise ApplyError("An agreed price must be positive")
+    for earlier in db.query(AgreedPrice).filter(AgreedPrice.restaurant_id == restaurant_id, AgreedPrice.item_id == item.id,
+                                                AgreedPrice.supplier_id == supplier.id, AgreedPrice.effective_to.is_(None)):
+        if earlier.effective_from < effective:
+            earlier.effective_to = effective
+    db.add(AgreedPrice(restaurant_id=restaurant_id, supplier_id=supplier.id, item_id=item.id, unit_price=unit_price, base_unit=item.unit,
+                       effective_from=effective, source_document_id=payload.get("source_document_id"), confirmed_by=get_actor().id))
+    db.flush()
+    return f"Agreed price on the books: {item.name} from {supplier.name} at {unit_price:.4g} per {item.unit} from {effective.isoformat()}. The next digest checks every invoice against it."
+
+
+def apply_menu_reprice(db: Session, payload: dict) -> str:
+    """Nothing changes here: the owner changes the price in the POS. Approval records that they mean to."""
+    return (f"Noted: {payload.get('item_name', 'the dish')} to be repriced by about {float(payload.get('suggested_delta') or 0):.2f}. "
+            "Change it in your POS; FullHouse never writes to a menu.")
+
+
 APPLIERS = {
     "inventory_reorder": apply_inventory_reorder,
     "purchase_order": apply_purchase_order,
     "shift_change": apply_shift_change,
     "menu_change": apply_menu_change,
+    "recipe": apply_recipe,
+    "agreed_price": apply_agreed_price,
+    "menu_reprice": apply_menu_reprice,
 }
 
 

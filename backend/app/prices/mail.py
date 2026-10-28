@@ -290,6 +290,11 @@ def send_weekly(db: Session, restaurant_id: str | None, today: date | None = Non
 
     if restaurant_id and flags.enabled(db, restaurant_id, flags.V2_CONNECT):
         pnl.compute_week(db, restaurant_id, pnl.last_complete_week(today))
+    if restaurant_id and flags.enabled(db, restaurant_id, flags.V2_DOCUMENTS):
+        from app.recipes import engine as recipes
+
+        recipes.compute_plate_costs(db, restaurant_id, today=today)
+        recipes.onboarding(db, restaurant_id, today)
     return _send_weekly(db, restaurant_id, today)
 
 

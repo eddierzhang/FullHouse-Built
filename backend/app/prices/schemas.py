@@ -47,7 +47,7 @@ CATEGORIES = ("food", "dry", "paper", "beer", "wine", "liquor")
 #: Beer, wine and liquor come from one distributor each: trend and short deliveries only, no switching.
 SINGLE_SOURCE = frozenset({"beer", "wine", "liquor"})
 SOURCES = ("billcom", "email", "photo", "pdf", "typed")
-SECTIONS = ("switch", "up", "owed")
+SECTIONS = ("switch", "up", "owed", "margin", "due")
 DRAFT_KINDS = ("price_challenge", "credit_claim", "short_delivery")
 
 Category = Literal[CATEGORIES]  # type: ignore[valid-type]
@@ -89,13 +89,13 @@ class StatusOut(BaseModel):
 class Source_(BaseModel):
     """A chip under an agent message: the invoice (date + supplier) or item it used."""
 
-    kind: Literal["invoice", "item", "digest"]
+    kind: Literal["invoice", "item", "digest", "document", "recipe"]
     id: str
     label: str
 
 
 class CardAction(BaseModel):
-    kind: Literal["move", "draft"]
+    kind: Literal["move", "draft", "reprice", "calendar"]
     #: "Move kale" or "Draft message".
     label: str
     #: For a draft: which kind, to which supplier.
@@ -105,8 +105,11 @@ class CardAction(BaseModel):
 
 class Card(BaseModel):
     section: Section
+    #: The item, or for a menu-margin card the recipe, or for a coming-due card the calendar item.
     item_id: str
     item_name: str
+    recipe_id: str | None = None
+    calendar_item_id: str | None = None
     #: Dollars per week (switch, up) or dollars outstanding (owed).
     impact: float
     #: The comparison in plain words: item, supplier, dollars.
@@ -256,12 +259,31 @@ class StockRow(BaseModel):
     on_order: OrderBrief | None = None
 
 
+class AgreedOut(BaseModel):
+    id: str
+    supplier: SupplierRef
+    unit_price: float
+    base_unit: str
+    effective_from: date
+    effective_to: date | None
+    source_document_id: str | None
+
+
+class RecipeRef(BaseModel):
+    id: str
+    name: str
+    status: str
+
+
 class ItemDetail(ItemRow):
     #: "Reading this as 24 per case."
     pack_sentence: str
     #: What it is counted as in Inventory, if anything, and whether that was the owner's choice.
     stock: StockLink | None = None
     inventory_link: Literal["auto", "owner"] = "auto"
+    #: The agreed price in effect, per unit, with its supplier and document; and the recipes that use the item.
+    agreed: AgreedOut | None = None
+    used_in: list[RecipeRef] = []
     #: The digest's card for this item, if it has one this week.
     card: Card | None
     #: "Not enough matched invoices to compare yet." or "Answer 1 question to compare." or null.
@@ -277,6 +299,17 @@ class ItemPatch(BaseModel):
     pack_size: float | None = Field(default=None, gt=0)
     pack_unit: str | None = Field(default=None, max_length=32)
     inventory_item_id: str | None = None
+
+
+class AgreedIn(BaseModel):
+    """"Set agreed price" on an item: becomes an `agreed_price` proposal, approved like any other."""
+
+    supplier_id: str
+    #: Per pack as the supplier quotes it, or per the item's unit; one of the two.
+    per_pack: float | None = Field(default=None, gt=0)
+    unit_price: float | None = Field(default=None, gt=0)
+    effective_from: date | None = None
+    cited: str | None = Field(default=None, max_length=200)
 
 
 class MoveIn(BaseModel):

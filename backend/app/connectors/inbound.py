@@ -147,51 +147,7 @@ def receive(db: Session, payload: dict, external_id: str) -> dict:
 
 
 def process(db: Session, document_id: str, today: date | None = None) -> Document | None:
-    """Read one document. In this phase every readable document is tried as an invoice; Phase B adds the other types."""
-    from app.prices import engine, extract
-    from app.restaurant.models import Supplier
+    """Read one document and make what it is: the document registry decides by kind."""
+    from app.documents import registry
 
-    document = db.get(Document, document_id)
-    if document is None or document.status in (COMPLETE, NEEDS_REVIEW) or not document.file_key:
-        return document
-    data = storage.get(document.file_key)
-    if data is None:
-        document.status = NEEDS_REVIEW
-        document.note = (document.note or "") + " File missing."
-        return document
-    media = document.media_type or "application/pdf"
-    try:
-        if media != "application/pdf" and not extract.reads_photos():
-            raise extract.ReaderError("This site reads PDFs only.")
-        read = extract.read(media, data)
-    except extract.ReaderError as exc:
-        document.status = NEEDS_REVIEW
-        document.doc_type = "invoice"
-        document.extracted = {"error": str(exc)}
-        document.note = f"{document.note or ''} Couldn't be read: {exc}".strip()
-        return document
-    document.extracted = read.model_dump(mode="json")
-    document.confidence = min([line.confidence for line in read.lines if line.confidence is not None] or [1.0])
-    if not read.lines:
-        document.status = NEEDS_REVIEW
-        document.doc_type = "other"
-        document.type_confidence = 0.5
-        return document
-    document.doc_type = "invoice"
-    document.type_confidence = 0.95
-    name = (read.supplier_guess or "").strip() or "Unknown supplier"
-    supplier = db.query(Supplier).filter(Supplier.restaurant_id == document.restaurant_id, Supplier.name.ilike(name)).first()
-    if supplier is None:
-        supplier = Supplier(restaurant_id=document.restaurant_id, name=name[:255])
-        db.add(supplier)
-        db.flush()
-    invoice, _questions = engine.ingest_invoice(
-        db, document.restaurant_id, supplier, read.date_guess or (today or date.today()), read.lines, source="email",
-        reference=read.reference, total=read.total, today=today, external_id=document.external_id,
-    )
-    invoice.document_id = document.id
-    document.result_table, document.result_id = "supplier_invoices", invoice.id
-    document.status = NEEDS_REVIEW if read.needs_review or invoice.status == engine.NEEDS_REVIEW else COMPLETE
-    engine.build_digest(db, document.restaurant_id, today)
-    db.flush()
-    return document
+    return registry.process(db, document_id, today)
