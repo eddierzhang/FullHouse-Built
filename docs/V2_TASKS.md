@@ -57,7 +57,7 @@ is a branch `v2/phase-<x>-<name>` merged back when its acceptance test passes. N
 - [x] 0.7 `app/storage.py`: local disk by default, S3 when configured, keys `{restaurant_id}/{doc_type}/{uuid}`, signed 15-minute URLs.
 - [x] 0.8 Agent write guard (I1) and the schema-driven invariant tests (I2, I5).
 - [x] 0.9 Structured JSON logs carrying restaurant_id / job_id / run_id; `/healthz`; `/api/v1/admin/ops` (superusers) with plain tables.
-- [ ] 0.10 Acceptance: the existing suites pass with the worker executing (backend 569 green; browser suite running); a worker killed mid-run and restarted completes the run with no duplicate rows (`test_a_lease_left_by_a_dead_worker_is_recovered_and_the_job_runs_once_more`); the same Bill.com webhook twice yields one invoice (`test_the_same_billcom_webhook_twice_yields_one_pull_and_one_invoice`).
+- [x] 0.10 Acceptance: the existing suites pass with the worker executing (backend 569 green; browser suite 43 green with runs through the queue); a worker killed mid-run and restarted completes the run with no duplicate rows (`test_a_lease_left_by_a_dead_worker_is_recovered_and_the_job_runs_once_more`); the same Bill.com webhook twice yields one invoice (`test_the_same_billcom_webhook_twice_yields_one_pull_and_one_invoice`).
 
 Notes. The agent's own summaries of customer requests (`customer_service_reviews`, `customer_action_items`) are
 allowed through the write guard beside the conversation: they are the agent's words for managers to read, not a
