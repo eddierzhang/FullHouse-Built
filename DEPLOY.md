@@ -156,8 +156,14 @@ The SQLite database lives in the `app-data` volume and survives restarts and reb
 To reuse models already on this machine instead of downloading, set `OLLAMA_MODELS_DIR` in
 `.env` (see the example file).
 
-**Keep the backend at one process.** Agent runs execute on its thread pool and stream through
-an in-process broker, so scaling it to two replicas would split runs from their live streams.
+**One process is enough; two kinds are possible.** Every side effect (agent runs, Bill.com pulls,
+digest rebuilds) is a job in the `jobs` table. By default the web process runs the worker threads
+itself (`WORKER_INPROCESS=true`, `WORKER_THREADS=2`), which is right for one free container. To
+scale the two apart, set `WORKER_INPROCESS=false` on the web service and run `python -m app.worker`
+as a second service on the same database; any number of workers share the queue. Live run streams
+come from the process that executes the run, so with a separate worker the web app shows runs when
+they finish rather than as they go. `LOG_FORMAT=json` prints one JSON object per log line with the
+restaurant, job and run on each.
 
 ---
 

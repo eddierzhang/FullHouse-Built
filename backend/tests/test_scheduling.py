@@ -12,7 +12,7 @@ from app.restaurant.models import MenuItem
 @pytest.fixture
 def submitted(monkeypatch):
     queued: list[str] = []
-    monkeypatch.setattr(executor, "submit", queued.append)
+    monkeypatch.setattr(executor, "submit", lambda run_id, db=None: queued.append(run_id))
     return queued
 
 

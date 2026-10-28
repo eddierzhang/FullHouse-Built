@@ -218,7 +218,7 @@ def start_review(user: User = Depends(manager), db: Session = Depends(get_db)):
         raise HTTPException(status.HTTP_409_CONFLICT, "A summary is already being written.")
 
     run = agent_crud.create_run(db, defn.id, trigger_type="manual", input=REVIEW_TASK, restaurant_id=scope)
-    executor.submit(run.id)
+    executor.submit(run.id, db)
     return run
 
 

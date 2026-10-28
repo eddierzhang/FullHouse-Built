@@ -13,7 +13,13 @@ from app.audit import listener as audit_listener
 def setup() -> None:
     """Idempotent; safe to call from every entry point."""
     from app.restaurant import inventory
+    from app.connectors import models as _connector_models  # noqa: F401  registered with the metadata
+    from app.platform import models as _platform_models  # noqa: F401
+
+    from app.agents import guard
 
     audit_listener.install()
+    # The agent writes only proposals: refused at flush time inside any tool call.
+    guard.install()
     # Stock history, for the same reason: no path may change stock unrecorded.
     inventory.install()

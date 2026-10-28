@@ -158,7 +158,7 @@ def trigger_run(payload: schemas.TriggerRunRequest, user: User = Depends(manager
     run = crud.create_run(
         db, defn.id, trigger_type="manual", input=payload.input, restaurant_id=scope_for(db, user)
     )
-    executor.submit(run.id)
+    executor.submit(run.id, db)
     return run
 
 
