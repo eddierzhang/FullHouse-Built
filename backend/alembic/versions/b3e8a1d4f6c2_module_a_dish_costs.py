@@ -30,7 +30,7 @@ def upgrade() -> None:
     sa.Column('batch_cost', sa.Numeric(precision=12, scale=4), nullable=False),
     sa.Column('plate_cost', sa.Numeric(precision=12, scale=4), nullable=False),
     sa.Column('menu_price', sa.Numeric(precision=12, scale=4), nullable=True),
-    sa.Column('food_cost_pct', sa.Numeric(precision=8, scale=4), nullable=True),
+    sa.Column('food_cost_pct', sa.Numeric(precision=10, scale=6), nullable=True),
     sa.Column('margin_dollars', sa.Numeric(precision=12, scale=4), nullable=True),
     sa.Column('lines_priced', sa.Integer(), nullable=False),
     sa.Column('lines_total', sa.Integer(), nullable=False),

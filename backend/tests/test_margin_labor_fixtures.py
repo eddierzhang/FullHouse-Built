@@ -15,7 +15,7 @@ def test_the_fixture_kitchen_costs_what_it_says(client, db):
     db.commit()
     costs = {name: db.query(DishCost).filter_by(recipe_id=r.id, is_current=True).one() for name, r in made["recipes"].items()}
     assert {n: (c.plate_cost, c.food_cost_pct) for n, c in costs.items() if n != "House sauce"} == {
-        "Burger": (D("2.4406"), D("0.2034")), "Fries": (D("0.4350"), D("0.0870")), "House Salad": (D("0.7067"), D("0.0785")), "Wings": (D("2.8000"), D("0.2545"))}
+        "Burger": (D("2.4406"), D("0.203383")), "Fries": (D("0.4350"), D("0.087000")), "House Salad": (D("0.7067"), D("0.078522")), "Wings": (D("2.8000"), D("0.254545"))}
     assert all(c.lines_priced == c.lines_total for c in costs.values())
     # A typed invoice from the same supplier is matched by its aliases: no questions, and the price counts at once.
     body = {"supplier_name": fixtures.SUPPLIER, "invoice_date": menu_costs.load(db, rid).today.isoformat(),

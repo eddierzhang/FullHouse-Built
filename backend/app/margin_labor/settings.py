@@ -25,6 +25,7 @@ DEFAULTS: dict[str, object] = {
     "usage_data_gap_pct": "0.85",
     "coverage_learning": "0.80",
     "coverage_live": "0.90",
+    "usage_collapse_under_dollars": "5",       # rows under this are one line, not many
 }
 
 

@@ -90,7 +90,7 @@ def test_golden_the_burger_is_recosted_from_invoices_to_2_4406_and_20_3_percent(
     k = Kitchen(client, db)
     cost = k.current()
     assert (cost.plate_cost, cost.batch_cost, cost.menu_price, cost.food_cost_pct, cost.margin_dollars) == (
-        D("2.4406"), D("2.4406"), D("12.0000"), D("0.2034"), D("9.5594"))
+        D("2.4406"), D("2.4406"), D("12.0000"), D("0.203383"), D("9.5594"))
     assert (cost.lines_priced, cost.lines_total, cost.unpriced, cost.calc_version) == (4, 4, [], "a1")
     assert k.current(k.sauce).batch_cost == D("3.0000")
     # The basis keeps, per line, the price point, the unit price, the conversion factor and the yield that were used.
@@ -147,7 +147,7 @@ def test_the_alert_opens_one_finding_with_its_weekly_impact_and_a_capped_reprice
     k = Kitchen(client, db)
     k.beef_at(22.00)  # 150 g at $0.022: the plate is $3.9406, 32.8% of $12
     cost = k.current()
-    assert (cost.plate_cost, cost.food_cost_pct) == (D("3.9406"), D("0.3284"))
+    assert (cost.plate_cost, cost.food_cost_pct) == (D("3.9406"), D("0.328383"))
     finding = k.finding()
     # (3.9406 - 2.4406) x 140 sold / 4
     assert finding.weekly_dollars == D("52.5000") and finding.title == "Burger: food cost 32.8% against a 30.0% target"
@@ -157,7 +157,7 @@ def test_the_alert_opens_one_finding_with_its_weekly_impact_and_a_capped_reprice
     assert (proposal.action_type, proposal.status) == ("menu_reprice", "pending")
     # 3.9406 / 0.30 = 13.14, rounded up to $14.00; the cap is $13.20, rounded down to $13.00.
     assert (p["price_at_target"], p["price_cap"], p["suggested_price"], p["cap_applied"], p["food_cost_pct_at_suggested"]) == (
-        "14.00", "13.00", "13.00", True, "0.3031")
+        "14.00", "13.00", "13.00", True, "0.303123")
     assert "$13.00 brings food cost to 30.3%" in p["note"] and "FullHouse never writes to a menu" in p["note"]
     assert (p["current_price"], p["suggested_delta"], p["recipe_id"]) == (12.0, 1.0, k.burger.id)  # what Recommendations already reads
 
@@ -173,7 +173,7 @@ def test_the_alert_opens_one_finding_with_its_weekly_impact_and_a_capped_reprice
 
     # 31.3% (between target + 1 and target + 2 points) keeps the finding open; under 31% closes it.
     k.beef_at(20.80)
-    assert k.current().food_cost_pct == D("0.3134") and k.finding() is not None
+    assert k.current().food_cost_pct == D("0.313383") and k.finding() is not None
     k.beef_at(12.00)
     db.expire_all()
     assert k.finding() is None and k.finding("closed").note == "Food cost fell to 20.3%."
@@ -305,13 +305,13 @@ def test_the_list_and_dish_pages_read_what_was_computed(client, db):
     assert [s["done"] for s in body["setup"]] == [True, True, True, True]
     dish = body["dishes"][0]
     assert (dish["name"], dish["price"], dish["plate_cost"], dish["food_cost_pct"], dish["change_28"], dish["sold_28"], dish["partial"]) == (
-        "Burger", "12.0000", "3.9406", "0.3284", "1.5000", "140.0", False)
+        "Burger", "12.0000", "3.9406", "0.328383", "1.5000", "140.0", False)
     assert len(dish["trend"]) == 12 and dish["trend"][-1] == "3.9406" and dish["trend"][-2] == "2.4406" and dish["trend"][0] is None
     assert dish["finding"]["weekly_dollars"] == "52.5000" and dish["finding"]["suggested_price"] == "13.00" and dish["finding"]["proposal_status"] == "pending"
     tiles = body["tiles"]
     assert tiles["dishes_over"] == {"value": 1, "then": 0, "of": 1}
-    assert tiles["average_food_cost"] == {"value": "0.3284", "then": "0.2034"}  # weighted by what sold
-    assert (tiles["largest_increase"]["name"], tiles["largest_increase"]["pct"]) == ("Ground beef", "0.8333")
+    assert tiles["average_food_cost"] == {"value": "0.328383", "then": "0.203383"}  # weighted by what sold
+    assert (tiles["largest_increase"]["name"], tiles["largest_increase"]["pct"]) == ("Ground beef", "0.833333")
     assert "House sauce" not in [d["name"] for d in body["dishes"]]  # a sub-recipe is not a dish
 
     # Unchanged data answers 304 to the ETag it was sent with.
@@ -342,7 +342,7 @@ def test_the_why_panel_reads_the_stored_basis_of_a_cost_and_of_a_finding(client,
     assert why["inputs"][0]["source"]["kind"] == "invoice" and why["inputs"][3]["source"] == {"kind": "recipe", "id": k.sauce.id, "label": "Sub-recipe"}
     assert why["data_basis"] == "4 of 4 recipe lines priced, from 2 invoices" and why["computed_at"] and why["fix"] == {"label": "Edit recipe", "route": f"menu-costs/{k.burger.id}"}
     pct = client.get(f"{API}/why/dish_costs/{cost.id}?figure=food_cost_pct").json()
-    assert pct["result"]["value"] == "0.3284" and [i["value"] for i in pct["inputs"]] == ["$3.94", "$12.00"]
+    assert pct["result"]["value"] == "0.328383" and [i["value"] for i in pct["inputs"]] == ["$3.94", "$12.00"]
     finding = client.get(f"{API}/why/findings/{k.finding().id}").json()
     assert finding["result"] == {"value": "52.5000", "kind": "dollars", "label": "a week"}
     assert [i["value"] for i in finding["inputs"]] == ["$3.94", "$2.44", "140"]

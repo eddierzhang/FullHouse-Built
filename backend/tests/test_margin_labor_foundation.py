@@ -184,7 +184,7 @@ def test_the_rollup_fills_the_per_item_table_only_where_nothing_else_supplies_th
 
 TABLES = [models.PosItem, models.SalesOrder, models.SalesOrderLine, models.LaborPunch, models.ChannelPayout, models.DemandDriver,
           models.ItemConversion, models.SupplierSchedule, models.RestaurantSettings, models.ChannelTerms, models.IntervalActual,
-          models.ForecastRun, models.ForecastInterval, models.Finding, models.DishCost]
+          models.ForecastRun, models.ForecastInterval, models.Finding, models.DishCost, models.UsageVariance]
 
 
 @pytest.mark.parametrize("model", TABLES, ids=lambda m: m.__tablename__)

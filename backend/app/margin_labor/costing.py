@@ -23,6 +23,8 @@ from app.margin_labor import units
 
 CALC_VERSION = "a1"
 FOUR = Decimal("0.0001")
+#: Shares are kept to six places, so that rounding one for display (20.3%) rounds the true figure, not a rounded one.
+SHARE = Decimal("0.000001")
 MAX_DEPTH = 8
 
 
@@ -103,7 +105,6 @@ def cost_recipe(recipe: RecipeDef, recipes: dict[str, RecipeDef], items: dict[st
     basis: list[dict] = []
     unpriced: list[str] = []
     priced = 0
-    use: dict[str, Decimal] = {}
     for line in recipe.lines:
         entry: dict = {"line_id": line.id, "name": line.name, "qty": str(line.qty), "unit": line.unit}
         if line.sub_recipe_id:
@@ -129,9 +130,6 @@ def cost_recipe(recipe: RecipeDef, recipes: dict[str, RecipeDef], items: dict[st
             cost = money(qty * per_yield_unit)
             batch += cost
             priced += 1
-            share = qty / sub.yield_qty
-            for item_id, per_batch in _per_batch(inner, sub).items():
-                use[item_id] = use.get(item_id, Decimal(0)) + per_batch * share
             basis.append({**entry, "kind": "sub_recipe", "sub_recipe_id": sub.id, "priced": True, "sub_batch_cost": str(inner.batch_cost),
                           "sub_yield_qty": str(sub.yield_qty), "sub_yield_unit": sub.yield_unit, "qty_in_yield_unit": str(qty),
                           "unit_price": str(_trim(per_yield_unit)), "line_cost": str(cost)})
@@ -159,19 +157,40 @@ def cost_recipe(recipe: RecipeDef, recipes: dict[str, RecipeDef], items: dict[st
         cost = money(purchased * price.unit_price)
         batch += cost
         priced += 1
-        use[item.id] = use.get(item.id, Decimal(0)) + purchased
         basis.append({**entry, "priced": True, "qty_in_base": str(_trim(in_base)), "conversion_factor": str(_trim(in_base / line.qty)) if line.qty else "0",
                       "purchased_qty": str(_trim(purchased)), "unit_price": str(_trim(price.unit_price)), "price_point_id": price.line_id,
                       "invoice_id": price.invoice_id, "supplier_id": price.supplier_id, "price_date": price.day, "price_policy": price.policy,
                       "line_cost": str(cost)})
     portions = recipe.portions if recipe.portions > 0 else Decimal(1)
     return Costed(batch_cost=money(batch), plate_cost=money(batch / portions), lines_priced=priced, lines_total=len(recipe.lines), basis=basis,
-                  unpriced=unpriced, use_per_portion={k: v / portions for k, v in use.items()})
+                  unpriced=unpriced, use_per_portion=usage(recipe, recipes, items, _stack))
 
 
-def _per_batch(costed: Costed, recipe: RecipeDef) -> dict[str, Decimal]:
+def usage(recipe: RecipeDef, recipes: dict[str, RecipeDef], items: dict[str, Item], _stack: tuple[str, ...] = ()) -> dict[str, Decimal]:
+    """item id -> the quantity one portion uses, in the item's base unit: what has to be bought, so after yield, and
+    through sub-recipes. It depends on the recipe alone, never on a price. A line that does not convert adds nothing."""
+    stack = _stack + (recipe.id,)
+    per_batch: dict[str, Decimal] = {}
+    for line in recipe.lines:
+        if line.sub_recipe_id:
+            sub = recipes.get(line.sub_recipe_id)
+            if sub is None or not sub.confirmed or sub.id in stack or len(stack) >= MAX_DEPTH or sub.yield_qty <= 0:
+                continue
+            qty = units.convert(line.qty, line.unit, sub.yield_unit)
+            if qty is None:
+                continue
+            sub_portions = sub.portions if sub.portions > 0 else Decimal(1)
+            for item_id, per_portion in usage(sub, recipes, items, stack).items():
+                per_batch[item_id] = per_batch.get(item_id, Decimal(0)) + per_portion * sub_portions * qty / sub.yield_qty
+            continue
+        item = items.get(line.item_id or "")
+        if item is None or not (Decimal(0) < line.yield_pct <= Decimal(1)):
+            continue
+        in_base = units.to_base(line.qty, line.unit, item.base_unit, item.conversions)
+        if in_base is not None:
+            per_batch[item.id] = per_batch.get(item.id, Decimal(0)) + in_base / line.yield_pct
     portions = recipe.portions if recipe.portions > 0 else Decimal(1)
-    return {k: v * portions for k, v in costed.use_per_portion.items()}
+    return {item_id: qty / portions for item_id, qty in per_batch.items()}
 
 
 def _trim(value: Decimal) -> Decimal:
@@ -182,7 +201,7 @@ def _trim(value: Decimal) -> Decimal:
 def food_cost_pct(plate_cost: Decimal, menu_price: Decimal | None) -> Decimal | None:
     if menu_price is None or menu_price <= 0:
         return None
-    return (plate_cost / menu_price).quantize(FOUR, rounding=ROUND_HALF_UP)
+    return (plate_cost / menu_price).quantize(SHARE, rounding=ROUND_HALF_UP)
 
 
 # --- order and cycles ---------------------------------------------------------------------------------

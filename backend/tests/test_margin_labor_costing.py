@@ -3,7 +3,7 @@
 import random
 from decimal import Decimal as D
 
-from app.margin_labor import costing, units
+from app.margin_labor import costing, units, words
 from app.margin_labor.costing import Item, Line, Price, RecipeDef
 
 ITEMS = {"beef": Item("beef", "Ground beef", "g"), "bun": Item("bun", "Bun", "each"), "onion": Item("onion", "Onion", "g"),
@@ -31,7 +31,7 @@ def test_golden_plate_cost_the_burger_costs_2_4406_and_20_3_percent_at_12_dollar
     assert costed.plate_cost == D("2.4406") and costed.batch_cost == D("2.4406")
     assert (costed.lines_priced, costed.lines_total, costed.unpriced) == (4, 4, [])
     pct = costing.food_cost_pct(costed.plate_cost, D("12.00"))
-    assert pct == D("0.2034") and f"{pct * 100:.1f}%" == "20.3%"
+    assert pct == D("0.203383") and words.percent(pct) == "20.3%"
     assert (D("12.00") - costed.plate_cost).quantize(D("0.01")) == D("9.56")
     # What one burger uses, after yield and through the sauce: the input Module B needs.
     assert costed.use_per_portion["onion"].quantize(D("0.0001")) == D("35.2941")
@@ -41,7 +41,7 @@ def test_golden_plate_cost_the_burger_costs_2_4406_and_20_3_percent_at_12_dollar
 def test_golden_menu_reprice_with_the_cap_gives_13_dollars_and_32_3_percent():
     out = costing.suggest_price(D("4.20"), D("12.00"), D("0.30"), D("0.00"))
     assert (out.price_at_target, out.price_cap, out.suggested_price, out.cap_applied) == (D("14.00"), D("13.00"), D("13.00"), True)
-    assert f"{out.food_cost_pct * 100:.1f}%" == "32.3%"
+    assert words.percent(out.food_cost_pct) == "32.3%"
     # Without the cap in the way, the price at target is the suggestion; other endings round the same way.
     free = costing.suggest_price(D("3.70"), D("12.00"), D("0.30"))
     assert (free.suggested_price, free.cap_applied) == (D("13.00"), False)  # 12.3333 rounded up

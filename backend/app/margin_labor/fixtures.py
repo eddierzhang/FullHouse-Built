@@ -34,7 +34,31 @@ DISHES = {
 }
 
 
-def seed_kitchen(db: Session, restaurant_id: str, today: date, sales_days: int = 28, first_invoice_days_ago: int = 40) -> dict:
+#: Packs on the weekly delivery, a little over what a week of sales uses. Wings also come on Mondays: 40 kg a
+#: week bought against 28 kg used, which is the kitchen's one unexplained gap ($49.00 a week).
+WEEKLY = {"Ground beef": 32, "Bun": 18, "Onion": 10, "Sauce base": 5, "Potato": 42, "Fryer oil": 4, "Lettuce": 17, "Chicken wings": 20}
+EXTRA = {"Chicken wings": 20}
+
+
+def seed_deliveries(db: Session, restaurant_id: str, supplier, items: dict, week_end: date, weeks: int = 12, extra_weeks: int | None = None) -> None:
+    """A delivery every Thursday, and wings again every Monday, for the `weeks` ending on the Sunday `week_end`."""
+    def invoice(day: date, packs: dict, reference: str) -> None:
+        row = Invoice(restaurant_id=restaurant_id, supplier_id=supplier.id, invoice_date=day, status="complete", reference=reference,
+                      total=sum(q * ITEMS[n][2] for n, q in packs.items()))
+        db.add(row)
+        db.flush()
+        for number, (name, qty) in enumerate(packs.items(), start=1):
+            db.add(InvoiceLine(restaurant_id=restaurant_id, invoice_id=row.id, supplier_id=supplier.id, line_no=number, description=name, qty=qty,
+                               unit_price=ITEMS[name][2], extended=qty * ITEMS[name][2], item_id=items[name].id, pack_size=ITEMS[name][1]))
+
+    for k in range(weeks - 1, -1, -1):
+        if extra_weeks is None or k < extra_weeks:
+            invoice(week_end - timedelta(days=6 + 7 * k), EXTRA, f"MF-M{k:02d}")
+        invoice(week_end - timedelta(days=3 + 7 * k), WEEKLY, f"MF-T{k:02d}")
+    db.flush()
+
+
+def seed_kitchen(db: Session, restaurant_id: str, today: date, sales_days: int = 90, first_invoice_days_ago: int = 40, deliveries: bool = True) -> dict:
     """Write the kitchen for one restaurant. Returns the rows by name."""
     supplier = Supplier(name=SUPPLIER, restaurant_id=restaurant_id, lead_time_days=2)
     db.add(supplier)
@@ -73,4 +97,6 @@ def seed_kitchen(db: Session, restaurant_id: str, today: date, sales_days: int =
             db.add(SalesItem(restaurant_id=restaurant_id, date=today - timedelta(days=back), pos_item_id=pos_id, pos_item_name=name, qty=sold,
                              net=float(Decimal(price) * sold), source="pos"))
     db.flush()
+    if deliveries:
+        seed_deliveries(db, restaurant_id, supplier, items, today - timedelta(days=today.weekday() + 1))
     return {"supplier": supplier, "items": items, "recipes": recipes, "invoice": invoice}

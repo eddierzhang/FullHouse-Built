@@ -15,7 +15,26 @@ def build(db: Session, restaurant_id: str, user) -> list[dict]:
         card = _menu_costs(db, restaurant_id)
         if card is not None:
             cards.append(card)
+    if flags.enabled(db, restaurant_id, flags.ML_USAGE):
+        card = _usage(db, restaurant_id)
+        if card is not None:
+            cards.append(card)
     return cards
+
+
+def _usage(db: Session, restaurant_id: str) -> dict | None:
+    from app.margin_labor import usage_read
+
+    out = usage_read.overview(db, restaurant_id)
+    if out["state"] == "setup":
+        # Shown only until setup is done: "Add 6 recipes to turn on Usage."
+        return {"module": "usage", "state": "setup", "route": "usage", "recipes_needed": out["recipes_needed"], "has_sales": out["has_sales"]}
+    flagged = [i for i in out["items"] if i["finding"]]
+    if out["state"] != "live" or not flagged:
+        return None
+    top = flagged[0]
+    return {"module": "usage", "state": "live", "route": "usage", "weekly_dollars": out["header"]["weekly_dollars"], "items": out["header"]["items"],
+            "findings": len(flagged[:5]), "top": {"item_id": top["item_id"], "name": top["name"], "trend": top["trend"]}}
 
 
 def _menu_costs(db: Session, restaurant_id: str) -> dict | None:

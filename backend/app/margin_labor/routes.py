@@ -237,3 +237,66 @@ def save_recipe(recipe_id: str, body: RecipeIn, user: User = Depends(manager), d
     done = menu_costs.recost(db, restaurant_id, recipe_ids={recipe_id})
     db.commit()
     return {"recipe_id": recipe_id, **done}
+
+
+# --- Module B: Usage --------------------------------------------------------------------------------
+
+
+@router.get("/usage")
+def usage_list(response: Response, if_none_match: str | None = Header(default=None), user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Ingredients with expected use, purchased, unexplained use and dollars a week, largest first."""
+    from app.margin_labor import usage_read
+
+    restaurant_id = _module(db, user, flags.ML_USAGE)
+    out = usage_read.overview(db, restaurant_id)
+    if _etag(response, if_none_match, out["computed_at"], out["state"], out["stale"], out["window_end"], out["coverage"], out["header"], len(out["items"])):
+        return Response(status_code=304, headers={"ETag": response.headers["ETag"]})
+    return out
+
+
+@router.get("/usage/{item_id}")
+def usage_detail(item_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """One ingredient: eight weekly windows and the dishes that use it."""
+    from app.margin_labor import usage_read
+
+    restaurant_id = _module(db, user, flags.ML_USAGE)
+    out = usage_read.detail(db, restaurant_id, item_id)
+    if out is None:
+        raise HTTPException(404, "No such ingredient.")
+    return out
+
+
+class TrackIn(BaseModel):
+    track_usage: bool
+
+
+@router.put("/usage/{item_id}/tracking")
+def usage_tracking(item_id: str, body: TrackIn, user: User = Depends(manager), db: Session = Depends(get_db)) -> dict:
+    """Leave an ingredient out of Usage (salt, fryer oil), or bring it back. The windows are worked out again."""
+    from app.margin_labor import usage
+    from app.prices.models import PriceItem
+
+    restaurant_id = _module(db, user, flags.ML_USAGE)
+    item = db.get(PriceItem, item_id)
+    if item is None or item.restaurant_id != restaurant_id:
+        raise HTTPException(404, "No such ingredient.")
+    item.track_usage = body.track_usage
+    db.flush()
+    done = usage.run(db, restaurant_id)
+    db.commit()
+    return {"item_id": item_id, "track_usage": item.track_usage, **done}
+
+
+@router.post("/findings/{finding_id}/dismiss")
+def dismiss_finding(finding_id: str, user: User = Depends(manager), db: Session = Depends(get_db)) -> dict:
+    """Set a finding aside. It stays aside while it remains true, and closes when it stops being true."""
+    from app.margin_labor.models import Finding
+
+    restaurant_id = _scope(db, user)
+    finding = db.get(Finding, finding_id)
+    if finding is None or finding.restaurant_id != restaurant_id:
+        raise HTTPException(404, "No such finding.")
+    if finding.status == "open":
+        finding.status, finding.note = "dismissed", f"Dismissed by {user.email}."
+    db.commit()
+    return {"id": finding.id, "status": finding.status}

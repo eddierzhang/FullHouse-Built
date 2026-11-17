@@ -201,6 +201,10 @@ def derive(db: Session, payload: dict) -> None:
         menu_costs.recost(db, restaurant_id, recipe_ids=set(payload["recipe_ids"]) if payload.get("recipe_ids") is not None else None,
                           item_ids=set(payload["item_ids"]) if payload.get("item_ids") is not None else None,
                           trigger_event_id=payload.get("trigger_event_id"))
+    elif payload.get("job") == "usage_variance" and flags.enabled(db, restaurant_id, flags.ML_USAGE):
+        from app.margin_labor import usage
+
+        usage.run(db, restaurant_id)
 
 
 @events.subscribe("sales.synced")
@@ -248,6 +252,19 @@ def _recost_after_sales(db: Session, event: Event) -> None:
 @events.subscribe("intervals.rolled_up")
 def _recost_after_rollup(db: Session, event: Event) -> None:
     _queue_recost(db, event, None)
+
+
+def _queue_usage(db: Session, event: Event) -> None:
+    """Sales, an invoice price or a recipe changed: work the usage windows out again. One job per restaurant waits at a time."""
+    from app.platform import flags, jobs
+
+    if flags.enabled(db, event.restaurant_id, flags.ML_USAGE):
+        jobs.enqueue(db, "derive", f"derive:{event.restaurant_id}:usage_variance", {"restaurant_id": event.restaurant_id, "job": "usage_variance"},
+                     restaurant_id=event.restaurant_id)
+
+
+for _type in ("price_point.created", "recipe.saved", "sales_items.synced", "intervals.rolled_up"):
+    events.subscribe(_type)(_queue_usage)
 
 
 from app.margin_labor import triggers as _ml_triggers  # noqa: E402

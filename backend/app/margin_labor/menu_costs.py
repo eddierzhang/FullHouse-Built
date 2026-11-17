@@ -22,7 +22,7 @@ from statistics import median
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.margin_labor import costing, price_points
+from app.margin_labor import costing, price_points, words
 from app.margin_labor import settings as ml_settings
 from app.margin_labor.business import business_date
 from app.margin_labor.costing import CALC_VERSION, Costed, Line, RecipeDef
@@ -245,7 +245,7 @@ def _check_alert(db: Session, world: World, row: Recipe, cost: DishCost, costed:
     pct = cost.food_cost_pct
     if finding is not None and pct is not None and pct < target + close_over:
         finding.status, finding.closed_at = "closed", datetime.now(timezone.utc)
-        finding.note = f"Food cost fell to {pct * 100:.1f}%."
+        finding.note = f"Food cost fell to {words.percent(pct)}."
         return
     qualifies = costed.complete and pct is not None and pct >= target + over and sold_28 >= min_units
     if finding is None and not qualifies:
@@ -256,7 +256,7 @@ def _check_alert(db: Session, world: World, row: Recipe, cost: DishCost, costed:
              "plate_cost_now": str(cost.plate_cost), "plate_cost_28_days_ago": None if then is None else str(then), "units_sold_28_days": str(sold_28),
              "weekly_impact": str(impact), "menu_price": None if cost.menu_price is None else str(cost.menu_price),
              "food_cost_pct": None if pct is None else str(pct), "target": str(target), "dish_cost_id": cost.id, "as_of": world.today.isoformat()}
-    title = f"{row.name}: food cost {pct * 100:.1f}% against a {target * 100:.1f}% target" if pct is not None else f"{row.name}: no menu price"
+    title = f"{row.name}: food cost {words.percent(pct)} against a {words.percent(target)} target" if pct is not None else f"{row.name}: no menu price"
     if finding is None:
         finding = Finding(restaurant_id=rid, type=FINDING, subject_table="recipes", subject_id=row.id, title=title[:200],
                           weekly_dollars=max(impact, Decimal(0)), basis=basis)
@@ -296,10 +296,10 @@ def propose_reprice(db: Session, world: World, row: Recipe, cost: DishCost, find
     if definition is None:
         return None
     run = _system_run(db, rid, definition, f"Reprice suggested for {row.name}")
-    reaches = f"{out.food_cost_pct * 100:.1f}%"
-    note = (f"{row.name} costs ${cost.plate_cost:.2f} a plate, {cost.food_cost_pct * 100:.1f}% of its ${cost.menu_price:.2f} price. "
-            f"${out.suggested_price:.2f} brings food cost to {reaches}"
-            + (f"; the price is held to 10% over today's, short of the {target * 100:.1f}% target." if out.cap_applied else ".")
+    reaches = words.percent(out.food_cost_pct)
+    note = (f"{row.name} costs {words.dollars(cost.plate_cost)} a plate, {words.percent(cost.food_cost_pct)} of its {words.dollars(cost.menu_price)} price. "
+            f"{words.dollars(out.suggested_price)} brings food cost to {reaches}"
+            + (f"; the price is held to 10% over today's, short of the {words.percent(target)} target." if out.cap_applied else ".")
             + " Change it in your POS; FullHouse never writes to a menu.")
     then = (finding.basis or {}).get("plate_cost_28_days_ago") if finding is not None else None
     action = AgentAction(restaurant_id=rid, run_id=run.id, agent_definition_id=run.agent_definition_id, action_type=ACTION, payload={

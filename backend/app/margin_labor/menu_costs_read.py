@@ -112,8 +112,8 @@ def overview(db: Session, restaurant_id: str, now: datetime | None = None) -> di
                      "dishes": len(rows)}
     out["tiles"] = {
         "dishes_over": {"value": len(over), "then": over_then, "of": len(rows)},
-        "average_food_cost": {"value": _s((cost_sum / sales_sum).quantize(costing.FOUR)) if sales_sum > 0 else None,
-                              "then": _s((cost_then_sum / sales_sum).quantize(costing.FOUR)) if sales_sum > 0 else None},
+        "average_food_cost": {"value": _s((cost_sum / sales_sum).quantize(costing.SHARE)) if sales_sum > 0 else None,
+                              "then": _s((cost_then_sum / sales_sum).quantize(costing.SHARE)) if sales_sum > 0 else None},
         "largest_increase": _largest_increase(world),
     }
     return out
@@ -135,7 +135,7 @@ def _largest_increase(world: World) -> dict | None:
         return None
     rise, item_id, now, then = best
     item = world.items[item_id]
-    return {"item_id": item_id, "name": item.name, "pct": str(rise.quantize(costing.FOUR)), "base_unit": item.base_unit,
+    return {"item_id": item_id, "name": item.name, "pct": str(rise.quantize(costing.SHARE)), "base_unit": item.base_unit,
             "now": str(costing._trim(now.unit_price)), "then": str(costing._trim(then.unit_price)), "since": then.day, "invoice_id": now.invoice_id}
 
 

@@ -348,7 +348,7 @@ class DishCost(_Row, Base):
     plate_cost: Mapped[Decimal] = mapped_column(Dec(), nullable=False)
     #: Excluding tax. Null when neither the POS nor recent sales give one: the cost then shows with no percentage.
     menu_price: Mapped[Decimal | None] = mapped_column(Dec(), nullable=True)
-    food_cost_pct: Mapped[Decimal | None] = mapped_column(Dec(8, 4), nullable=True)
+    food_cost_pct: Mapped[Decimal | None] = mapped_column(Dec(10, 6), nullable=True)
     margin_dollars: Mapped[Decimal | None] = mapped_column(Dec(), nullable=True)
     lines_priced: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     lines_total: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -360,3 +360,31 @@ class DishCost(_Row, Base):
     #: {"lines": [...per line: price point, unit price, conversion, yield, cost], "menu_price": {...}, "policy": ...}
     basis: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     unpriced: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+
+
+# --- Module B: usage variance without counts -----------------------------------------------------
+
+
+class UsageVariance(_Row, Base):
+    """One ingredient over one 28-day window: what the recipes say was used, what was bought, and the gap left
+    after one typical delivery of slack. Rewritten by the `usage_variance` job; a pure function of its inputs."""
+
+    __tablename__ = "usage_variance"
+    __table_args__ = (UniqueConstraint("restaurant_id", "canonical_item_id", "window_end", name="uq_usage_variance_window"),)
+
+    restaurant_id: Mapped[str] = _tenant("usage_variance")
+    #: A `price_items` row.
+    canonical_item_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    window_start: Mapped[date] = mapped_column(Date, nullable=False)
+    window_end: Mapped[date] = mapped_column(Date, nullable=False)
+    #: All quantities are in the ingredient's base unit.
+    theoretical_qty: Mapped[Decimal] = mapped_column(Dec(14, 4), nullable=False)
+    purchased_qty: Mapped[Decimal] = mapped_column(Dec(14, 4), nullable=False)
+    noise_qty: Mapped[Decimal] = mapped_column(Dec(14, 4), nullable=False)
+    unexplained_qty: Mapped[Decimal] = mapped_column(Dec(14, 4), nullable=False)
+    avg_unit_price: Mapped[Decimal] = mapped_column(Dec(16, 8), nullable=False)
+    weekly_dollars: Mapped[Decimal] = mapped_column(Dec(), nullable=False)
+    recipe_coverage: Mapped[Decimal] = mapped_column(Dec(8, 6), nullable=False)
+    state: Mapped[str] = mapped_column(String(10), nullable=False)  # setup|learning|live
+    basis: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    calc_version: Mapped[str] = mapped_column(String(12), nullable=False)
