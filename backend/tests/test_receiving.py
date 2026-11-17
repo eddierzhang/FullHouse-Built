@@ -220,3 +220,45 @@ def test_receiving_is_behind_the_flag_and_another_restaurants_orders_read_as_mis
     assert b.post(f"{API}/orders/{order.id}/reply", json={"text": "Confirmed"}).status_code == 404
     db.expire_all()
     assert tomatoes.quantity_on_hand == 20 and order.status == "ordered"
+
+
+# --- from the correctness review ----------------------------------------------------------------------
+
+
+def test_a_part_received_order_finished_on_the_inventory_page_books_only_what_was_left(client, db):
+    rid, order, tomatoes, romaine, farm = _kitchen(client, db)
+    single = orders.place(db, tomatoes, 50, supplier=farm, today=TODAY)
+    db.commit()
+    lines = _lines(client)
+    client.post(f"{API}/receipts", json={"po_id": order.id, "client_key": "door-phone-0030", "lines": [
+        {"key": lines["Tomatoes, 25 lb case"]["key"], "received": 1, "status": "partial"}, {"key": lines["Romaine, 24 ct case"]["key"], "received": 2}]})
+    client.post(f"{API}/receipts", json={"po_id": single.id, "client_key": "door-phone-0031", "lines": [{"key": "order", "received": 20, "status": "partial"}]})
+    db.expire_all()
+    assert (tomatoes.quantity_on_hand, single.status, order.status) == (20 + 25 + 20, "partial", "partial")
+
+    # A supplier saying the rest has shipped does not turn "part received" back into "on its way".
+    assert client.post(f"{API}/orders/{order.id}/reply", json={"text": "The rest shipped today."}).json()["status"] == "partial"
+    # The old Receive button on the Inventory page finishes both: only the remainder is booked.
+    assert client.post(f"/api/v1/restaurant/purchase-orders/{single.id}/receive", json={}).status_code == 200
+    orders.receive(db, db.get(PurchaseOrder, order.id), received_by="owner@example.com")  # the order page's receive, for an order with lines
+    db.commit()
+    db.expire_all()
+    assert tomatoes.quantity_on_hand == 20 + 100 + 50
+    assert (single.status, single.received_qty, order.status) == ("received", 50, "received")
+
+
+def test_a_reply_that_says_it_cannot_confirm_is_not_a_confirmation_and_a_missing_line_does_not_swallow_its_redelivery(client, db):
+    rid, order, tomatoes, romaine, farm = _kitchen(client, db)
+    assert engine.classify("We cannot confirm this order for Thursday.") == "change"
+    assert engine.classify("Unable to deliver before Friday.") == "change"
+    assert engine.classify("Confirmed for Thursday.") == "confirmed"
+
+    lines = _lines(client)
+    client.post(f"{API}/receipts", json={"po_id": order.id, "client_key": "door-phone-0040", "lines": [
+        {"key": lines["Tomatoes, 25 lb case"]["key"], "received": 4}, {"key": lines["Romaine, 24 ct case"]["key"], "received": 0}]})
+    db.expire_all()
+    assert romaine.quantity_on_hand == 10
+    items = {i.name: i for i in db.query(PriceItem).filter(PriceItem.restaurant_id == rid)}
+    # Nothing of the romaine arrived, so nothing checked in can stand for an invoice of it.
+    assert engine.received_line_without_invoice(db, rid, items["Romaine, 24 ct case"].id, romaine.id, farm.id, TODAY) is None
+    assert engine.received_line_without_invoice(db, rid, items["Tomatoes, 25 lb case"].id, tomatoes.id, farm.id, TODAY) is not None

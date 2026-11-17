@@ -17,7 +17,7 @@ from __future__ import annotations
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.restaurant.inventory import stock_change
+from app.restaurant.inventory import lock_items, stock_change
 from app.restaurant.models import InventoryAdjustment, InventoryItem
 
 
@@ -41,8 +41,16 @@ def move(db: Session, item: InventoryItem, change: float, reason: str, *, source
         return False
     if source_key is not None and seen(db, item.restaurant_id, source_key):
         return False
+    # Locked and read again here, so a movement is always computed from the figure as it stands now, not from
+    # a copy loaded before someone else's delivery, waste or count was committed.
+    lock_items(db, [item.id])
+    db.refresh(item)
     after = round(item.quantity_on_hand + change, 6)
     if not allow_negative and after < 0:
+        # Take what is there and no more. With nothing there (or less than nothing, after sales ran it
+        # negative) there is nothing to take: clamping to zero would add stock and call it waste.
+        if item.quantity_on_hand <= 0:
+            return False
         after = 0.0
     if after == item.quantity_on_hand:
         return False
@@ -56,6 +64,8 @@ def move(db: Session, item: InventoryItem, change: float, reason: str, *, source
 def set_to(db: Session, item: InventoryItem, quantity: float, reason: str = "count", *, source_key: str | None = None,
            note: str | None = None) -> float:
     """Set `item`'s stock to `quantity` (a count). Returns the difference recorded, 0 when nothing moved."""
+    lock_items(db, [item.id])
+    db.refresh(item)
     difference = round(float(quantity) - item.quantity_on_hand, 6)
     return difference if move(db, item, difference, reason, source_key=source_key, note=note) else 0.0
 

@@ -49,14 +49,14 @@ def test_acceptance_seven_days_of_sales_deplete_stock_through_recipes_and_a_repl
     start = date.today()
     engine.deplete(db, rid, start)  # tracking begins today
     sold = [12, 9, 15, 20, 31, 34, 22]
-    for offset, qty in enumerate(sold):
+    moved = 0
+    for offset, qty in enumerate(sold):  # each day's sales arrive, and the job runs, that day
         _sale(db, rid, start + timedelta(days=offset), qty)
-
-    result = engine.deplete(db, rid, start + timedelta(days=6))
+        moved += engine.deplete(db, rid, start + timedelta(days=offset))["moved"]
     db.commit()
 
     plates = sum(sold)
-    assert result["moved"] == 14  # two ingredients, seven days
+    assert moved == 14  # two ingredients, seven days
     assert flour.quantity_on_hand == pytest.approx(100 - plates * 0.5, rel=1e-3)
     assert cheese.quantity_on_hand == pytest.approx(40 - plates * 0.3, rel=1e-3)
     # I12: the same sales again move nothing.
@@ -352,3 +352,88 @@ def test_a_pos_item_that_is_not_a_dish_can_use_an_ingredient_stand_for_a_dish_or
     assert b.put(f"{API}/pos-items", json={"pos_item_name": "X", "menu_item_id": pizza.id}).status_code == 404
     assert b.put(f"{API}/pos-items", json={"pos_item_name": "X", "lines": [{"inventory_item_id": cheese.id, "quantity": 1}]}).status_code == 404
     assert b.put(f"{API}/items/{cheese.id}/conversion", json={"other_unit": "kg", "factor": 2}).status_code == 404
+
+
+# --- from the correctness review --------------------------------------------------------------------
+
+
+def test_changing_a_recipe_does_not_reach_back_and_re_deduct_settled_days(client, db):
+    rid, flour, cheese, pizza = _kitchen(client, db)
+    start = date.today() - timedelta(days=10)
+    engine.deplete(db, rid, start)
+    for offset in range(10):
+        _sale(db, rid, start + timedelta(days=offset), 10)
+        engine.deplete(db, rid, start + timedelta(days=offset))
+    db.commit()
+    db.refresh(cheese)
+    assert cheese.quantity_on_hand == pytest.approx(40 - 100 * 0.3)
+
+    db.query(RecipeItem).filter_by(menu_item_id=pizza.id, inventory_item_id=cheese.id).update({"quantity": 0.4})
+    db.commit()
+    engine.deplete(db, rid, start + timedelta(days=9))
+    db.commit()
+    db.refresh(cheese)
+    # Only the days still open (the last few) are re-read at the new recipe; the earlier ones stand.
+    reread = engine.DEPLETE_WINDOW_DAYS + 1
+    assert cheese.quantity_on_hand == pytest.approx(40 - 100 * 0.3 - reread * 10 * 0.1)
+
+
+def test_a_sale_dated_before_a_count_and_synced_after_it_is_not_taken_off_twice(client, db):
+    rid, flour, cheese, _ = _kitchen(client, db)
+    today = date.today()
+    engine.deplete(db, rid, today - timedelta(days=2))
+    # The shelf is counted today; yesterday's sales export only arrives afterwards.
+    engine.count_now(db, rid, [{"inventory_item_id": cheese.id, "counted_qty": 25}], client_key="count-after-0001")
+    _sale(db, rid, today - timedelta(days=1), 20)
+    engine.deplete(db, rid, today)
+    db.commit()
+    db.refresh(cheese), db.refresh(flour)
+    assert cheese.quantity_on_hand == 25      # the count already had yesterday's sales in it
+    assert flour.quantity_on_hand == 90       # flour was not counted, so its sales still come off
+
+
+def test_a_delivery_between_counting_and_posting_survives_the_count(client, db):
+    rid, flour, cheese, _ = _kitchen(client, db)
+    sheet = client.post(f"{API}/counts", json={}).json()
+    client.put(f"{API}/counts/{sheet['id']}/lines", json={"lines": [{"inventory_item_id": cheese.id, "counted_qty": 30}]})
+    ledger.move(db, cheese, 20, "delivery", note="Arrived while the count was open")
+    db.commit()
+
+    posted = client.post(f"{API}/counts/{sheet['id']}/post").json()
+
+    db.refresh(cheese)
+    assert cheese.quantity_on_hand == 50  # the 30 counted, and the 20 that came after
+    line = next(l for l in posted["lines"] if l["inventory_item_id"] == cheese.id)
+    assert (line["expected_qty"], line["counted_qty"]) == (40, 30)  # ten were missing when it was counted
+    assert ledger.out_of_balance(db, rid) == []
+
+
+def test_waste_on_an_item_already_below_zero_takes_nothing_and_an_undone_entry_leaves_the_report(client, db):
+    rid, flour, cheese, _ = _kitchen(client, db)
+    ledger.move(db, cheese, -45, "sale", source_key="sale:test:ran-negative")
+    db.commit()
+    assert cheese.quantity_on_hand == -5
+
+    out = client.post(f"{API}/waste", json={"inventory_item_id": cheese.id, "quantity": 2, "reason": "dropped"}).json()
+    db.refresh(cheese)
+    assert (out["taken"], out["dollars"], cheese.quantity_on_hand) == (0, 0, -5)
+
+    # Fifty pounds of flour logged by mistake, then undone: it is not reported as wasted.
+    engine.record_waste(db, flour, 50, "spoiled")
+    ledger.move(db, flour, 50, "revert", note="Undone")
+    engine.rollup(db, rid)
+    db.commit()
+    assert engine.variance(db, rid, 28)["wasted_dollars"] == 0
+
+
+def test_a_pos_item_id_with_a_hash_in_it_still_has_its_later_sales_taken_off(client, db):
+    rid, flour, *_ = _kitchen(client, db)
+    today = date.today()
+    engine.deplete(db, rid, today)
+    _sale(db, rid, today, 4, pos="Combo #2")
+    engine.deplete(db, rid, today)
+    _sale(db, rid, today, 10, pos="Combo #2")
+    engine.deplete(db, rid, today)
+    db.commit()
+    db.refresh(flour)
+    assert flour.quantity_on_hand == 95

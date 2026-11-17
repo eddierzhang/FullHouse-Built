@@ -133,7 +133,7 @@ def parse(body: ParseIn, user: User = Depends(current_user), db: Session = Depen
             parsed["blocked"] = parsed["blocked"] or (f"There is no order from {command.supplier} on its way." if command.supplier
                                                       else "Say which supplier the delivery is from.")
         elif not command.all_arrived:
-            parsed["blocked"] = "Say \\u201ceverything arrived\\u201d or \\u201ceverything arrived except\\u2026\\u201d, or check it in on the Deliveries page."
+            parsed["blocked"] = "Say “everything arrived” or “everything arrived except…”, or check it in on the Deliveries page."
     row = VoiceCommand(restaurant_id=restaurant_id, user_email=user.email, transcript=body.transcript[:2000], intent=command.intent,
                        parsed=parsed, source=body.source)
     db.add(row)
@@ -178,6 +178,14 @@ def confirm(command_id: str, body: ConfirmIn | None = None, user: User = Depends
         reason = (body.reason if body and body.reason else parsed.get("reason")) or "other"
         if reason not in stock.WASTE_REASONS:
             raise HTTPException(422, "Pick a reason for the waste.")
+        # One entry per item: the same item said twice is added up, and a line corrected to nothing is dropped.
+        totals: dict[str, float] = {}
+        for line in lines:
+            if line["quantity"] > 0:
+                totals[line["inventory_item_id"]] = totals.get(line["inventory_item_id"], 0.0) + line["quantity"]
+        lines = [{"inventory_item_id": item_id, "quantity": amount} for item_id, amount in totals.items()]
+        if not lines:
+            raise HTTPException(422, "There is nothing to log in that.")
         inventory.lock_items(db, [l["inventory_item_id"] for l in lines])
         taken = 0.0
         for line in lines:

@@ -260,3 +260,25 @@ def test_a_very_long_transcript_is_cut_to_what_one_breath_holds():
     text = " ".join(f"{n} xq{n}" for n in range(1, 400))
     command = parser.parse(text, ITEMS, {}, AREAS, SUPPLIERS)
     assert len(command.unmatched) <= parser.MAX_ENTRIES
+
+
+def test_a_supplier_is_only_matched_on_a_word_that_is_really_its_name():
+    suppliers = ["The Chef's Warehouse", "Green Valley Farms", "Green Leaf Produce", "Sysco Foods"]
+    assert parser.parse("the delivery came in everything arrived", ITEMS, {}, AREAS, suppliers).supplier is None
+    assert parser.parse("green delivery everything arrived", ITEMS, {}, AREAS, suppliers).supplier is None  # two start with it
+    assert parser.parse("green valley farms delivery everything arrived", ITEMS, {}, AREAS, suppliers).supplier == "Green Valley Farms"
+    assert parser.parse("sysco delivery everything arrived", ITEMS, {}, AREAS, suppliers).supplier == "Sysco Foods"
+
+
+def test_waste_said_twice_for_one_item_is_added_up_and_a_line_set_to_nothing_is_dropped(client, db):
+    rid, items, _ = _kitchen(client, db)
+    chicken, flour = items["Chicken Breast"], items["Flour"]
+    preview = client.post(f"{API}/parse", json={"transcript": "waste two pounds of chicken and one pound of chicken and five pounds of flour dropped"}).json()
+
+    done = client.post(f"{API}/commands/{preview['id']}/confirm", json={"lines": [
+        {"inventory_item_id": chicken.id, "quantity": 2}, {"inventory_item_id": chicken.id, "quantity": 1}, {"inventory_item_id": flour.id, "quantity": 0}]})
+
+    db.expire_all()
+    assert done.status_code == 200 and done.json()["done"].startswith("Logged 1 waste entry")
+    assert (chicken.quantity_on_hand, flour.quantity_on_hand) == (47, 50)
+    assert "\\u" not in client.post(f"{API}/parse", json={"transcript": "sysco delivery two cases of flour arrived"}).text

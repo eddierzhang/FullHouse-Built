@@ -71,7 +71,10 @@ def check_in(body: ReceiptIn, user: User = Depends(current_user), db: Session = 
     restaurant_id = _scope(db, user)
     order = _order(db, restaurant_id, body.po_id)
     inventory.lock_items(db, [i for i in [order.inventory_item_id, *[l.inventory_item_id for l in order.lines]] if i])
+    # Read again under the lock, lines included: two check-ins of one order at once must not both see a line as open.
     db.refresh(order)
+    for line in order.lines:
+        db.refresh(line)
     try:
         receipt, summary = engine.post_receipt(db, order, [l.model_dump() for l in body.lines], client_key=body.client_key,
                                                received_by=user.email, note=body.note, photo_document_id=body.photo_document_id)

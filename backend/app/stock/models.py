@@ -69,6 +69,8 @@ class StockCountLine(Base):
     expected_qty: Mapped[float] = mapped_column(Float, nullable=False)
     #: Null until someone counts it; an uncounted line changes nothing when the count is posted.
     counted_qty: Mapped[float | None] = mapped_column(Float, nullable=True)
+    #: When the figure was entered: stock that moved between then and posting is carried through (engine.post_count).
+    counted_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
     unit_cost: Mapped[float] = mapped_column(Float, default=0, nullable=False)
 
 

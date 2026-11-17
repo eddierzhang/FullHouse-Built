@@ -143,6 +143,8 @@ class CountStartIn(BaseModel):
 class CountLineIn(BaseModel):
     inventory_item_id: str
     counted_qty: float | None = Field(default=None, ge=0, le=1_000_000)
+    #: When it was counted, if the phone knows better than the server (a count kept offline and sent later).
+    counted_at: datetime | None = None
 
 
 class CountLinesIn(BaseModel):

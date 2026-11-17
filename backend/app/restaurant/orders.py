@@ -25,6 +25,7 @@ from app.restaurant.models import (
     DRAFT,
     OPEN_ORDER_STATUSES,
     ORDERED,
+    PARTIAL,
     RECEIVED,
     SHIPPED,
     InventoryItem,
@@ -144,7 +145,9 @@ def mark_sent(db: Session, order: PurchaseOrder, sent_by: str | None = None) -> 
 def mark_shipped(db: Session, order: PurchaseOrder, expected_on: date | None = None) -> PurchaseOrder:
     if order.status not in OPEN_ORDER_STATUSES:
         raise OrderError(f"This order is already {order.status}.")
-    order.status = SHIPPED
+    # Part of it is already in: the rest shipping doesn't make the order "on its way" again.
+    if order.status != PARTIAL:
+        order.status = SHIPPED
     order.shipped_at = _now()
     if expected_on is not None:
         order.expected_on = expected_on
@@ -167,12 +170,17 @@ def _receive_lines(db: Session, order: PurchaseOrder, line_quantities: dict, not
     """Each counted line into its stock item; returns the packs received over all lines."""
     packs = 0.0
     for line in order.lines:
-        if line.received_qty is not None:
+        still_coming = line.receipt_status == "partial"
+        if line.received_qty is not None and not still_coming:
             packs += line.received_qty
             continue
-        got = float(line_quantities.get(line.id, line.qty))
-        line.received_qty = got
-        packs += got
+        # A line part checked in at the door (app.receiving) has only its remainder left to book.
+        already = line.received_qty or 0.0
+        got = float(line_quantities.get(line.id, max(0.0, line.qty - already)))
+        line.received_qty = round(already + got, 4)
+        if still_coming:
+            line.receipt_status = "ok"
+        packs += line.received_qty
         if not line.inventory_item_id or got <= 0:
             continue
         units = (line.units or 0) / line.qty * got if line.qty else 0
@@ -241,7 +249,9 @@ def receive(
         order.invoice_line_id = invoice_line_id
         db.flush()
         return order
-    amount = order.quantity if quantity is None else quantity
+    # What is left to come: an order part checked in at the door (app.receiving) has already booked some.
+    already = (order.received_qty or 0.0) if order.status == PARTIAL else 0.0
+    amount = max(0.0, order.quantity - already) if quantity is None else quantity
     if amount < 0:
         raise OrderError("Received amount can't be negative.")
     lock_items(db, [order.inventory_item_id])
@@ -260,7 +270,7 @@ def receive(
             db.flush()
     order.status = RECEIVED
     order.received_at = _now()
-    order.received_qty = round(amount, 6)
+    order.received_qty = round(already + amount, 6)
     order.received_by = received_by or get_actor().id
     order.invoice_line_id = invoice_line_id
     db.flush()

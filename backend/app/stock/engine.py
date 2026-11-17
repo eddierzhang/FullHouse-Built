@@ -41,6 +41,33 @@ WASTE_REASONS = {
 #: Reasons that count as each column of the daily rollup.
 RECEIVED, USED, WASTED, COUNTED = ("delivery", "reorder"), ("sale", "used", "prep"), ("waste",), ("count",)
 EPSILON = 1e-6
+#: Sales this many days old or newer are taken off the shelf, and re-read if the POS revises them. Older days
+#: are settled: a recipe changed today must not reach back and re-deduct months of sales that counts have
+#: already put right.
+DEPLETE_WINDOW_DAYS = 3
+#: What marks a correction to a sale line's movement ("...~r2"). Not "#": POS item ids contain it ("Combo #2").
+REVISION = "~r"
+
+
+def local_today(db: Session, restaurant_id: str) -> date:
+    """Today on the restaurant's own clock, which is the day its sales and its kitchen are on."""
+    from zoneinfo import ZoneInfo
+
+    restaurant = db.get(Restaurant, restaurant_id)
+    try:
+        return datetime.now(ZoneInfo((restaurant.timezone if restaurant else None) or "UTC")).date()
+    except Exception:
+        return date.today()
+
+
+def _zone(db: Session, restaurant_id: str):
+    from zoneinfo import ZoneInfo
+
+    restaurant = db.get(Restaurant, restaurant_id)
+    try:
+        return ZoneInfo((restaurant.timezone if restaurant else None) or "UTC")
+    except Exception:
+        return timezone.utc
 
 
 # --- sales deplete stock ------------------------------------------------------------------------
@@ -114,13 +141,15 @@ def deplete(db: Session, restaurant_id: str, today: date | None = None) -> dict:
     still trading when it was last synced) has only the difference taken off. A sale with no dish or no recipe
     moves nothing and is listed by `unmapped`.
     """
-    today = today or date.today()
+    today = today or local_today(db, restaurant_id)
     restaurant = db.get(Restaurant, restaurant_id)
     if restaurant is None:
         return {"moved": 0, "sales": 0}
     since = _deplete_from(db, restaurant, today)
+    began = since
+    since = max(since, today - timedelta(days=DEPLETE_WINDOW_DAYS))
     if sales_source(db, restaurant_id) != "pos":
-        return {"moved": 0, "sales": 0, "since": since}  # orders taken in FullHouse are the sales, and deduct as placed
+        return {"moved": 0, "sales": 0, "since": began}  # orders taken in FullHouse are the sales, and deduct as placed
     by_pos, by_name = dish_map(db, restaurant_id)
     mapped = pos_maps(db, restaurant_id)
     recipes: dict[str, list[RecipeItem]] = {}
@@ -131,9 +160,20 @@ def deplete(db: Session, restaurant_id: str, today: date | None = None) -> dict:
     already: dict[str, list[float]] = {}
     for key, change in db.query(InventoryAdjustment.source_key, InventoryAdjustment.change).filter(
             InventoryAdjustment.restaurant_id == restaurant_id, InventoryAdjustment.source_key.like("sale:%")):
-        cell = already.setdefault(key.split("#")[0], [0.0, 0])
+        cell = already.setdefault(key.rsplit(REVISION, 1)[0] if REVISION in key else key, [0.0, 0])
         cell[0] += change
         cell[1] += 1
+    # The day each item was last counted. A count is what was on the shelf, so it already reflects every sale
+    # before it: a sale dated before the count that only arrives afterwards (a next-morning export) must not
+    # be taken off a second time.
+    zone = _zone(db, restaurant_id)
+    counted_on: dict[str, date] = {}
+    for item_id, posted_at in (db.query(StockCountLine.inventory_item_id, func.max(StockCount.posted_at))
+                               .join(StockCount, StockCount.id == StockCountLine.count_id)
+                               .filter(StockCountLine.restaurant_id == restaurant_id, StockCount.status == POSTED, StockCountLine.counted_qty.isnot(None))
+                               .group_by(StockCountLine.inventory_item_id)):
+        if posted_at is not None:
+            counted_on[item_id] = posted_at.astimezone(zone).date()
 
     moved = sales = 0
     for row in db.query(SalesItem).filter(SalesItem.restaurant_id == restaurant_id, SalesItem.date >= since).order_by(SalesItem.date):
@@ -154,6 +194,8 @@ def deplete(db: Session, restaurant_id: str, today: date | None = None) -> dict:
             item = items.get(inventory_item_id)
             if item is None:
                 continue
+            if inventory_item_id in counted_on and row.date < counted_on[inventory_item_id] and _sale_key(row, inventory_item_id) not in already:
+                continue  # sold before the last count of this item: the count already has it
             usable = (item.yield_pct or 100.0) / 100.0
             target = -round(row.qty * per_one / (usable if usable > 0 else 1.0), 6)
             base = _sale_key(row, item.id)
@@ -161,11 +203,41 @@ def deplete(db: Session, restaurant_id: str, today: date | None = None) -> dict:
             difference = round(target - done, 6)
             if abs(difference) <= EPSILON:
                 continue
-            key = base if times == 0 else f"{base}#{times + 1}"
+            key = base if times == 0 else f"{base}{REVISION}{times + 1}"
             if ledger.move(db, item, difference, "sale", source_key=key, note=f"{row.qty:g} × {row.pos_item_name}, {row.date.isoformat()}"):
                 already[base] = [done + difference, times + 1]
                 moved += 1
-    return {"moved": moved, "sales": sales, "since": since}
+    return {"moved": moved, "sales": sales, "since": began}
+
+
+def daily_use(db: Session, restaurant_id: str, days: int = 28) -> dict[str, float]:
+    """What a day uses of each stock item, on average, from the same sales that take stock off: the point of
+    sale's lines through recipes and mappings (with yield) when it is the source, else orders taken here."""
+    if sales_source(db, restaurant_id) != "pos":
+        return crud.daily_consumption(db, restaurant_id=restaurant_id)
+    today = local_today(db, restaurant_id)
+    by_pos, by_name = dish_map(db, restaurant_id)
+    mapped = pos_maps(db, restaurant_id)
+    recipes: dict[str, list[tuple[str, float]]] = {}
+    for line in db.query(RecipeItem).join(MenuItem, MenuItem.id == RecipeItem.menu_item_id).filter(MenuItem.restaurant_id == restaurant_id):
+        recipes.setdefault(line.menu_item_id, []).append((line.inventory_item_id, line.quantity))
+    yields = {i.id: (i.yield_pct or 100.0) / 100.0 for i in db.query(InventoryItem).filter(InventoryItem.restaurant_id == restaurant_id)}
+    totals: dict[str, float] = {}
+    rows = (db.query(SalesItem.pos_item_id, SalesItem.pos_item_name, func.sum(SalesItem.qty))
+            .filter(SalesItem.restaurant_id == restaurant_id, SalesItem.date >= today - timedelta(days=days), SalesItem.date < today)
+            .group_by(SalesItem.pos_item_id, SalesItem.pos_item_name))
+    for pos_item_id, name, sold in rows:
+        own = mapped.get(name.strip().lower())
+        if own is not None and own.ignore:
+            continue
+        if own is not None and own.lines:
+            uses = [(l["inventory_item_id"], float(l["quantity"])) for l in own.lines]
+        else:
+            uses = recipes.get((own.menu_item_id if own is not None else None) or by_pos.get(pos_item_id) or by_name.get(name.strip().lower()) or "", [])
+        for inventory_item_id, per_one in uses:
+            usable = yields.get(inventory_item_id) or 1.0
+            totals[inventory_item_id] = totals.get(inventory_item_id, 0.0) + float(sold or 0) * per_one / usable
+    return {item_id: total / days for item_id, total in totals.items()}
 
 
 def unmapped(db: Session, restaurant_id: str) -> list[dict]:
@@ -251,7 +323,10 @@ def save_lines(db: Session, count: StockCount, entries: list[dict]) -> None:
         counted = entry.get("counted_qty")
         if counted is not None and counted < 0:
             raise ValueError(f"{line.item_name} can't be counted as less than nothing.")
-        line.counted_qty = None if counted is None else round(float(counted), 6)
+        value = None if counted is None else round(float(counted), 6)
+        if value != line.counted_qty or (value is not None and line.counted_at is None):
+            line.counted_at = None if value is None else (entry.get("counted_at") or datetime.now(timezone.utc))
+        line.counted_qty = value
     db.flush()
 
 
@@ -267,9 +342,20 @@ def post_count(db: Session, count: StockCount, area_name: str | None = None) -> 
         item = db.query(InventoryItem).filter(InventoryItem.restaurant_id == count.restaurant_id, InventoryItem.id == line.inventory_item_id).first()
         if item is None:
             continue
-        line.expected_qty = item.quantity_on_hand
+        key = f"count:{count.id}:{item.id}"
+        if ledger.seen(db, count.restaurant_id, key):
+            continue
+        # What was on the shelf when it was counted, plus whatever has moved since: a delivery checked in
+        # between counting and posting (or before a phone with poor signal synced) is still there.
+        since_counted = 0.0
+        if line.counted_at is not None:
+            since_counted = float(db.query(func.coalesce(func.sum(InventoryAdjustment.change), 0.0)).filter(
+                InventoryAdjustment.restaurant_id == count.restaurant_id, InventoryAdjustment.inventory_item_id == item.id,
+                InventoryAdjustment.created_at > line.counted_at).scalar() or 0.0)
+        db.refresh(item)
+        line.expected_qty = round(item.quantity_on_hand - since_counted, 6)  # what the ledger expected at the moment of counting
         line.unit_cost = item.unit_cost
-        ledger.set_to(db, item, line.counted_qty, "count", source_key=f"count:{count.id}:{item.id}", note=where)
+        ledger.set_to(db, item, round(line.counted_qty + since_counted, 6), "count", source_key=key, note=where)
     count.status = POSTED
     count.posted_at = datetime.now(timezone.utc)
     db.flush()
@@ -293,6 +379,9 @@ def count_now(db: Session, restaurant_id: str, entries: list[dict], *, storage_a
         existing = db.query(StockCount).filter(StockCount.restaurant_id == restaurant_id, StockCount.client_key == client_key).first()
         if existing is not None and existing.status == POSTED:
             return existing, summary_of(db, existing)
+        if existing is not None:  # opened under this key and never posted: carry it on
+            save_lines(db, existing, entries)
+            return existing, post_count(db, existing, area_name)
     count = StockCount(restaurant_id=restaurant_id, storage_area_id=storage_area_id, started_by=started_by, client_key=client_key)
     db.add(count)
     db.flush()
@@ -323,14 +412,16 @@ def record_waste(db: Session, item: InventoryItem, quantity: float, reason: str,
 def rollup(db: Session, restaurant_id: str, days: int = 35, today: date | None = None) -> int:
     """One row per item per day for the last `days`: received, used, wasted, corrected by a count, and the close.
     A sale counts on the day it was sold, not the day the job took it off. Rewrites the window; returns rows written."""
-    today = today or date.today()
+    today = today or local_today(db, restaurant_id)
+    zone = _zone(db, restaurant_id)
     start = today - timedelta(days=days - 1)
     cells: dict[tuple[str, date], dict] = {}
+    undoable: dict[str, list[list]] = {}  # item -> [[change, cell, bucket, sign, undone]] for a later "revert" to find
     rows = (db.query(InventoryAdjustment).filter(InventoryAdjustment.restaurant_id == restaurant_id,
                                                 InventoryAdjustment.created_at >= datetime.combine(start - timedelta(days=days), datetime.min.time(), tzinfo=timezone.utc))
             .order_by(InventoryAdjustment.created_at, InventoryAdjustment.id))
     for row in rows:
-        day = row.created_at.date()
+        day = row.created_at.astimezone(zone).date()  # the restaurant's day, as sales are
         if row.source_key and row.source_key.startswith("sale:"):
             try:
                 day = date.fromisoformat(row.source_key.split(":")[1])
@@ -339,14 +430,19 @@ def rollup(db: Session, restaurant_id: str, days: int = 35, today: date | None =
         if day < start or day > today:
             continue
         cell = cells.setdefault((row.inventory_item_id, day), {"received": 0.0, "used": 0.0, "wasted": 0.0, "count_change": 0.0, "closing": 0.0})
-        if row.reason in RECEIVED:
-            cell["received"] += row.change
-        elif row.reason in USED:
-            cell["used"] -= row.change
-        elif row.reason in WASTED:
-            cell["wasted"] -= row.change
-        elif row.reason in COUNTED:
-            cell["count_change"] += row.change
+        bucket = ("received", 1) if row.reason in RECEIVED else ("used", -1) if row.reason in USED else \
+            ("wasted", -1) if row.reason in WASTED else ("count_change", 1) if row.reason in COUNTED else None
+        if bucket is not None:
+            cell[bucket[0]] += bucket[1] * row.change
+            undoable.setdefault(row.inventory_item_id, []).append([row.change, cell, bucket[0], bucket[1], False])
+        elif row.reason == "revert":
+            # Undone from History: take the entry it undoes back out of the column it was in, so a waste
+            # entry typed by mistake and undone is not reported as wasted.
+            for entry in reversed(undoable.get(row.inventory_item_id, [])):
+                if not entry[4] and abs(entry[0] + row.change) < EPSILON:
+                    entry[1][entry[2]] -= entry[3] * entry[0]
+                    entry[4] = True
+                    break
         cell["closing"] = row.quantity_after
     db.query(StockDaily).filter(StockDaily.restaurant_id == restaurant_id, StockDaily.date >= start).delete(synchronize_session=False)
     for (item_id, day), cell in cells.items():
@@ -361,7 +457,7 @@ def variance(db: Session, restaurant_id: str, days: int = 28, today: date | None
     `unexplained` is what counts found missing (negative) or extra (positive) beyond sales, waste and deliveries:
     the shrink. An item nobody counted in the window has no unexplained figure, only an expected one.
     """
-    today = today or date.today()
+    today = today or local_today(db, restaurant_id)
     start = today - timedelta(days=days - 1)
     totals: dict[str, dict] = {}
     for row in db.query(StockDaily).filter(StockDaily.restaurant_id == restaurant_id, StockDaily.date >= start, StockDaily.date <= today):
@@ -424,7 +520,7 @@ def alerts(db: Session, restaurant_id: str) -> list[dict]:
     """What needs a decision today: items that run out before a delivery could arrive, and dishes that can't be made."""
     restaurant = db.get(Restaurant, restaurant_id)
     default_lead = int(((restaurant.inventory_settings or {}) if restaurant else {}).get("default_lead_time_days") or 2)
-    use = crud.daily_consumption(db, restaurant_id=restaurant_id)
+    use = daily_use(db, restaurant_id)
     suppliers = {s.id: s for s in db.query(Supplier).filter(Supplier.restaurant_id == restaurant_id)}
     items = {i.id: i for i in db.query(InventoryItem).filter(InventoryItem.restaurant_id == restaurant_id)}
     out = []
@@ -450,7 +546,7 @@ def alerts(db: Session, restaurant_id: str) -> list[dict]:
 
 def run(db: Session, restaurant_id: str, today: date | None = None) -> dict:
     """The stock job: take sales off, roll the days up, and say once a day what needs a decision."""
-    today = today or date.today()
+    today = today or local_today(db, restaurant_id)
     result = deplete(db, restaurant_id, today)
     result["rolled_up"] = rollup(db, restaurant_id, today=today)
     told = 0

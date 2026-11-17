@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { fetchStockStatus, fetchVariance, fetchWaste, runStockNow } from '../api/stock'
+import { fetchStockStatus, fetchVariance, fetchWaste } from '../api/stock'
 import type { AppContext } from '../app/context'
 import { Icon } from '../components/Icon'
 import { ShrinkChart } from '../components/InsightCharts'
+import { StockTracking } from '../components/StockTracking'
 import { Empty, Freshness, Loaded } from '../components/PageState'
 import { WasteDialog } from '../components/WasteDialog'
 import { money, pct, qty, relativeTime, shortDate } from '../lib/format'
@@ -20,26 +21,10 @@ export function VariancePage({ app }: { app: AppContext }) {
   const [days, setDays] = useState<(typeof WINDOWS)[number]>(28)
   const [view, setView] = useState<'chart' | 'table'>('chart')
   const [wasteOpen, setWasteOpen] = useState(false)
-  const [running, setRunning] = useState(false)
   const variance = useLoad(() => (app.canManage ? fetchVariance(days) : Promise.resolve(null)), [days, app.canManage])
   const status = useLoad(fetchStockStatus, [])
   const waste = useLoad(fetchWaste, [])
   const v = variance.data
-
-  const run = async () => {
-    setRunning(true)
-    try {
-      const result = await runStockNow()
-      app.toast(result.moved ? 'Sales taken off the shelf' : 'Already up to date', result.moved ? `${result.moved} stock movements from ${result.sales} sale lines.` : undefined)
-      app.refresh()
-      status.reload()
-      variance.reload()
-    } catch (err) {
-      app.toast('Could not run it', err instanceof Error ? err.message : String(err))
-    } finally {
-      setRunning(false)
-    }
-  }
 
   return (
     <main className="page">
@@ -260,45 +245,16 @@ export function VariancePage({ app }: { app: AppContext }) {
           </Loaded>
         </section>
 
-        <section className="card" aria-labelledby="tracking-title">
-          <div className="card-header">
-            <div>
-              <h2 className="card-title" id="tracking-title">
-                How stock is tracked
-              </h2>
-              <div className="card-subtitle">
-                {status.data?.tracking_since
-                  ? `Sales have come off the shelf through your recipes since ${shortDate(status.data.tracking_since)}.` +
-                    (status.data.last_depleted_at ? ` Last taken off ${relativeTime(status.data.last_depleted_at)}.` : status.data.last_sales_day ? ` Sales are in through ${shortDate(status.data.last_sales_day)}.` : '')
-                  : 'Sales come off the shelf through your recipes, starting with the next sales sync.'}
-              </div>
-            </div>
-            {app.canManage && (
-              <button className="btn btn-secondary btn-sm" disabled={running} onClick={() => void run()}>
-                {running ? 'Running…' : 'Take sales off now'}
-              </button>
-            )}
-          </div>
-          {status.data && status.data.unmapped.length > 0 && (
-            <div className="card-body">
-              <p className="muted small" style={{ marginTop: 0 }}>
-                These sold but took nothing off the shelf. Give each dish a recipe and its ingredients are tracked from then on. <a href="#menu">Open the menu</a>
-              </p>
-              <ul className="list">
-                {status.data.unmapped.map((u) => (
-                  <li key={u.pos_item_name} className="list-item">
-                    <div className="list-item-main">
-                      <div className="strong">{u.pos_item_name}</div>
-                      <div className="muted small">
-                        {qty(u.qty)} sold, {money(u.net)} · {u.why}
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </section>
+        {status.data && (
+          <StockTracking
+            app={app}
+            status={status.data}
+            onChanged={() => {
+              status.reload()
+              variance.reload()
+            }}
+          />
+        )}
       </div>
 
       <WasteDialog

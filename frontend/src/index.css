@@ -4902,3 +4902,29 @@ fieldset.field {
   color: var(--text);
   border-style: solid;
 }
+
+/* How stock is tracked: source of sales, unit conversions, POS items that are not dishes. */
+.tracking-block {
+  border-top: 1px solid var(--border);
+}
+
+.tracking-row {
+  flex-wrap: wrap;
+}
+
+.tracking-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.tracking-controls .select {
+  width: 210px;
+}
+
+.tracking-chip {
+  display: inline-flex;
+  gap: 6px;
+  margin: 0 14px 4px 0;
+}

@@ -57,6 +57,9 @@ AUTOPILOT = "autopilot"
 #: How long before a supplier's cutoff its order is drafted.
 DRAFT_LEAD_MINUTES = 180
 FAILURES_BEFORE_OFF = 3
+REDRAFT_AFTER_HOURS = 18
+#: An order still unsent this long after it was due is too old to send: it goes back to a person.
+STALE_AFTER_HOURS = 6
 
 
 def _now() -> datetime:
@@ -137,7 +140,7 @@ def stock_state(db: Session, restaurant_id: str, today: date) -> tuple[bool, str
     last = db.query(func.max(SalesItem.date)).filter(SalesItem.restaurant_id == restaurant_id).scalar()
     if last is None:
         return False, "No sales have come in from the point of sale, so the stock figures can't be trusted."
-    if last < today - timedelta(days=1):
+    if last < today - timedelta(days=2):  # a day the restaurant was closed has no sales, and is not stale
         return False, f"Sales are only in through {last.strftime('%b %-d')}, so the stock figures are out of date."
     return True, f"Sales are in through {last.strftime('%b %-d')}."
 
@@ -198,7 +201,8 @@ def _on_order(db: Session, restaurant_id: str) -> dict[str, float]:
 
 
 def next_delivery(calendar: SupplierCalendar | None, supplier: Supplier, today: date) -> date:
-    lead = (calendar.lead_time_days if calendar and calendar.lead_time_days is not None else supplier.lead_time_days) or orders.DEFAULT_LEAD_DAYS
+    lead = calendar.lead_time_days if calendar and calendar.lead_time_days is not None else supplier.lead_time_days
+    lead = orders.DEFAULT_LEAD_DAYS if lead is None else lead
     day = today + timedelta(days=lead)
     delivery_days = set(calendar.delivery_days or []) if calendar else set()
     for _ in range(7):
@@ -239,6 +243,11 @@ def draft_for(db: Session, restaurant_id: str, supplier: Supplier, today: date) 
             return None
     if waiting_for(db, restaurant_id, supplier.id):
         return None  # one order at a time: the last one has not gone yet
+    recent = datetime.now(timezone.utc) - timedelta(hours=REDRAFT_AFTER_HOURS)
+    for action in db.query(AgentAction).filter(AgentAction.restaurant_id == restaurant_id, AgentAction.action_type == "purchase_order",
+                                               AgentAction.created_at >= recent):
+        if (action.payload or {}).get("supplier_id") == supplier.id and (action.payload or {}).get("drafted_by") == AUTOPILOT:
+            return None  # drafted already for this order day; a rejected or held draft is not made again five minutes later
     lines = order_lines(db, restaurant_id, supplier, today)
     if not lines:
         return None
@@ -334,6 +343,13 @@ def decide(db: Session, action: AgentAction, now: datetime | None = None, today:
                     body=" ".join(why), link="#approvals", dedupe_key=f"autopilot:held:{action.id}")
         db.flush()
         return decision
+    # Claimed in one statement, so two runs at once (the job, and someone pressing "Check now") cannot both
+    # approve the same proposal and make two orders.
+    claimed = db.query(AgentAction).filter(AgentAction.id == action.id, AgentAction.status == "pending").update(
+        {"status": "approved"}, synchronize_session=False)
+    if claimed != 1:
+        return None
+    db.refresh(action)
     attribution = Actor(type="system", id=AUTOPILOT, agent_run_id=action.run_id, agent_action_id=action.id, restaurant_id=restaurant_id)
     try:
         with actor_context(attribution):
@@ -341,6 +357,8 @@ def decide(db: Session, action: AgentAction, now: datetime | None = None, today:
             mark_action_decided(db, action, "approved", applied_result=f"Approved under your autopilot limits for {draft.supplier_name}. {result}")
     except ApplyError as err:
         logger.warning("autopilot could not draft the order for action %s: %s", action.id, err)
+        action.status = "pending"
+        db.flush()
         return None
     order = db.query(PurchaseOrder).filter(PurchaseOrder.restaurant_id == restaurant_id, PurchaseOrder.action_id == action.id).first()
     if order is None:
@@ -349,6 +367,9 @@ def decide(db: Session, action: AgentAction, now: datetime | None = None, today:
     if payload.get("expected_on"):
         order.expected_on = date.fromisoformat(payload["expected_on"])
     send_after = now + timedelta(minutes=row.cancel_window_minutes)
+    cutoff = _cutoff_today(db, restaurant_id, supplier_id, now)
+    if cutoff is not None and now < cutoff:
+        send_after = min(send_after, cutoff - timedelta(minutes=5))  # the window never pushes an order past the cutoff
     decision = AutopilotDecision(restaurant_id=restaurant_id, po_id=order.id, supplier_id=supplier_id, outcome=PASSED, rules=rules,
                                  total=draft.total, send_after=send_after, decided_at=now)
     db.add(decision)
@@ -360,6 +381,19 @@ def decide(db: Session, action: AgentAction, now: datetime | None = None, today:
                 link="#autopilot", dedupe_key=f"autopilot:send:{order.id}")
     db.flush()
     return decision
+
+
+def _cutoff_today(db: Session, restaurant_id: str, supplier_id: str, now: datetime) -> datetime | None:
+    """The supplier's cutoff today, as a moment, if today is one of its order days."""
+    calendar = calendar_for(db, restaurant_id, supplier_id)
+    local = _local(db, restaurant_id, now)
+    if calendar is None or local.weekday() not in set(calendar.order_days or []):
+        return None
+    try:
+        hour, minute = (int(part) for part in calendar.cutoff_time.split(":"))
+    except ValueError:
+        return None
+    return local.replace(hour=hour, minute=minute, second=0, microsecond=0).astimezone(timezone.utc)
 
 
 def _strike(db: Session, restaurant_id: str, supplier_id: str | None, supplier_name: str) -> None:
@@ -399,7 +433,33 @@ def deliver_due(db: Session, now: datetime | None = None, restaurant_id: str | N
     if restaurant_id:
         query = query.filter(Outbox.restaurant_id == restaurant_id)
     sent = 0
+    # A row left "sending" was claimed and never finished: the worker died between the mail and the note of it.
+    # It may or may not have gone, so it is never sent again by itself; a person is told to check.
+    stuck = db.query(Outbox).filter(Outbox.kind == "po_email", Outbox.status == "sending", Outbox.not_before <= now - timedelta(minutes=15))
+    if restaurant_id:
+        stuck = stuck.filter(Outbox.restaurant_id == restaurant_id)
+    for row in stuck.all():
+        row.status, row.last_error = "failed", "Interrupted while sending; it may or may not have gone."
+        decision = db.query(AutopilotDecision).filter(AutopilotDecision.restaurant_id == row.restaurant_id, AutopilotDecision.po_id == row.payload.get("po_id")).first()
+        if decision is not None and decision.outcome == PASSED:
+            decision.outcome = FAILED
+        notify.tell(db, row.restaurant_id, kind="autopilot_failed", title="An order may not have been sent",
+                    body="Sending was interrupted. Check with the supplier before sending it again; it is a draft under On order.",
+                    link="#autopilot", dedupe_key=f"autopilot:stuck:{row.id}")
+    db.commit()
     for row in query.order_by(Outbox.not_before).all():
+        if row.not_before is not None and now - row.not_before > timedelta(hours=STALE_AFTER_HOURS):
+            # Due hours or days ago (the worker was down, or the feature was off): too old to send unasked.
+            row.status = "cancelled"
+            stale = db.query(AutopilotDecision).filter(AutopilotDecision.restaurant_id == row.restaurant_id, AutopilotDecision.po_id == row.payload.get("po_id")).first()
+            if stale is not None and stale.outcome == PASSED:
+                stale.outcome = HELD
+                stale.rules = [*stale.rules, {"rule": "in_time", "ok": False, "detail": "It was not sent when it was due, and is too old to send now."}]
+            notify.tell(db, row.restaurant_id, kind="autopilot_held", title="An order was not sent in time",
+                        body="It is a draft under On order. Send it yourself if it is still wanted.", link="#autopilot",
+                        dedupe_key=f"autopilot:stale:{row.id}")
+            db.commit()
+            continue
         order = db.query(PurchaseOrder).filter(PurchaseOrder.restaurant_id == row.restaurant_id, PurchaseOrder.id == row.payload.get("po_id")).first()
         decision = db.query(AutopilotDecision).filter(AutopilotDecision.restaurant_id == row.restaurant_id, AutopilotDecision.po_id == row.payload.get("po_id")).first()
         if order is None or order.status != DRAFT or decision is None or decision.outcome != PASSED:
@@ -416,10 +476,17 @@ def deliver_due(db: Session, now: datetime | None = None, restaurant_id: str | N
                         body="Autopilot was paused or switched off first. The order is a draft under On order.", link="#autopilot",
                         dedupe_key=f"autopilot:unsent:{order.id}")
             continue
-        row.attempts += 1
+        # Claim the row, and commit the claim, before the mail goes. If this process dies after the mail, the row
+        # is "sending", not "pending", and is never mailed a second time; two runs at once cannot both claim it.
+        claimed = db.query(Outbox).filter(Outbox.id == row.id, Outbox.status == "pending").update(
+            {"status": "sending", "attempts": Outbox.attempts + 1}, synchronize_session=False)
+        db.commit()
+        if claimed != 1:
+            continue
+        db.refresh(row)
         try:
             delivered = po_mail.send(db, order, [row.payload["to"]], db.get(Restaurant, row.restaurant_id))
-        except Exception as err:  # the mail provider said no: a failed send, not a crashed job
+        except Exception as err:  # the mail provider said no, or timed out: a failed send, not a crashed job
             delivered, row.last_error = False, str(err)[:500]
         if delivered or (settings.demo_mode and not mail.can_send()):
             orders.mark_sent(db, order, sent_by=AUTOPILOT)
@@ -437,9 +504,11 @@ def deliver_due(db: Session, now: datetime | None = None, restaurant_id: str | N
             row.status, decision.outcome = "failed", FAILED
             row.last_error = row.last_error or "The mail could not be delivered."
             notify.tell(db, row.restaurant_id, kind="autopilot_failed", title=f"{name} order could not be sent",
-                        body="The order is a draft under On order. Send it yourself, or place it by phone.", link="#autopilot",
+                        body="The mail did not go through, or we could not confirm it did. Check with the supplier before sending it "
+                             "again; it is a draft under On order.", link="#autopilot",
                         dedupe_key=f"autopilot:failed:{order.id}")
             _strike(db, row.restaurant_id, order.supplier_id, name)
+        db.commit()  # each order's outcome is kept even if a later one fails
     db.flush()
     return sent
 

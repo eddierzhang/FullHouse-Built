@@ -68,6 +68,13 @@ export type StockStatus = {
   out_of_balance: { name: string; on_hand: number; ledger: number }[]
   alerts: StockAlert[]
   unmapped: { pos_item_name: string; qty: number; net: number; why: string }[]
+  /** Where sales take stock off from: the point of sale, or orders taken in FullHouse. Never both. */
+  sales_source: 'pos' | 'app'
+  sales_source_pinned: boolean
+  /** Items an invoice prices in a unit that doesn't convert to the one they are counted in. */
+  needs_conversion: { inventory_item_id: string; name: string; unit: string; other_unit: string; invoiced_as: string }[]
+  conversions: { inventory_item_id: string; name: string; unit: string; other_unit: string; factor: number }[]
+  pos_maps: { pos_item_name: string; menu_item_id: string | null; lines: { inventory_item_id: string; quantity: number }[]; ignore: boolean }[]
 }
 
 export const listAreas = () => get<StorageArea[]>(`${BASE}/areas`)
@@ -90,3 +97,10 @@ export const fetchWaste = () => get<WasteLog>(`${BASE}/waste`)
 export const fetchVariance = (days: number) => get<Variance>(`${BASE}/variance?days=${days}`)
 export const fetchStockStatus = () => get<StockStatus>(`${BASE}/status`)
 export const runStockNow = () => send<{ moved: number; sales: number; told: number }>('POST', `${BASE}/run`)
+
+export const setSalesSource = (sales_source: 'pos' | 'app' | null) => send<{ sales_source: 'pos' | 'app'; sales_source_pinned: boolean }>('PUT', `${BASE}/settings`, { sales_source })
+export const setConversion = (itemId: string, other_unit: string, factor: number | null) =>
+  send<Pick<StockStatus, 'needs_conversion' | 'conversions'>>('PUT', `${BASE}/items/${itemId}/conversion`, { other_unit, factor })
+export const mapPosItem = (body: { pos_item_name: string; menu_item_id?: string; lines?: { inventory_item_id: string; quantity: number }[]; ignore?: boolean }) =>
+  send<Pick<StockStatus, 'unmapped'>>('PUT', `${BASE}/pos-items`, body)
+export const unmapPosItem = (name: string) => send<Pick<StockStatus, 'unmapped'>>('DELETE', `${BASE}/pos-items?pos_item_name=${encodeURIComponent(name)}`)

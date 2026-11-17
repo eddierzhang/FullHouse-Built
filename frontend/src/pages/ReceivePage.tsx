@@ -241,7 +241,7 @@ export function ReceivePage({ app }: { app: AppContext }) {
                         </div>
                         <div className="row wrap receive-actions">
                           {o.late && o.chase && (
-                            <a className="btn btn-ghost btn-sm" href={`mailto:${o.rep_email ?? ''}?subject=${encodeURIComponent(o.chase.subject)}&body=${encodeURIComponent(o.chase.body)}`}>
+                            <a className="btn btn-ghost btn-sm" href={`mailto:${encodeURIComponent(o.rep_email ?? '')}?subject=${encodeURIComponent(o.chase.subject)}&body=${encodeURIComponent(o.chase.body)}`}>
                               Chase it
                             </a>
                           )}

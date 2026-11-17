@@ -334,6 +334,25 @@ def _strip(text: str, pattern: re.Pattern | str) -> str:
     return re.sub(pattern, " ", text)
 
 
+_NOT_A_NAME = {"the", "los", "las", "les", "san", "new", "old", "big", "best", "fresh", "farm", "farms", "foods", "food", "company"}
+
+
+def _supplier_said(plain: str, suppliers: list[str]) -> str | None:
+    """The supplier named in what was said: its whole name, or its first word when that word is a real name
+    (not "The") and no other supplier starts with it. Two that fit is none: the person is asked."""
+    firsts: dict[str, int] = {}
+    for name in suppliers:
+        firsts[name.lower().split()[0]] = firsts.get(name.lower().split()[0], 0) + 1
+    found = []
+    for name in suppliers:
+        whole, first = name.lower(), name.lower().split()[0]
+        if re.search(rf"\b{re.escape(whole)}\b", plain):
+            return name
+        if len(first) >= 4 and first not in _NOT_A_NAME and firsts[first] == 1 and re.search(rf"\b{re.escape(first)}\b", plain):
+            found.append(name)
+    return found[0] if len(found) == 1 else None
+
+
 def parse(transcript: str, items: list[dict], aliases: dict[str, str] | None = None, areas: list[str] | None = None,
           suppliers: list[str] | None = None) -> Command:
     """Turn one utterance into a command. `items` are {"id", "name", "unit", "pack_size"?, "pack_unit"?}."""
@@ -351,7 +370,7 @@ def parse(transcript: str, items: list[dict], aliases: dict[str, str] | None = N
     if raw.endswith("?") or _ASK.search(plain):
         return Command(intent="ask", question=raw)
 
-    supplier = next((s for s in suppliers if any(re.search(rf"\b{re.escape(w)}\b", plain) for w in [s.lower(), s.lower().split()[0]] if len(w) > 2)), None)
+    supplier = _supplier_said(plain, suppliers)
     if _RECEIVE.search(plain) and (supplier or re.search(r"\b(everything|all (of it|here|arrived)|deliver(y|ed))\b", plain)):
         all_here = bool(re.search(r"\b(everything|all of it|all here|all arrived|all there|complete|in full)\b", plain))
         tail = re.split(r"\b(except|but|minus|short|missing)\b", plain, maxsplit=1)

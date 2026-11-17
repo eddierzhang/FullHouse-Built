@@ -13,6 +13,7 @@ import math
 from sqlalchemy.orm import Session
 
 from app.ordering.models import SupplierCalendar
+from app.platform import flags
 from app.restaurant import crud
 from app.restaurant.models import InventoryItem, Restaurant, Supplier
 
@@ -35,7 +36,9 @@ def table(db: Session, restaurant_id: str) -> list[dict]:
     settings = (restaurant.inventory_settings or {}) if restaurant else {}
     safety = float(settings.get("safety_days") or 1)
     default_lead = int(settings.get("default_lead_time_days") or 2)
-    use = crud.daily_consumption(db, restaurant_id=restaurant_id)
+    from app.stock import engine as stock
+
+    use = stock.daily_use(db, restaurant_id) if flags.enabled(db, restaurant_id, flags.V3_STOCK) else crud.daily_consumption(db, restaurant_id=restaurant_id)
     suppliers = {s.id: s for s in db.query(Supplier).filter(Supplier.restaurant_id == restaurant_id)}
     calendars = {c.supplier_id: c for c in db.query(SupplierCalendar).filter(SupplierCalendar.restaurant_id == restaurant_id)}
     rows = []

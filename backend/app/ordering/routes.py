@@ -69,7 +69,8 @@ class PolicyIn(BaseModel):
     max_price_rise_pct: float = Field(default=10, ge=0, le=100)
     max_qty_multiple: float = Field(default=1.5, ge=1, le=10)
     min_history: int = Field(default=4, ge=1, le=8)
-    cancel_window_minutes: int = Field(default=30, ge=5, le=720)
+    #: Orders are drafted three hours before the cutoff, so a longer wait could not be honoured.
+    cancel_window_minutes: int = Field(default=30, ge=5, le=150)
 
 
 class PauseIn(BaseModel):

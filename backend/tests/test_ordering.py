@@ -376,3 +376,60 @@ def test_a_manager_can_pause_but_only_an_owner_resumes_and_the_order_address_is_
     assert client.post(f"{API}/pause", json={"paused": True}).json() == {"paused": True}
     assert client.post(f"{API}/pause", json={"paused": False}).status_code == 403
     assert autopilot.is_paused(db, rid) is True
+
+
+# --- from the correctness review ----------------------------------------------------------------------
+
+
+def test_an_order_is_claimed_before_it_is_mailed_so_a_crash_or_a_second_run_cannot_send_it_twice(client, db, monkeypatch):
+    rid, suppliers, sent = _restaurant(client, db, monkeypatch)
+    farm = suppliers["Green Valley Farms"]
+    _switch_on(db, rid, farm)
+    autopilot.decide(db, autopilot.draft_for(db, rid, farm, TODAY), NOW, TODAY)
+    db.commit()
+    seen_during_send = []
+
+    def crash(db_, order, to, restaurant_):
+        from app.db.session import SessionLocal  # what another worker would read at this moment
+        seen_during_send.append(db.query(Outbox).one().status)
+        raise KeyboardInterrupt  # the process dies after the provider took the mail
+
+    monkeypatch.setattr(autopilot.po_mail, "send", crash)
+    with pytest.raises(KeyboardInterrupt):
+        autopilot.deliver_due(db, NOW + timedelta(minutes=31))
+    db.rollback()
+    assert seen_during_send == ["sending"] and db.query(Outbox).one().status == "sending"
+
+    # The retry does not mail it again; once it has sat there a while a person is told to check.
+    monkeypatch.setattr(autopilot.po_mail, "send", lambda *a: sent.append(a) or True)
+    assert autopilot.deliver_due(db, NOW + timedelta(minutes=33)) == 0 and sent == []
+    assert autopilot.deliver_due(db, NOW + timedelta(minutes=50)) == 0 and sent == []
+    db.commit()
+    assert db.query(Outbox).one().status == "failed" and db.query(AutopilotDecision).one().outcome == "failed"
+    assert db.query(PurchaseOrder).one().status == "draft"
+
+
+def test_an_order_never_goes_after_the_cutoff_or_long_after_it_was_due_and_a_rejected_draft_is_not_made_again(client, db, monkeypatch):
+    rid, suppliers, sent = _restaurant(client, db, monkeypatch)
+    farm = suppliers["Green Valley Farms"]
+    row = _switch_on(db, rid, farm, cancel_window_minutes=150)
+    local = autopilot._local(db, rid, NOW)
+    if (local + timedelta(minutes=45)).date() != local.date():
+        pytest.skip("within an hour of midnight in the restaurant's timezone")
+    calendar = db.query(SupplierCalendar).filter_by(supplier_id=farm.id).one()
+    calendar.cutoff_time = (local + timedelta(minutes=40)).strftime("%H:%M")
+    db.commit()
+
+    action = autopilot.draft_for(db, rid, farm, TODAY)
+    decision = autopilot.decide(db, action, NOW, TODAY)
+    db.commit()
+    # A 150-minute window with the cutoff 40 minutes away: it goes five minutes before the cutoff, not after.
+    assert decision.send_after < NOW + timedelta(minutes=41)
+
+    # Left unsent for a day (the worker was down): too old to send unasked.
+    assert autopilot.deliver_due(db, NOW + timedelta(hours=30)) == 0 and sent == []
+    db.commit()
+    assert db.query(Outbox).one().status == "cancelled" and db.query(AutopilotDecision).one().outcome == "held"
+    # And the same order day does not get a second draft five minutes later.
+    assert autopilot.draft_for(db, rid, farm, TODAY) is None
+    assert client.put(f"{API}/suppliers/{farm.id}/policy", json={"enabled": True, "cancel_window_minutes": 720}).status_code == 422

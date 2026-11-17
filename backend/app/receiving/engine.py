@@ -236,6 +236,8 @@ def received_line_without_invoice(db: Session, restaurant_id: str | None, item_i
     since = _now() - timedelta(days=days)
     rows = (db.query(PurchaseOrderLine).join(PurchaseOrder, PurchaseOrder.id == PurchaseOrderLine.po_id)
             .filter(PurchaseOrderLine.restaurant_id == restaurant_id, PurchaseOrderLine.received_qty.isnot(None),
+                    # A line closed as missing received nothing: a later invoice for the item is a redelivery, to be booked.
+                    PurchaseOrderLine.received_qty > 0,
                     PurchaseOrderLine.receipt_status.isnot(None), PurchaseOrderLine.invoice_line_id.is_(None),
                     PurchaseOrder.updated_at >= since)
             .order_by(PurchaseOrder.updated_at).all())
@@ -256,10 +258,14 @@ _CONFIRM = re.compile(r"\b(confirm\w*|received your order|got (it|your order)|or
                       r"thank(s| you) for your order|we('ll| will) have (it|that))\b", re.I)
 
 
+# "We cannot confirm", "unable to deliver": the confirming word is there, and it means the opposite.
+_REFUSAL = re.compile(r"\b(can(no|')t|cannot|unable to|not able to|won'?t|will not|do(es)? not|don'?t)\b[^.]{0,30}\b(confirm|deliver|fill|ship|supply)", re.I)
+
+
 def classify(text: str) -> str:
     """What a supplier's reply means, by rule: change beats shipped beats confirmed. Anything else is for a person."""
     body = _own_words(text)
-    if _CHANGE.search(body):
+    if _CHANGE.search(body) or _REFUSAL.search(body):
         return "change"
     if _SHIPPED.search(body):
         return "shipped"
@@ -320,7 +326,7 @@ def handle_reply(db: Session, order: PurchaseOrder, text: str, sender: str | Non
     elif kind == "confirmed":
         order.confirmed_at = order.confirmed_at or _now()
     elif kind == "shipped":
-        orders.mark_shipped(db, order)
+        orders.mark_shipped(db, order)  # a part-received order stays part received (see mark_shipped)
         order.confirmed_at = order.confirmed_at or _now()
     else:
         notify.tell(db, order.restaurant_id, kind="supplier_reply", title=f"{name} replied about your order: have a look",

@@ -104,3 +104,21 @@ def test_the_routes_are_behind_the_flag_and_never_show_another_restaurants_rows(
     assert b.get("/api/v1/insights/stock-outlook").json()["items"] == []
     for path in ("savings", "prime-cost", "spend", "switch-options"):
         assert b.get(f"/api/v1/insights/{path}").status_code == 200
+
+
+def test_search_treats_wildcards_as_characters_and_orders_with_lines_count_as_on_the_way(client, db):
+    from app.restaurant import orders
+    from app.restaurant.models import Supplier
+
+    restaurant_id = _demo(db)
+    assert engine.search(db, restaurant_id, "__") == [] and engine.search(db, restaurant_id, "%%") == []
+
+    tomatoes = db.query(InventoryItem).filter_by(name="Tomatoes").one()
+    farm = db.query(Supplier).filter_by(name="Green Valley Farms").one()
+    before = sum(o["quantity"] for o in next(i for i in engine.stock_outlook(db, restaurant_id)["items"] if i["name"] == "Tomatoes")["incoming"])
+    order = orders.draft_with_lines(db, restaurant_id, farm, [{"inventory_item_id": tomatoes.id, "description": "Tomatoes, 25 lb case", "qty": 4,
+                                                             "unit": "case", "units": 100, "unit_price_expected": 31.2}])
+    orders.mark_sent(db, order, sent_by="owner@example.com")
+    db.flush()
+    after = sum(o["quantity"] for o in next(i for i in engine.stock_outlook(db, restaurant_id)["items"] if i["name"] == "Tomatoes")["incoming"])
+    assert after - before == 100

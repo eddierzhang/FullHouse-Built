@@ -119,10 +119,18 @@ def weekday_factors(db: Session, restaurant_id: str, days: int = 28) -> list[flo
     """How busy each weekday is against the average day (Monday first), from completed orders. All 1.0 with no history."""
     since = datetime.now(timezone.utc) - timedelta(days=days)
     counts, seen = [0.0] * 7, [set() for _ in range(7)]
+    from zoneinfo import ZoneInfo
+
+    restaurant = db.get(Restaurant, restaurant_id)
+    try:
+        zone = ZoneInfo((restaurant.timezone if restaurant else None) or "UTC")
+    except Exception:
+        zone = timezone.utc
     for (created_at,) in db.query(Order.created_at).filter(Order.restaurant_id == restaurant_id, Order.status == "completed",
                                                            Order.created_at >= since):
-        counts[created_at.weekday()] += 1
-        seen[created_at.weekday()].add(created_at.date())
+        local = created_at.astimezone(zone)  # a Friday dinner is Friday, whatever day it is in UTC
+        counts[local.weekday()] += 1
+        seen[local.weekday()].add(local.date())
     per_day = [counts[i] / len(seen[i]) if seen[i] else 0.0 for i in range(7)]
     mean = sum(per_day) / 7
     if mean <= 0:
@@ -136,13 +144,27 @@ def stock_outlook(db: Session, restaurant_id: str, today: date | None = None) ->
     restaurant = db.get(Restaurant, restaurant_id)
     settings = (restaurant.inventory_settings or {}) if restaurant else {}
     default_lead = int(settings.get("default_lead_time_days") or 2)
-    use = crud.daily_consumption(db, restaurant_id=restaurant_id)
+    from app.platform import flags
+    from app.stock import engine as stock
+
+    use = stock.daily_use(db, restaurant_id) if flags.enabled(db, restaurant_id, flags.V3_STOCK) else crud.daily_consumption(db, restaurant_id=restaurant_id)
     suppliers = {s.id: s for s in db.query(Supplier).filter(Supplier.restaurant_id == restaurant_id)}
     incoming: dict[str, list[dict]] = {}
     for order in db.query(PurchaseOrder).filter(PurchaseOrder.restaurant_id == restaurant_id, PurchaseOrder.status.in_(OPEN_ORDER_STATUSES),
-                                               PurchaseOrder.status != "draft", PurchaseOrder.inventory_item_id.isnot(None)):
-        incoming.setdefault(order.inventory_item_id, []).append(
-            {"expected_on": max(order.expected_on or today, today), "quantity": order.quantity, "late": bool(order.expected_on and order.expected_on < today)})
+                                               PurchaseOrder.status != "draft"):
+        when = {"expected_on": max(order.expected_on or today, today), "late": bool(order.expected_on and order.expected_on < today)}
+        if order.inventory_item_id is not None:
+            left = order.quantity - (order.received_qty or 0.0 if order.status == "partial" else 0.0)  # what is still to come
+            if left > 0:
+                incoming.setdefault(order.inventory_item_id, []).append({**when, "quantity": round(left, 4)})
+        for line in order.lines:  # an order of several lines: each stocked line still to come, in the stock item's unit
+            if not line.inventory_item_id or not line.units or not line.qty:
+                continue
+            if line.received_qty is not None and line.receipt_status != "partial":
+                continue
+            left = line.units / line.qty * (line.qty - (line.received_qty or 0.0))
+            if left > 0:
+                incoming.setdefault(line.inventory_item_id, []).append({**when, "quantity": round(left, 4)})
     items = []
     for item in db.query(InventoryItem).filter(InventoryItem.restaurant_id == restaurant_id).order_by(InventoryItem.name):
         supplier = suppliers.get(item.supplier_id) if item.supplier_id else None
@@ -189,24 +211,25 @@ def search(db: Session, restaurant_id: str, text: str, limit: int = 5) -> list[d
     needle = text.strip()
     if len(needle) < 2:
         return []
-    like = f"%{needle}%"
+    # The person's text is matched as written: "%" and "_" are characters, not wildcards.
+    like = "%" + needle.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
     out: list[dict] = []
-    for item in db.query(InventoryItem).filter(InventoryItem.restaurant_id == restaurant_id, InventoryItem.name.ilike(like)).order_by(InventoryItem.name).limit(limit):
+    for item in db.query(InventoryItem).filter(InventoryItem.restaurant_id == restaurant_id, InventoryItem.name.ilike(like, escape="\\")).order_by(InventoryItem.name).limit(limit):
         low = item.quantity_on_hand <= item.reorder_threshold
         out.append({"kind": "stock", "title": item.name, "href": "#inventory",
                     "subtitle": f"{item.quantity_on_hand:g} {item.unit} on hand" + (", low" if low else "")})
-    for item in db.query(PriceItem).filter(PriceItem.restaurant_id == restaurant_id, PriceItem.name.ilike(like)).order_by(PriceItem.name).limit(limit):
+    for item in db.query(PriceItem).filter(PriceItem.restaurant_id == restaurant_id, PriceItem.name.ilike(like, escape="\\")).order_by(PriceItem.name).limit(limit):
         out.append({"kind": "price", "title": item.name, "href": f"#item/{item.id}", "subtitle": "Prices by supplier, eight weeks"})
-    for supplier in db.query(Supplier).filter(Supplier.restaurant_id == restaurant_id, Supplier.name.ilike(like)).order_by(Supplier.name).limit(limit):
+    for supplier in db.query(Supplier).filter(Supplier.restaurant_id == restaurant_id, Supplier.name.ilike(like, escape="\\")).order_by(Supplier.name).limit(limit):
         out.append({"kind": "supplier", "title": supplier.name, "href": "#suppliers",
                     "subtitle": f"{supplier.lead_time_days}-day lead time" if supplier.lead_time_days is not None else "Supplier"})
     invoices = (db.query(Invoice, Supplier.name).join(Supplier, Supplier.id == Invoice.supplier_id)
-                .filter(Invoice.restaurant_id == restaurant_id, or_(Invoice.reference.ilike(like), Supplier.name.ilike(like)))
+                .filter(Invoice.restaurant_id == restaurant_id, or_(Invoice.reference.ilike(like, escape="\\"), Supplier.name.ilike(like, escape="\\")))
                 .order_by(Invoice.invoice_date.desc()).limit(limit))
     for invoice, supplier_name in invoices:
         total = f", {prices.money(invoice.total)}" if invoice.total is not None else ""
         out.append({"kind": "invoice", "title": f"{supplier_name} {invoice.reference or ''}".strip(), "href": "#invoices",
                     "subtitle": f"Invoice, {prices.short_date(invoice.invoice_date)}{total}"})
-    for dish in db.query(MenuItem).filter(MenuItem.restaurant_id == restaurant_id, MenuItem.name.ilike(like)).order_by(MenuItem.name).limit(limit):
+    for dish in db.query(MenuItem).filter(MenuItem.restaurant_id == restaurant_id, MenuItem.name.ilike(like, escape="\\")).order_by(MenuItem.name).limit(limit):
         out.append({"kind": "dish", "title": dish.name, "href": "#menu", "subtitle": f"Dish, {prices.money(dish.price)}"})
     return out
