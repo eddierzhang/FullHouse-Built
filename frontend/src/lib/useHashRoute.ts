@@ -28,6 +28,8 @@ export const ROUTES = [
   // v3: order days, pars and autopilot limits (v3_autopilot); checking deliveries in (v3_receiving).
   'autopilot',
   'receive',
+  // Margin & Labor Engine: one page per module (behind the ml_* flags).
+  'menu-costs',
   'approvals',
   'runs',
   'agents',

@@ -44,6 +44,7 @@ import { RecipePage } from '../pages/RecipePage'
 import { RecipesPage } from '../pages/RecipesPage'
 import { CustomersPage } from '../pages/CustomersPage'
 import { DigestPage } from '../pages/DigestPage'
+import { MenuCostsPage } from '../ml/MenuCostsPage'
 import { DraftPage } from '../pages/DraftPage'
 import { InvoicesPage } from '../pages/InvoicesPage'
 import { ItemPage } from '../pages/ItemPage'
@@ -166,6 +167,9 @@ const INSIGHTS_GROUP: { label: string; items: NavItem[] } = {
     { route: 'tools', label: 'Test a decision', icon: 'play' },
   ],
 }
+
+/** The Margin & Labor Engine's pages, each behind its own flag, with the spec's labels. */
+const MARGIN_LABOR: { flag: string; item: NavItem }[] = [{ flag: 'ml_menu_costs', item: { route: 'menu-costs', label: 'Menu costs', icon: 'menu' } }]
 
 /** Words people type for a page that its name doesn't contain. */
 const PAGE_KEYWORDS: Partial<Record<Route, string>> = {
@@ -433,6 +437,8 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
     switch (route) {
       case 'digest':
         return <DigestPage app={app} />
+      case 'menu-costs':
+        return <MenuCostsPage app={app} />
       case 'items':
         return <ItemsPage app={app} />
       case 'item':
@@ -517,7 +523,8 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
     if (label === 'Menu' && flags.v2_orders) more.push({ route: 'prep', label: 'Prep sheets', icon: 'inventory' })
     return more
   }
-  const allGroups = [...NAV.slice(0, 1), ...(navOn ? [INSIGHTS_GROUP] : []), ...NAV.slice(1)]
+  const marginLabor = MARGIN_LABOR.filter((entry) => flags[entry.flag]).map((entry) => entry.item)
+  const allGroups = [...NAV.slice(0, 1), ...(navOn ? [INSIGHTS_GROUP] : []), ...(marginLabor.length ? [{ label: 'Margin & labor', items: marginLabor }] : []), ...NAV.slice(1)]
     .map((group) => ({ label: group.label, items: [...group.items, ...extra(group.label)].filter(allowed) }))
     .filter((group) => group.items.length > 0)
   // In the demo the sidebar starts short; search still offers every page.

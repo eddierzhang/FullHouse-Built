@@ -16,7 +16,9 @@ export function dollars(value: number | string): string {
 export function percent(value: number | string, isFraction = true): string {
   const n = typeof value === 'string' ? Number(value) : value
   if (!Number.isFinite(n)) return '—'
-  return `${(isFraction ? n * 100 : n).toFixed(1)}%`
+  // Half up, as the server rounds: 0.0785 is 7.9%, not the 7.8% binary floats give.
+  const tenths = Math.round((isFraction ? n * 1000 : n * 10) + 1e-7)
+  return `${(tenths / 10).toFixed(1)}%`
 }
 
 /** "Tue Nov 17", from a business date (YYYY-MM-DD) or a timestamp. Never a raw timestamp. */

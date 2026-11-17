@@ -1,3 +1,4 @@
+import { ModuleCards } from '../ml/ModuleCards'
 import { useState } from 'react'
 import {
   type DigestCard,
@@ -142,6 +143,7 @@ export function DigestPage({ app }: { app: AppContext }) {
         <Loaded load={digest} what="the digest" placeholderHeight={160}>
           {(d) => (
             <>
+              <ModuleCards app={app} />
               <header className="pi-stack-sm">
                 {d.prime && (
                   <p className="pi-label-strong" data-testid="prime-line">

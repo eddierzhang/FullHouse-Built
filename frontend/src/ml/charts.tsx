@@ -325,3 +325,224 @@ export function Waterfall({ start, steps, end, format, height = 220 }: { start: 
     </div>
   )
 }
+
+
+/** A cost over twelve weeks, small enough for a table row. The row's own text carries the numbers. */
+export function Sparkline({ values, label, width = 84, height = 24 }: { values: (number | null)[]; label: string; width?: number; height?: number }) {
+  const known = values.filter((v): v is number => v != null)
+  if (known.length < 2) return <span className="muted small">No trend yet</span>
+  const low = Math.min(...known)
+  const high = Math.max(...known)
+  const span = high - low || 1
+  const x = (i: number) => 2 + (i / (values.length - 1)) * (width - 4)
+  const y = (v: number) => height - 3 - ((v - low) / span) * (height - 6)
+  let started = false
+  const path = values
+    .map((v, i) => {
+      if (v == null) return ''
+      const command = `${started ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`
+      started = true
+      return command
+    })
+    .join(' ')
+  const last = values.length - 1 - [...values].reverse().findIndex((v) => v != null)
+  return (
+    <svg className="ml-spark" width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={label}>
+      <path d={path} fill="none" stroke="var(--chart-1)" strokeWidth={1.5} strokeLinejoin="round" />
+      <circle cx={x(last)} cy={y(values[last] as number)} r={2.5} fill="var(--chart-1)" />
+    </svg>
+  )
+}
+
+export type ScatterPoint = { key: string; label: string; x: number; y: number }
+
+/**
+ * Each dish by how many it sells (across) and what it keeps a plate (up), with the median of each drawn as a
+ * dashed line. The four corners say what to do; every point carries its name.
+ */
+export function Scatter({ points, xUnit, yUnit, formatY, corners, onPick, height = 320 }: {
+  points: ScatterPoint[]
+  xUnit: string
+  yUnit: string
+  formatY: (v: number) => string
+  /** Words for the corners: top right, top left, bottom right, bottom left. */
+  corners: [string, string, string, string]
+  onPick?: (key: string) => void
+  height?: number
+}) {
+  const [hover, setHover] = useState<string | null>(null)
+  const [ref, W] = useElementWidth<HTMLDivElement>()
+  const pad = { top: 26, right: 24, bottom: 46, left: 64 }
+  const innerW = W - pad.left - pad.right
+  const innerH = height - pad.top - pad.bottom
+  if (points.length === 0) return <div ref={ref} />
+  const median = (values: number[]) => {
+    const sorted = [...values].sort((a, b) => a - b)
+    const mid = Math.floor(sorted.length / 2)
+    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+  }
+  const maxX = niceMax(Math.max(1, ...points.map((p) => p.x)))
+  const lowY = Math.min(0, ...points.map((p) => p.y))
+  const maxY = niceMax(Math.max(1, ...points.map((p) => p.y)))
+  const x = (v: number) => pad.left + (v / maxX) * innerW
+  const y = (v: number) => pad.top + innerH - ((v - lowY) / (maxY - lowY)) * innerH
+  const mx = median(points.map((p) => p.x))
+  const my = median(points.map((p) => p.y))
+  const shown = points.find((p) => p.key === hover)
+  return (
+    <div className="chart" ref={ref}>
+      <svg width={W} height={height} viewBox={`0 0 ${W} ${height}`} role="img" aria-label={`${yUnit} against ${xUnit}, one point a dish`}>
+        {[0, 0.5, 1].map((f) => (
+          <g key={f}>
+            <line className="chart-grid" x1={pad.left} x2={W - pad.right} y1={y(lowY + (maxY - lowY) * f)} y2={y(lowY + (maxY - lowY) * f)} />
+            <text className="chart-axis" x={pad.left - 8} y={y(lowY + (maxY - lowY) * f) + 4} textAnchor="end">
+              {formatY(lowY + (maxY - lowY) * f)}
+            </text>
+            <text className="chart-axis" x={x(maxX * f)} y={height - 26} textAnchor="middle">
+              {Math.round(maxX * f).toLocaleString('en-US')}
+            </text>
+          </g>
+        ))}
+        <text className="chart-axis" transform={`translate(14 ${pad.top + innerH / 2}) rotate(-90)`} textAnchor="middle">
+          {yUnit}
+        </text>
+        <text className="chart-axis" x={pad.left + innerW / 2} y={height - 6} textAnchor="middle">
+          {xUnit}
+        </text>
+        <line x1={x(mx)} x2={x(mx)} y1={pad.top} y2={pad.top + innerH} stroke="var(--ink)" strokeWidth={1} strokeDasharray="5 4" />
+        <line x1={pad.left} x2={W - pad.right} y1={y(my)} y2={y(my)} stroke="var(--ink)" strokeWidth={1} strokeDasharray="5 4" />
+        <text className="chart-axis" x={x(mx) + 4} y={pad.top - 8}>
+          Median sold {Math.round(mx).toLocaleString('en-US')}
+        </text>
+        <text className="chart-axis" x={W - pad.right} y={y(my) - 5} textAnchor="end">
+          Median kept {formatY(my)}
+        </text>
+        <text className="chart-label ml-corner" x={W - pad.right - 4} y={pad.top + 14} textAnchor="end">{corners[0]}</text>
+        <text className="chart-label ml-corner" x={pad.left + 6} y={pad.top + 14}>{corners[1]}</text>
+        <text className="chart-label ml-corner" x={W - pad.right - 4} y={pad.top + innerH - 8} textAnchor="end">{corners[2]}</text>
+        <text className="chart-label ml-corner" x={pad.left + 6} y={pad.top + innerH - 8}>{corners[3]}</text>
+        {points.map((p) => (
+          <g key={p.key} className={onPick ? 'ml-point' : undefined} tabIndex={onPick ? 0 : undefined} role={onPick ? 'link' : undefined} aria-label={`${p.label}: ${Math.round(p.x)} sold, ${formatY(p.y)} kept a plate`}
+            onClick={() => onPick?.(p.key)} onKeyDown={(e) => e.key === 'Enter' && onPick?.(p.key)} onMouseEnter={() => setHover(p.key)} onMouseLeave={() => setHover(null)} onFocus={() => setHover(p.key)} onBlur={() => setHover(null)}>
+            <circle cx={x(p.x)} cy={y(p.y)} r={12} fill="transparent" />
+            <circle cx={x(p.x)} cy={y(p.y)} r={5} fill="var(--chart-1)" stroke="var(--surface)" strokeWidth={2} />
+            <text className="chart-axis" x={x(p.x) + 8} y={y(p.y) + 4}>
+              {p.label}
+            </text>
+          </g>
+        ))}
+      </svg>
+      {shown && (
+        <div className="tooltip" style={{ left: `${(x(shown.x) / W) * 100}%` }}>
+          <div className="tooltip-title">{shown.label}</div>
+          <div className="tooltip-row">{Math.round(shown.x).toLocaleString('en-US')} sold, last 28 days</div>
+          <div className="tooltip-row">{formatY(shown.y)} kept a plate</div>
+          <div className="tooltip-row">Source: point of sale and invoices</div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export type StepPoint = { date: string; value: number | null; second?: number | null; marks?: string[] }
+
+/**
+ * A value that changes in steps (a cost that moves when an invoice arrives), with an optional second line on
+ * the same dollar axis and a marker on each week something changed. Both lines are named on the chart.
+ */
+export function StepLines({ points, label, secondLabel, unit, format, height = 260 }: { points: StepPoint[]; label: string; secondLabel?: string; unit: string; format: (v: number) => string; height?: number }) {
+  const [hover, setHover] = useState<number | null>(null)
+  const [ref, W] = useElementWidth<HTMLDivElement>()
+  const pad = { top: 22, right: 20, bottom: 44, left: 60 }
+  const innerW = W - pad.left - pad.right
+  const innerH = height - pad.top - pad.bottom
+  const n = points.length
+  if (n === 0) return <div ref={ref} />
+  const all = points.flatMap((p) => [p.value, p.second ?? null]).filter((v): v is number => v != null)
+  const max = niceMax(Math.max(1e-9, ...all))
+  const slot = innerW / n
+  const x = (i: number) => pad.left + slot * i
+  const y = (v: number) => pad.top + innerH - (v / max) * innerH
+  const steps = (pick: (p: StepPoint) => number | null | undefined) => {
+    let d = ''
+    let pen = false
+    points.forEach((p, i) => {
+      const v = pick(p)
+      if (v == null) {
+        pen = false
+        return
+      }
+      d += `${pen ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)} L${x(i + 1).toFixed(1)},${y(v).toFixed(1)} `
+      pen = true
+    })
+    return d
+  }
+  const lastValue = [...points].reverse().find((p) => p.value != null)?.value
+  const lastSecond = [...points].reverse().find((p) => p.second != null)?.second
+  return (
+    <div className="chart" ref={ref}>
+      <svg width={W} height={height} viewBox={`0 0 ${W} ${height}`} role="img" aria-label={`${label}${secondLabel ? ` and ${secondLabel}` : ''} by week, in ${unit}`}>
+        {[0, 0.5, 1].map((f) => (
+          <g key={f}>
+            <line className="chart-grid" x1={pad.left} x2={W - pad.right} y1={y(max * f)} y2={y(max * f)} />
+            <text className="chart-axis" x={pad.left - 8} y={y(max * f) + 4} textAnchor="end">
+              {format(max * f)}
+            </text>
+          </g>
+        ))}
+        <text className="chart-axis" transform={`translate(14 ${pad.top + innerH / 2}) rotate(-90)`} textAnchor="middle">
+          {unit}
+        </text>
+        {secondLabel && <path d={steps((p) => p.second)} fill="none" stroke="var(--ink)" strokeWidth={1.5} strokeDasharray="6 4" />}
+        <path d={steps((p) => p.value)} fill="none" stroke="var(--chart-1)" strokeWidth={2.5} strokeLinejoin="round" />
+        {points.map((p, i) =>
+          p.value != null && p.marks && p.marks.length > 0 ? (
+            <path key={`m-${p.date}`} d={`M${x(i)},${y(p.value) - 9} l5,9 l-5,9 l-5,-9 z`} fill="var(--surface)" stroke="var(--ink)" strokeWidth={1.5} />
+          ) : null,
+        )}
+        {lastValue != null && (
+          <text className="chart-label" x={W - pad.right - 4} y={y(lastValue) - 8} textAnchor="end">
+            {label}
+          </text>
+        )}
+        {secondLabel && lastSecond != null && (
+          <text className="chart-label" x={W - pad.right - 4} y={y(lastSecond) - 8} textAnchor="end">
+            {secondLabel}
+          </text>
+        )}
+        {points.map((p, i) => (
+          <g key={`x-${p.date}`}>
+            {i % Math.max(1, Math.ceil(n / 6)) === 0 && (
+              <text className="chart-axis" x={x(i) + slot / 2} y={height - 24} textAnchor="middle">
+                {dayLabel(p.date).split(' ').slice(1).join(' ')}
+              </text>
+            )}
+            <rect x={x(i)} y={pad.top} width={slot} height={innerH} fill="transparent" onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} />
+          </g>
+        ))}
+        <text className="chart-axis" x={pad.left + innerW / 2} y={height - 6} textAnchor="middle">
+          Week ending
+        </text>
+      </svg>
+      <div className="ml-coverage-key">
+        <span>
+          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+            <path d="M7,1 l5,6 l-5,6 l-5,-6 z" fill="var(--surface)" stroke="var(--ink)" strokeWidth="1.5" />
+          </svg>{' '}
+          An ingredient price changed
+        </span>
+      </div>
+      {hover !== null && (
+        <div className="tooltip" style={{ left: `${((x(hover) + slot / 2) / W) * 100}%` }}>
+          <div className="tooltip-title">Week ending {dayLabel(points[hover].date)}</div>
+          <div className="tooltip-row">{label} {points[hover].value != null ? format(points[hover].value as number) : 'not priced'}</div>
+          {secondLabel && points[hover].second != null && <div className="tooltip-row">{secondLabel} {format(points[hover].second as number)}</div>}
+          {(points[hover].marks ?? []).map((m) => (
+            <div key={m} className="tooltip-row">{m} price changed</div>
+          ))}
+          <div className="tooltip-row">Source: invoices and the recipe</div>
+        </div>
+      )}
+    </div>
+  )
+}

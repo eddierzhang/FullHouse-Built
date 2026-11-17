@@ -30,3 +30,21 @@ One line per decision made where `docs/SPEC-margin-labor.md` was silent, or wher
 | 2026-11-17 | The module flags (`ml_*`) are off by default and off in the demo until each module has a page | A flag with nothing behind it would show an empty page |
 | 2026-11-17 | Phase 0's read-performance check times the three indexed reads module pages will make (five restaurants, 120 days each), not a page | No module page exists until phase 1; the page-level 300 ms check moves there |
 | 2026-11-17 | The interface-text lint runs before every frontend build (`npm run lint:text`), on `src/ml` only | Spec 10.5; existing pages are out of scope |
+| 2026-11-17 | Module A writes a new `dish_costs` table; `plate_costs` is left as it is. This replaces the earlier line about extending `plate_costs` | `plate_costs.cost` is a float with one row per recipe per week; the spec needs decimals and a row per change. Additive only |
+| 2026-11-17 | A recost is triggered by a session watcher that emits `price_point.created` and `recipe.saved` at commit, not by changes to the invoice or recipe code | No such events existed; additive only. Nothing is emitted for a restaurant with no module on |
+| 2026-11-17 | The 3-a-week `menu_reprice` cap is enforced inside Module A; the older constant (5) for the older reprice button is unchanged | Ground rule 9 for the new module; additive only |
+| 2026-11-17 | Menu price: `pos_items.price`, then the app's own `menu_items.price`, then the 14-day median of net / qty | The spec names the first and third; this app also keeps menu prices of its own |
+| 2026-11-17 | "Last 28 days" and "last 14 days" are the complete business dates before today; today's partial sales are left out | A partial day would understate every weekly figure |
+| 2026-11-17 | "Cost per plate 28 days ago" is the recipe as it is now at the prices of 28 days ago | It isolates the price move, which is what the weekly impact formula measures; cost history is the same pure function at earlier dates |
+| 2026-11-17 | The current cost uses every invoice price that has arrived, even one dated ahead of the business date | Before 04:00, or on a server in a later time zone, an invoice can carry tomorrow's date |
+| 2026-11-17 | Two invoices dated the same day are taken in the order they were saved | "Latest" needs a tie-break the same every run |
+| 2026-11-17 | An outlier price is left out of costing and listed on the dish page with a link to Invoices; it does not open a Question | Questions are the agent's item-matching queue with their own cap; additive only |
+| 2026-11-17 | No reprice is proposed when the 10% cap rounds down to today's price | There is nothing to suggest |
+| 2026-11-17 | Approve, Dismiss and Publish are sent after 10 seconds, with Undo on screen until then; leaving the page sends at once | The spec asks for Undo for 10 seconds; the proposal endpoints have no un-approve |
+| 2026-11-17 | Pages are hash routes: `#menu-costs`, `#menu-costs/{recipe}`; later `#usage`, `#ordering-prep`, `#labor`, `#channels` | The app's router; `#ordering` and `#prep` already belong to older pages |
+| 2026-11-17 | Times show on a 12-hour clock | Restaurants have no 12 or 24 hour setting yet |
+| 2026-11-17 | List endpoints send an ETag and are not paginated | A restaurant's dishes and ingredients are bounded lists; cursor pagination is left for order-level lists |
+| 2026-11-17 | The Margin & Labor browser tests run in their own seeded restaurant | So their invoices, recipes and sales never show in the other suites |
+| 2026-11-17 | `@axe-core/playwright` added as a dev dependency | The spec requires automated WCAG 2.1 AA checks |
+| 2026-11-17 | `test_two_managers_approving_at_once_apply_it_once` gained a second barrier so both threads read before either writes | The test relied on timing for that; the new session watcher shifted the timing and exposed it |
+

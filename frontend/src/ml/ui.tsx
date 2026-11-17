@@ -1,6 +1,7 @@
-import { type ReactNode, useEffect, useId, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from 'react'
 import { Icon, type IconName } from '../components/Icon'
-import { confidenceWords, dollars, rangeWords } from './format'
+import { fetchWhy, type RawWhy } from './api'
+import { confidenceWords, dayLabel, dollars, percent, rangeWords, timeLabel } from './format'
 
 /**
  * The shared parts of every Margin & Labor page (spec section 10.12). Each page is the same shape, top to
@@ -142,7 +143,7 @@ export function SetupChecklist({ title, steps }: { title: string; steps: SetupSt
   )
 }
 
-export type WhyInput = { label: string; value: string; source?: { label: string; href: string } }
+export type WhyInput = { label: string; value: string; source?: { label: string; href?: string } }
 export type Why = {
   /** The number, its unit and its period. */
   result: string
@@ -196,7 +197,7 @@ export function WhyPanel({ why, onClose }: { why: Why | null; onClose: () => voi
                     <tr key={input.label}>
                       <td>{input.label}</td>
                       <td className="num strong">{input.value}</td>
-                      <td>{input.source && <a href={input.source.href}>{input.source.label}</a>}</td>
+                      <td>{input.source && (input.source.href ? <a href={input.source.href}>{input.source.label}</a> : <span className="muted">{input.source.label}</span>)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -363,7 +364,7 @@ export function ViewAsTable({ title, summary, chart, columns, rows }: { title: s
           </table>
         </div>
       ) : (
-        <div className="card-body" aria-hidden="true">
+        <div className="card-body">
           {chart}
         </div>
       )}
@@ -381,4 +382,169 @@ export function useRowLimit<T>(rows: T[], limit = 10) {
     </button>
   ) : null
   return { shown, more }
+}
+
+
+/** Where a Why input came from, as a link the reader can follow. */
+function sourceLink(source: RawWhy['inputs'][number]['source']): WhyInput['source'] {
+  if (!source) return undefined
+  const dated = source.date ? `${source.label ?? 'Invoice'}, ${dayLabel(source.date)}` : (source.label ?? '')
+  if (source.kind === 'invoice') return { label: dated, href: '#invoices' }
+  if (source.kind === 'recipe' && source.id) return { label: dated, href: `#menu-costs/${source.id}` }
+  if (source.kind === 'route' && source.id) return { label: dated, href: `#${source.id}` }
+  return { label: dated }
+}
+
+/** The server's stored basis, worded for the panel. */
+export function toWhy(raw: RawWhy): Why {
+  const value = raw.result.kind === 'dollars' ? dollars(raw.result.value) : raw.result.kind === 'percent' ? percent(raw.result.value) : Number(raw.result.value).toLocaleString('en-US')
+  const changed = raw.inputs_changed_on ? ` Inputs last changed ${dayLabel(raw.inputs_changed_on)}.` : ''
+  return {
+    result: `${value} ${raw.result.label}`,
+    formula: raw.formula,
+    inputs: raw.inputs.map((input) => ({ label: input.label, value: input.value, source: sourceLink(input.source) })),
+    dataBasis: raw.data_basis,
+    freshness: `Computed ${dayLabel(raw.computed_at)} at ${timeLabel(raw.computed_at)}.${changed}`,
+    fix: raw.fix ? { label: raw.fix.label, href: `#${raw.fix.route}` } : undefined,
+  }
+}
+
+/** One Why panel for a page: `open(table, row, figure)` reads the stored basis; `show(why)` takes one built from the page's own data. */
+export function useWhy() {
+  const [why, setWhy] = useState<Why | null>(null)
+  const [failed, setFailed] = useState(false)
+  const open = useCallback((table: string, rowId: string, figure?: string) => {
+    setFailed(false)
+    fetchWhy(table, rowId, figure)
+      .then((raw) => setWhy(toWhy(raw)))
+      .catch(() => setFailed(true))
+  }, [])
+  const close = useCallback(() => setWhy(null), [])
+  const panel = (
+    <>
+      <WhyPanel why={why} onClose={close} />
+      {failed && <StateBanner kind="error" text="The working for this number did not load. The page still works." action={{ label: 'Dismiss', onClick: () => setFailed(false) }} />}
+    </>
+  )
+  return { open, show: setWhy, panel }
+}
+
+/**
+ * Approve, dismiss and publish wait ten seconds before they are sent, with Undo on screen the whole time.
+ * Leaving the page sends what is waiting; Undo drops it.
+ */
+export function useDeferred() {
+  const [pending, setPending] = useState<{ id: string; label: string } | null>(null)
+  const waiting = useRef<{ timer: number; run: () => void; onUndo?: () => void } | null>(null)
+  const flush = useCallback(() => {
+    const held = waiting.current
+    if (!held) return
+    window.clearTimeout(held.timer)
+    waiting.current = null
+    setPending(null)
+    held.run()
+  }, [])
+  const start = useCallback(
+    (id: string, label: string, run: () => void, onUndo?: () => void) => {
+      flush()
+      const timer = window.setTimeout(() => {
+        waiting.current = null
+        setPending(null)
+        run()
+      }, 10_000)
+      waiting.current = { timer, run, onUndo }
+      setPending({ id, label })
+    },
+    [flush],
+  )
+  const undo = useCallback(() => {
+    const held = waiting.current
+    if (held) window.clearTimeout(held.timer)
+    waiting.current = null
+    setPending(null)
+    held?.onUndo?.()
+  }, [])
+  useEffect(() => {
+    const leave = () => {
+      const held = waiting.current
+      if (!held) return
+      window.clearTimeout(held.timer)
+      waiting.current = null
+      held.run()
+    }
+    window.addEventListener('pagehide', leave)
+    return () => {
+      window.removeEventListener('pagehide', leave)
+      leave()
+    }
+  }, [])
+  const bar = pending ? (
+    <div className="ml-undo" role="status">
+      <span>{pending.label}</span>
+      <button className="btn btn-secondary btn-sm" onClick={undo}>
+        Undo
+      </button>
+    </div>
+  ) : null
+  return { start, undo, pendingId: pending?.id ?? null, bar }
+}
+
+/** Loading: grey blocks in the page's final layout. Never a spinner over a blank page. */
+export function Skeleton({ title }: { title: string }) {
+  return (
+    <div className="ml-skeleton" aria-busy="true" aria-label={`Loading ${title}`} data-testid="skeleton">
+      <h1 className="page-title">{title}</h1>
+      <div className="ml-skel ml-skel-line" />
+      <div className="ml-tiles">
+        <div className="ml-skel ml-skel-tile" />
+        <div className="ml-skel ml-skel-tile" />
+        <div className="ml-skel ml-skel-tile" />
+      </div>
+      <div className="ml-skel ml-skel-chart" />
+      <div className="ml-skel ml-skel-table" />
+    </div>
+  )
+}
+
+/** Error: what failed, what still works, and a way to try again. */
+export function LoadFailed({ title, what, onRetry }: { title: string; what: string; onRetry: () => void }) {
+  return (
+    <div>
+      <h1 className="page-title">{title}</h1>
+      <StateBanner kind="error" text={`${what} did not load. The rest of FullHouse still works.`} action={{ label: 'Retry', onClick: onRetry }} />
+    </div>
+  )
+}
+
+/** A side panel that leaves the list in view behind it: for reviewing a proposal or editing in place. */
+export function SidePanel({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  const titleId = useId()
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+  return (
+    <aside className="ml-why ml-side" role="dialog" aria-labelledby={titleId}>
+      <div className="ml-why-head">
+        <h2 className="card-title" id={titleId}>
+          {title}
+        </h2>
+        <button className="btn btn-ghost btn-icon" aria-label="Close" onClick={onClose} autoFocus>
+          <Icon name="close" size={16} />
+        </button>
+      </div>
+      <div className="ml-why-body">{children}</div>
+    </aside>
+  )
+}
+
+/** A status that never rests on colour: an icon and a word. */
+export function StatusWord({ tone, children }: { tone: 'bad' | 'good' | 'neutral'; children: ReactNode }) {
+  return (
+    <span className={`ml-status ml-status-${tone}`}>
+      <Icon name={tone === 'bad' ? 'alert' : tone === 'good' ? 'check' : 'info'} size={14} />
+      {children}
+    </span>
+  )
 }

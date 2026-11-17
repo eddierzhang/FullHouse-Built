@@ -400,3 +400,13 @@ def test_the_per_category_target_overrides_the_restaurants(client, db):
     menu_costs.recost(db, k.rid)
     db.commit()
     assert k.finding().title == "Burger: food cost 20.3% against a 18.0% target"  # 20.3% is at least 18% + 2 points
+
+
+def test_a_price_that_has_arrived_counts_even_when_its_date_is_ahead_of_the_business_date(client, db):
+    """Before 4 am the business date is still yesterday, and a server in a later time zone dates an invoice tomorrow."""
+    k = Kitchen(client, db)
+    k.beef_at(22.00, days_ago=-1)
+    assert k.current().plate_cost == D("3.9406")
+    body = client.get(f"{API}/menu-costs").json()
+    assert body["dishes"][0]["trend"][-1] == "3.9406" and body["tiles"]["largest_increase"]["name"] == "Ground beef"
+    assert client.get(f"{API}/menu-costs/{k.burger.id}").json()["history"][-1]["plate_cost"] == "3.9406"

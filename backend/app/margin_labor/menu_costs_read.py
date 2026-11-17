@@ -83,7 +83,7 @@ def overview(db: Session, restaurant_id: str, now: datetime | None = None) -> di
         then = None if partial else menu_costs.cost_then(world, recipe.id)
         trend = []
         for back in range(TREND_WEEKS - 1, -1, -1):
-            at = world.cost(recipe.id, world.today - timedelta(days=7 * back))
+            at = world.cost(recipe.id, world.today - timedelta(days=7 * back) if back else None)
             trend.append(_s(at.plate_cost) if at.complete else None)
         finding = findings.get(recipe.id)
         proposal = proposals.get(finding.proposal_id) if finding is not None and finding.proposal_id else None
@@ -99,7 +99,8 @@ def overview(db: Session, restaurant_id: str, now: datetime | None = None) -> di
             "finding": None if finding is None else {"id": finding.id, "weekly_dollars": str(finding.weekly_dollars), "opened_at": finding.opened_at,
                                                      "proposal_id": finding.proposal_id, "proposal_status": proposal.status if proposal else None,
                                                      "suggested_price": (proposal.payload or {}).get("suggested_price") if proposal else None,
-                                                     "note": (proposal.payload or {}).get("note") if proposal else None},
+                                                     "food_cost_pct_at_suggested": (proposal.payload or {}).get("food_cost_pct_at_suggested") if proposal else None,
+                                                     "cap_applied": bool((proposal.payload or {}).get("cap_applied")) if proposal else False},
         })
     rows.sort(key=lambda r: (-(Decimal(r["finding"]["weekly_dollars"]) if r["finding"] else Decimal(-1)), -Decimal(r["food_cost_pct"] or 0), r["name"]))
     over = [r for r in rows if r["finding"]]
@@ -124,7 +125,7 @@ def _largest_increase(world: World) -> dict | None:
     then_day = world.today - timedelta(days=WINDOW_DAYS)
     used = {l.item_id for r in world.recipes.values() if r.confirmed for l in r.lines if l.item_id}
     for item_id in sorted(used):
-        now, then = world.price_of(world.today)(item_id), world.price_of(then_day)(item_id)
+        now, then = world.price_of()(item_id), world.price_of(then_day)(item_id)
         if now is None or then is None or then.unit_price <= 0 or now.unit_price <= then.unit_price:
             continue
         rise = (now.unit_price - then.unit_price) / then.unit_price
@@ -158,7 +159,7 @@ def detail(db: Session, restaurant_id: str, recipe_id: str, now: datetime | None
     price_rows = db.query(DishCost.effective_at, DishCost.menu_price).filter(DishCost.restaurant_id == restaurant_id, DishCost.recipe_id == recipe_id).order_by(DishCost.effective_at).all()
     for back in range(HISTORY_WEEKS - 1, -1, -1):
         day = world.today - timedelta(days=7 * back)
-        at = world.cost(recipe_id, day)
+        at = world.cost(recipe_id, day if back else None)
         prices = {b["item_id"]: b["unit_price"] for b in at.basis if b.get("priced") and b.get("item_id")}
         moved = sorted(world.items[i].name for i, p in prices.items() if previous is not None and i in previous and previous[i] != p)
         end = datetime.combine(day, datetime.max.time(), tzinfo=timezone.utc)

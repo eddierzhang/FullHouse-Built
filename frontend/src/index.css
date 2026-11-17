@@ -5027,8 +5027,8 @@ fieldset.field {
 .ml-header-meta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .ml-sentence { font-size: 20px; line-height: 1.4; font-weight: 600; color: var(--ink); margin: 8px 0 0; max-width: 46em; }
 .ml-state { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; border: 1px solid var(--border-strong); color: var(--ink); }
-.ml-state-learning { background: var(--info-soft); color: var(--info); border-color: transparent; }
-.ml-state-setup { background: var(--warning-soft); color: var(--warning); border-color: transparent; }
+.ml-state-learning { background: var(--info-soft); border-color: transparent; }
+.ml-state-setup { background: var(--warning-soft); border-color: transparent; }
 
 .ml-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 20px; }
 .ml-tile { padding: 16px 18px; }
@@ -5110,3 +5110,46 @@ button.ml-bars-row { cursor: pointer; }
 .ml-shift-role, .ml-shift-lock { font-size: 12px; color: var(--text-muted); }
 .ml-overtime { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; font-size: 12px; color: var(--danger); }
 .ml-problems { margin: 6px 0 0; padding-left: 18px; font-size: 13px; }
+
+/* Margin & Labor: page frame, tabs, table cells, skeletons, cards */
+.ml-page { max-width: 1180px; }
+.ml-stale .ml-tiles, .ml-stale .ml-figure, .ml-stale .ml-table { opacity: 0.55; }
+.ml-back { display: inline-block; margin-bottom: 8px; font-size: 14px; }
+.ml-back::before { content: '‹ '; }
+.ml-tabs { display: flex; gap: 4px; margin-bottom: 10px; }
+.ml-tab { min-height: 44px; padding: 8px 14px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface); font: inherit; cursor: pointer; color: var(--ink); }
+.ml-tab.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+.ml-tab:focus-visible { outline: 2px solid var(--info); outline-offset: 2px; }
+.ml-figure { margin-bottom: 20px; }
+.ml-cell-link { font-size: inherit; font-weight: 600; min-height: 0 !important; color: inherit; }
+.ml-trend { display: inline-flex; align-items: center; gap: 10px; }
+.ml-status { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 600; margin-left: 8px; white-space: nowrap; }
+.ml-status-bad { color: var(--danger); }
+.ml-status-good { color: var(--success, #2f7d4f); }
+.ml-status-neutral { color: var(--text-muted); }
+.ml-side { z-index: 55; }
+.ml-side .ml-proposal { flex-direction: column; align-items: stretch; padding: 0; border: 0; box-shadow: none; }
+.ml-side .ml-proposal-side { align-items: flex-start; }
+.ml-stack { display: flex; flex-direction: column; gap: 14px; }
+.ml-edit-line { border: 1px solid var(--border, #eadfce); border-radius: 10px; padding: 10px 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.ml-edit-line legend { font-weight: 600; padding: 0 6px; }
+.ml-corner { fill: var(--text-muted); }
+.ml-point { cursor: pointer; }
+.ml-point:focus-visible circle:last-of-type { stroke: var(--info); stroke-width: 3; }
+.ml-skel { background: linear-gradient(90deg, #efe6d8, #f7f1e7, #efe6d8); border-radius: 10px; }
+.ml-skel-line { height: 26px; width: 60%; margin: 10px 0 20px; }
+.ml-skel-tile { height: 104px; }
+.ml-skel-chart { height: 280px; margin-bottom: 20px; }
+.ml-skel-table { height: 320px; }
+.ml-cards { display: grid; gap: 12px; margin-bottom: 20px; }
+.ml-card { display: flex; align-items: center; gap: 16px; padding: 14px 18px; flex-wrap: wrap; }
+.ml-card-main { flex: 1; min-width: 220px; }
+.ml-card-title { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); margin: 0 0 2px; }
+.ml-card-sentence { margin: 0; font-weight: 600; }
+.ml-card-number { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ml-card .btn { min-height: 44px; display: inline-flex; align-items: center; }
+@media (max-width: 720px) {
+  .ml-hide-phone { display: none; }
+  .ml-sentence { font-size: 18px; }
+  .ml-proposal-side { align-items: flex-start; }
+}

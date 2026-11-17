@@ -28,7 +28,7 @@ const env = {
   PYTHONUNBUFFERED: '1',
 }
 
-for (const args of [['-m', 'alembic', 'upgrade', 'head'], ['scripts/seed_data.py'], ['scripts/seed_e2e.py']]) {
+for (const args of [['-m', 'alembic', 'upgrade', 'head'], ['scripts/seed_data.py'], ['scripts/seed_e2e.py'], ['scripts/seed_e2e_margin_labor.py']]) {
   const result = spawnSync(python, args, { cwd: backend, env, stdio: 'inherit' })
   if (result.status !== 0) {
     console.error(`e2e backend setup failed: ${python} ${args.join(' ')}`)

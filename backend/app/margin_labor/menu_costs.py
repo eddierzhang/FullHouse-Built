@@ -58,11 +58,16 @@ class World:
     items: dict
     points: dict
 
-    def price_of(self, day: date):
-        return lambda item_id: price_points.price_as_of(self.points.get(item_id), day, self.conf.costing_price_policy)
+    def price_of(self, day: date | None = None):
+        """Prices as of `day`; with no day, every invoice received so far. The business date can trail the date an
+        invoice carries (before the trading day starts, or on a server in a later time zone), and a price that has
+        arrived is the price now."""
+        as_of = day or date.max
+        policy_day = day or max([self.today] + [p.day for pts in self.points.values() for p in pts[-1:]])
+        return lambda item_id: price_points.price_as_of(self.points.get(item_id), min(as_of, policy_day), self.conf.costing_price_policy)
 
     def cost(self, recipe_id: str, day: date | None = None) -> Costed:
-        return costing.cost_recipe(self.recipes[recipe_id], self.recipes, self.items, self.price_of(day or self.today))
+        return costing.cost_recipe(self.recipes[recipe_id], self.recipes, self.items, self.price_of(day))
 
 
 def load(db: Session, restaurant_id: str, now: datetime | None = None) -> World:
