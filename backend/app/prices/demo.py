@@ -82,8 +82,10 @@ def invoices(week: int) -> list[tuple[str, int, list[tuple]]]:
     return out
 
 
-def seed(db: Session, restaurant_id: str | None, suppliers: dict[str, str], today: date | None = None) -> dict:
-    """Load the invoices for `restaurant_id`, matching through `suppliers` (name -> id), and build the digest."""
+def seed(db: Session, restaurant_id: str | None, suppliers: dict[str, str], today: date | None = None, scale: int = 1) -> dict:
+    """Load the invoices for `restaurant_id`, matching through `suppliers` (name -> id), and build the digest.
+
+    `scale` multiplies every quantity: the public demo is a busier restaurant than the tests' fixture."""
     today = today or date.today()
     items = {}
     for name, category, unit, pack_unit, pack_size in ITEMS:
@@ -110,8 +112,8 @@ def seed(db: Session, restaurant_id: str | None, suppliers: dict[str, str], toda
             day = today - timedelta(days=(7 - week) * 7 + lag)
             supplier = db.get(Supplier, suppliers[supplier_name])
             rows = [
-                schemas.LineIn(description=l[0], qty=l[1], pack_text=l[2], unit_price=l[3],
-                               delivered_qty=l[4] if len(l) > 4 else None)
+                schemas.LineIn(description=l[0], qty=l[1] * scale, pack_text=l[2], unit_price=l[3],
+                               delivered_qty=l[4] * scale if len(l) > 4 else None)
                 for l in lines
             ]
             _, asked = engine.ingest_invoice(db, restaurant_id, supplier, day, rows, source="billcom",

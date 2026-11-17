@@ -113,7 +113,21 @@ def options(db: Session = Depends(get_db)):
         from app.demo import DEMO_EMAIL, DEMO_PASSWORD
 
         demo = schemas.DemoCredentials(email=DEMO_EMAIL, password=DEMO_PASSWORD)
-    return schemas.AuthOptions(signup_enabled=_signup_open(db), demo=demo)
+    return schemas.AuthOptions(signup_enabled=_signup_open(db), demo=demo, demo_card=_demo_card(db) if demo else None)
+
+
+def _demo_card(db: Session) -> schemas.DemoCard | None:
+    """The first "Switch supplier" card of the demo's digest: what the landing page previews."""
+    from app.prices.models import PriceDigest
+
+    digest = db.query(PriceDigest).order_by(PriceDigest.week_start.desc()).first()
+    if digest is None:
+        return None
+    card = next((c for c in digest.cards or [] if c.get("section") == "switch"), None) or next(iter(digest.cards or []), None)
+    if card is None:
+        return None
+    return schemas.DemoCard(item_name=card["item_name"], sentence=card["sentence"], impact=card["impact"], total=digest.total,
+                            items=digest.item_count)
 
 
 @router.post("/signup", response_model=schemas.UserOut, status_code=201)

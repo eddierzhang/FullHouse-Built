@@ -73,39 +73,49 @@ const ASSURANCES: { title: string; body: string }[] = [
   },
 ];
 
-/** One card from the digest, as it looks on a Monday. A picture, not a control. */
-function DigestPreview() {
+/** The card shown when the site has no demo to draw one from: one item, with figures that add up. */
+const SAMPLE_CARD = {
+  item_name: "Tomatoes, 25 lb case",
+  sentence: "You paid $31.20 at Green Valley Farms on Monday. Sysco Foods charged $27.60 the day before.",
+  impact: 126,
+  total: 641.75,
+  items: 6,
+};
+
+const dollars = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+
+/** One card from the digest, as it looks on a Monday. A picture, not a control. On the demo it is the demo's own top card. */
+function DigestPreview({ card }: { card?: AuthOptions["demo_card"] }) {
+  const shown = card ?? SAMPLE_CARD;
+  const short = shown.item_name.split(",")[0].toLowerCase();
   return (
     <figure
       className="landing-preview"
       role="img"
-      aria-label="An example digest card: Kale, green, case, $36.00 a week, with the comparison and a Move kale button"
+      aria-label={`An example digest card: ${shown.item_name}, ${dollars(shown.impact)} a week, with the comparison and a Move ${short} button`}
     >
       <div className="landing-preview-head">
         <span className="badge badge-brand">Switch supplier</span>
         <span className="landing-preview-when">Monday</span>
       </div>
-      <div className="landing-preview-title">Kale, green, case</div>
-      <p className="landing-preview-why">
-        You paid $31.20 at Worldwide on Oct 21. Chef’s Warehouse charged $27.60
-        on Oct 17.
-      </p>
+      <div className="landing-preview-title">{shown.item_name}</div>
+      <p className="landing-preview-why">{shown.sentence}</p>
       <dl className="landing-preview-facts">
         <div>
           <dt>A week</dt>
-          <dd>$36.00</dd>
+          <dd>{dollars(shown.impact)}</dd>
         </div>
         <div>
           <dt>At stake this week</dt>
-          <dd>$181.90</dd>
+          <dd>{dollars(shown.total)}</dd>
         </div>
         <div>
           <dt>Items</dt>
-          <dd>7</dd>
+          <dd>{shown.items}</dd>
         </div>
       </dl>
       <div className="landing-preview-actions">
-        <span className="btn btn-primary btn-sm">Move kale</span>
+        <span className="btn btn-primary btn-sm">Move {short}</span>
         <span className="btn btn-secondary btn-sm">Not useful</span>
         <span className="landing-preview-status">
           Nothing is ordered or sent for you
@@ -189,7 +199,7 @@ export function LandingPage({ options }: Props) {
                       : " "}
               </p>
             </div>
-            <DigestPreview />
+            <DigestPreview card={options?.demo_card} />
           </section>
         </div>
 

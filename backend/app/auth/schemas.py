@@ -92,11 +92,23 @@ class DemoCredentials(BaseModel):
     password: str
 
 
+class DemoCard(BaseModel):
+    """The demo's own top digest card, so the landing page shows what is inside."""
+
+    item_name: str
+    sentence: str
+    impact: float
+    total: float
+    items: int
+
+
 class AuthOptions(BaseModel):
     #: Whether a new restaurant can sign up here. A restaurant's team joins by invite either way.
     signup_enabled: bool
     #: Shown on the login page of the public demo; null everywhere else.
     demo: DemoCredentials | None = None
+    #: The top card of the demo restaurant's digest; null everywhere else.
+    demo_card: DemoCard | None = None
 
 
 class InviteIn(BaseModel):

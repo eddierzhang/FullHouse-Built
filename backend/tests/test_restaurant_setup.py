@@ -1,3 +1,4 @@
+from zoneinfo import ZoneInfo
 from datetime import date, datetime, time, timedelta, timezone
 
 import pytest
@@ -124,7 +125,7 @@ def test_finishing_sets_up_the_agent(client, db):
     assert list(definitions) == ["maestro"]
     assert definitions["maestro"]["schedule_cron"] == "0 10 * * tue,wed,thu,fri,sat,sun"
     next_review = datetime.fromisoformat(definitions["maestro"]["next_run_at"])
-    assert next_review.astimezone(timezone(timedelta(hours=-7))).hour == 10  # 10:00 in Portland (PDT)
+    assert next_review.astimezone(ZoneInfo("America/Los_Angeles")).hour == 10  # 10:00 in Portland, summer or winter
     assert client.get("/api/v1/agents/runtime").json()["schedule_timezone"] == "America/Los_Angeles"
 
 

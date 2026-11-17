@@ -216,7 +216,9 @@ export function HelpPage({ app }: { app: AppContext }) {
                   </div>
                 ) : (
                   <p className="muted">
-                    No support contact has been set up yet. Use Send feedback below, or ask whoever set FullHouse up for you.
+                    {app.runtime?.demo_mode
+                      ? 'This is the demo, so there is nobody on call. On your own site, your support contact appears here.'
+                      : 'No support contact has been set up yet. Use Send feedback below, or ask whoever set FullHouse up for you.'}
                   </p>
                 )
               }

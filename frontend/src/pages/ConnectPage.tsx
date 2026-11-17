@@ -98,6 +98,8 @@ export function ConnectPage({ app, user }: { app: AppContext; user: User }) {
                               {c
                                 ? c.error
                                   ? c.error
+                                  : c.settings?.sample
+                                    ? `Sample data for the demo · last sync ${relativeTime(c.last_sync_at ?? new Date().toISOString())}`
                                   : c.last_sync_at
                                     ? `Last sync ${relativeTime(c.last_sync_at)}`
                                     : 'Connected, first sync queued'
@@ -111,7 +113,7 @@ export function ConnectPage({ app, user }: { app: AppContext; user: User }) {
                           <div className="row">
                             {c ? (
                               <>
-                                {p.capabilities.some((cap) => cap !== 'push_invoices') && (
+                                {!c.settings?.sample && p.capabilities.some((cap) => cap !== 'push_invoices') && (
                                   <button className="btn btn-secondary btn-sm" disabled={busy === p.provider} onClick={() => void act(p.provider, () => syncNow(p.provider), `${p.label}: sync queued`)}>
                                     Sync now
                                   </button>

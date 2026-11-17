@@ -54,15 +54,15 @@ DEMO_NAME = "Demo Manager"
 
 #: The demo restaurant's profile, as if its owner had finished setup.
 DEMO_PROFILE = dict(
-    name="Demo Restaurant",
+    name="Botanica",
     street="214 Mulberry Street",
     city="New York",
     region="NY",
     postal_code="10012",
     country="United States",
     phone="+1 212 555 0148",
-    email="hello@demo-restaurant.example.com",
-    website="https://demo-restaurant.example.com",
+    email="hello@botanica.example.com",
+    website="https://botanica.example.com",
     timezone="America/New_York",
     opening_hours={
         **{day: {"closed": False, "open": "11:30", "close": "22:00"} for day in ("mon", "tue", "wed", "thu")},
@@ -78,6 +78,12 @@ DEMO_PROFILE = dict(
 )
 
 HISTORY_DAYS = 42
+#: The bistro's size. Orders, stock and invoices all scale from these, so the pages agree with each
+#: other: about $21,000 a week in sales, food bought at about 30% of it, labor at about 31%.
+VOLUME = 5.0
+STOCK_SCALE = 5
+INVOICE_SCALE = 5
+LABOR_SHARE = 0.31
 #: Same restaurant on every reset; only the dates move.
 RANDOM_SEED = 20260913
 
@@ -205,18 +211,20 @@ def reset_demo_data(db: Session, now: datetime | None = None) -> dict:
 
     inventory = {row[0]: _id() for row in INVENTORY}
     unit_costs = {row[0]: row[5] for row in INVENTORY}
+    stocked = [(name, unit, on_hand * STOCK_SCALE, threshold * STOCK_SCALE, reorder_qty * STOCK_SCALE, cost, supplier)
+               for name, unit, on_hand, threshold, reorder_qty, cost, supplier in INVENTORY]
     _insert(db, InventoryItem, [
         dict(id=inventory[name], restaurant_id=restaurant_id, name=name, unit=unit, quantity_on_hand=on_hand,
              reorder_threshold=threshold, reorder_qty=reorder_qty, unit_cost=cost,
              supplier_id=suppliers.get(supplier), updated_at=now)
-        for name, unit, on_hand, threshold, reorder_qty, cost, supplier in INVENTORY
+        for name, unit, on_hand, threshold, reorder_qty, cost, supplier in stocked
     ])
     # Each item's stock history opens with what it has now, so it adds up.
     _insert(db, InventoryAdjustment, [
         dict(restaurant_id=restaurant_id, inventory_item_id=inventory[name], change=on_hand, quantity_after=on_hand,
-             reason="initial", note="On hand when the demo opened", actor_type="system", actor_id="system",
-             created_at=now)
-        for name, _unit, on_hand, *_rest in INVENTORY
+             reason="initial", note="Counted when Botanica started on FullHouse", actor_type="system",
+             actor_id="system", created_at=now - timedelta(days=HISTORY_DAYS))
+        for name, _unit, on_hand, *_rest in stocked
         if on_hand
     ])
 
@@ -263,19 +271,19 @@ def reset_demo_data(db: Session, now: datetime | None = None) -> dict:
     # Eight weeks of supplier invoices, and this week's digest: the main event.
     from app.prices.demo import seed as seed_invoices
 
-    prices = seed_invoices(db, restaurant_id, suppliers, today)
+    prices = seed_invoices(db, restaurant_id, suppliers, today, scale=INVOICE_SCALE)
     # Two orders in flight: flour due tomorrow, and mozzarella that should have come yesterday.
     from app.restaurant.models import PurchaseOrder
 
     db.add_all([
         PurchaseOrder(restaurant_id=restaurant_id, supplier_id=suppliers["Sysco Foods"], supplier_name="Sysco Foods",
-                      inventory_item_id=inventory["Flour"], item_name="Flour", quantity=100, unit="lb", packs=2,
-                      pack_unit="bag", estimated_cost=37.80, status="ordered", ordered_at=now - timedelta(days=1),
+                      inventory_item_id=inventory["Flour"], item_name="Flour", quantity=100 * STOCK_SCALE, unit="lb",
+                      packs=2 * STOCK_SCALE, pack_unit="bag", estimated_cost=37.80 * STOCK_SCALE, status="ordered", ordered_at=now - timedelta(days=1),
                       expected_on=today + timedelta(days=1), placed_by=DEMO_EMAIL,
                       note="Placed by phone with the Sysco rep."),
         PurchaseOrder(restaurant_id=restaurant_id, supplier_id=suppliers["Harbor Dairy Co."], supplier_name="Harbor Dairy Co.",
-                      inventory_item_id=inventory["Mozzarella"], item_name="Mozzarella", quantity=30, unit="lb", packs=5,
-                      pack_unit="case", estimated_cost=159.50, status="shipped", ordered_at=now - timedelta(days=4),
+                      inventory_item_id=inventory["Mozzarella"], item_name="Mozzarella", quantity=30 * STOCK_SCALE, unit="lb",
+                      packs=5 * STOCK_SCALE, pack_unit="case", estimated_cost=159.50 * STOCK_SCALE, status="shipped", ordered_at=now - timedelta(days=4),
                       shipped_at=now - timedelta(days=2), expected_on=today - timedelta(days=1), placed_by=DEMO_EMAIL),
     ])
     db.flush()
@@ -291,26 +299,45 @@ def reset_demo_data(db: Session, now: datetime | None = None) -> dict:
     from app.sales.models import LaborDay, SalesDay
 
     flags.enable_all(db, restaurant_id)
-    for offset in range(1, 15):
-        day = today - timedelta(days=offset)
-        weekend = day.weekday() >= 4
-        db.add(SalesDay(restaurant_id=restaurant_id, date=day, net_sales=round(2650 + (900 if weekend else 0) + rng.uniform(-150, 150), 2),
-                        gross_sales=None, covers=74 + (26 if weekend else 0), source="csv"))
-        db.add(LaborDay(restaurant_id=restaurant_id, date=day, hours=round(62 + (14 if weekend else 0), 1),
-                        dollars=round(880 + (190 if weekend else 0) + rng.uniform(-30, 30), 2), source="csv"))
-    from app.sales.models import SalesItem
-
+    # The POS and payroll figures are the same trading the operations pages show: each day's sales
+    # are that day's orders, so Today, Profit and the Digest can never disagree.
+    by_day: dict[date, float] = {}
+    for order in orders:
+        by_day[order["created_at"].date()] = by_day.get(order["created_at"].date(), 0.0) + order["total"]
+    order_days = {order["id"]: order["created_at"].date() for order in orders}
     for offset in range(1, 29):
         day = today - timedelta(days=offset)
-        for pos_id, name, sold, price in (("MARG", "Margherita Pizza", 26, 14.0), ("CAESAR", "Caesar Salad", 18, 11.0), ("TIRA", "Tiramisu", 11, 8.0)):
-            units = sold + (6 if day.weekday() >= 4 else 0) + rng.randint(-2, 2)
-            db.add(SalesItem(restaurant_id=restaurant_id, date=day, pos_item_id=pos_id, pos_item_name=name, qty=units, net=round(units * price, 2), source="csv"))
+        net = round(by_day.get(day, 0.0), 2)
+        covers = sum(1 for d in order_days.values() if d == day)
+        db.add(SalesDay(restaurant_id=restaurant_id, date=day, net_sales=net, gross_sales=None, covers=covers, source="square"))
+        dollars = round(net * LABOR_SHARE * rng.uniform(0.96, 1.04), 2)
+        db.add(LaborDay(restaurant_id=restaurant_id, date=day, hours=round(dollars / 14.2, 1), dollars=dollars, source="gusto"))
+    from app.sales.models import SalesItem
+
+    dish_of = {menu[name]: name for name in menu}
+    sold: dict[tuple[date, str], list[float]] = {}
+    for line in lines:
+        day = order_days[line["order_id"]]
+        if not (today - timedelta(days=29) < day < today):
+            continue
+        cell = sold.setdefault((day, dish_of[line["menu_item_id"]]), [0.0, 0.0])
+        cell[0] += line["qty"]
+        cell[1] += line["qty"] * line["unit_price"]
+    for (day, dish), (qty, net) in sorted(sold.items()):
+        db.add(SalesItem(restaurant_id=restaurant_id, date=day, pos_item_id=_pos_id(dish), pos_item_name=dish, qty=qty, net=round(net, 2), source="square"))
     db.flush()
     pnl.compute_week(db, restaurant_id, pnl.last_complete_week(today))
     # The top sellers get a recipe proposed, built from what the demo buys; the owner's first "Learn" step.
     from app.recipes import engine as recipe_engine
 
+    _confirmed_recipes(db, restaurant_id, menu)
     proposals += len(recipe_engine.onboarding(db, restaurant_id, today))
+    _back_office(db, restaurant_id, now, today)
+    _spread_out_the_agents_work(db, restaurant_id, now)
+    # The schedules every restaurant gets at setup, made here so they are not the first thing in History.
+    from app.platform import workflows
+
+    workflows.ensure_defaults(db, restaurant_id)
 
     # The seed's own bookkeeping isn't history anyone made: a visitor starts with an empty record.
     from app.audit.models import ChangeLog
@@ -321,6 +348,106 @@ def reset_demo_data(db: Session, now: datetime | None = None) -> dict:
     counts = {"orders": len(orders), "order_items": len(lines), "proposals": proposals, **{f"price_{k}": v for k, v in prices.items()}}
     logger.info("demo data reset: %s", counts)
     return counts
+
+
+def _pos_id(dish: str) -> str:
+    return "".join(ch for ch in dish.upper() if ch.isalnum())[:12]
+
+
+#: Dishes the owner has already confirmed a recipe for, in the units the invoices price:
+#: dish -> [(invoice item, quantity, unit, as written on the card)].
+CONFIRMED_RECIPES = {
+    "Margherita Pizza": [("Flour, 50 lb bag", 0.5, "lb", "00 flour"), ("Mozzarella, 6 lb case", 0.3, "lb", "fresh mozzarella"),
+                         ("Tomatoes, 25 lb case", 0.25, "lb", "roma tomatoes"), ("Basil, 1 lb", 0.5, "oz", "basil"),
+                         ("Olive oil, 4 gal case", 0.5, "fl oz", "olive oil")],
+    "Chicken Pesto Pizza": [("Flour, 50 lb bag", 0.5, "lb", "00 flour"), ("Mozzarella, 6 lb case", 0.3, "lb", "fresh mozzarella"),
+                            ("Chicken breast, 40 lb case", 0.25, "lb", "grilled chicken"), ("Basil, 1 lb", 0.75, "oz", "basil pesto"),
+                            ("Olive oil, 4 gal case", 1, "fl oz", "olive oil")],
+    "Grilled Chicken Sandwich": [("Chicken breast, 40 lb case", 0.4, "lb", "chicken breast"), ("Romaine, 24 ct case", 0.1, "ct", "romaine"),
+                                 ("Tomatoes, 25 lb case", 0.1, "lb", "sliced tomato")],
+    "Caesar Salad": [("Romaine, 24 ct case", 0.5, "ct", "romaine heart"), ("Parmesan, 10 lb wheel", 0.8, "oz", "shaved parmesan"),
+                     ("Olive oil, 4 gal case", 0.5, "fl oz", "olive oil")],
+    "Caprese Salad": [("Tomatoes, 25 lb case", 0.35, "lb", "tomato"), ("Mozzarella, 6 lb case", 0.2, "lb", "fresh mozzarella"),
+                      ("Basil, 1 lb", 0.5, "oz", "basil"), ("Olive oil, 4 gal case", 0.5, "fl oz", "olive oil")],
+}
+
+
+def _confirmed_recipes(db: Session, restaurant_id: str, menu: dict) -> None:
+    """Recipes the owner has confirmed for five dishes, costed from this week's invoices."""
+    from app.prices.models import PriceItem
+    from app.recipes import engine as recipe_engine
+
+    items = {i.name: i for i in db.query(PriceItem).filter(PriceItem.restaurant_id == restaurant_id)}
+    for dish, lines in CONFIRMED_RECIPES.items():
+        recipe_engine.write_recipe(db, restaurant_id, {
+            "name": dish, "pos_item_id": _pos_id(dish), "menu_item_id": menu[dish], "source": "user",
+            "lines": [{"item_id": items[item].id, "qty": qty, "unit": unit, "ingredient_text": text}
+                      for item, qty, unit, text in lines if item in items],
+        }, confirmed_by=DEMO_EMAIL)
+    recipe_engine.compute_plate_costs(db, restaurant_id)
+
+
+def _back_office(db: Session, restaurant_id: str, now: datetime, today: date) -> None:
+    """Documents on file, dates on the calendar, a forecast and tomorrow's prep sheet."""
+    from app.calendar import engine as calendar_engine
+    from app.documents.models import COMPLETE, Document
+    from app.forecast import engine as forecast_engine
+    from app.forecast import prep
+
+    filed = [
+        ("permit", "health-permit-2026.pdf", "Health department permit", 24, "annual", None),
+        ("license", "liquor-license.pdf", "Liquor license renewal", 68, "annual", None),
+        ("inspection", "hood-inspection-report.pdf", "Kitchen hood cleaning and inspection", 9, "every 6 months", None),
+        ("warranty", "walk-in-cooler-warranty.pdf", "Walk-in cooler warranty ends", 140, None,
+         {"name": "Walk-in cooler", "vendor": "Polar King", "purchased_on": (today - timedelta(days=590)).isoformat(),
+          "service_interval_days": 180}),
+    ]
+    for index, (doc_type, filename, title, due_in, recurrence, asset) in enumerate(filed):
+        document = Document(restaurant_id=restaurant_id, doc_type=doc_type, type_confidence=0.97, filename=filename,
+                            media_type="application/pdf", source="email" if index % 2 else "upload", status=COMPLETE,
+                            extracted={"title": title, "due_on": (today + timedelta(days=due_in)).isoformat()},
+                            confidence=0.95, created_at=now - timedelta(days=30 - index * 6))
+        db.add(document)
+        db.flush()
+        payload = {"kind": doc_type, "title": title, "due_on": (today + timedelta(days=due_in)).isoformat(),
+                   "recurrence": recurrence, "source_document_id": document.id}
+        if asset:
+            payload["asset"] = {**asset, "source_document_id": document.id}
+        item = calendar_engine.write_item(db, restaurant_id, payload)
+        document.result_table, document.result_id = "calendar_items", item.id
+    db.add(Document(restaurant_id=restaurant_id, doc_type="price_list", type_confidence=0.94, filename="sysco-price-list-q4.pdf",
+                    media_type="application/pdf", source="email", status=COMPLETE, extracted={"supplier": "Sysco Foods", "lines": 6},
+                    confidence=0.92, created_at=now - timedelta(days=12)))
+    db.flush()
+    forecast_engine.run(db, restaurant_id, today)
+    tomorrow = today + timedelta(days=1)
+    lines = prep.lines_for(db, restaurant_id, tomorrow)
+    if lines:
+        prep.write_sheet(db, restaurant_id, {"date": tomorrow.isoformat(), "lines": lines}, None)
+    # The point of sale and payroll the sales and labor figures came from, shown as connected.
+    from app.connectors.models import Connection
+    from app.connectors.registry import seed_providers
+
+    seed_providers(db)
+    for provider, kind in (("square", "pos"), ("gusto", "payroll")):
+        db.add(Connection(restaurant_id=restaurant_id, kind=kind, provider=provider, status="active",
+                          last_sync_at=now - timedelta(hours=3), settings={"sample": True}))
+    db.flush()
+
+
+def _spread_out_the_agents_work(db: Session, restaurant_id: str, now: datetime) -> None:
+    """Runs made while loading are stamped this instant; a real week's work is spread over days."""
+    fresh = (db.query(AgentRun).filter(AgentRun.restaurant_id == restaurant_id, AgentRun.created_at >= now - timedelta(seconds=90))
+             .order_by(AgentRun.created_at).all())
+    for index, run in enumerate(fresh):
+        moment = now - timedelta(hours=3 + index * 7, minutes=11 * index)
+        run.created_at = run.started_at = moment
+        run.finished_at = moment + timedelta(seconds=9)
+        for action in db.query(AgentAction).filter(AgentAction.run_id == run.id):
+            action.created_at = moment + timedelta(seconds=8)
+        for seq, event in enumerate(db.query(AgentEvent).filter(AgentEvent.run_id == run.id).order_by(AgentEvent.seq)):
+            event.ts = moment + timedelta(seconds=2 * seq)
+    db.flush()
 
 
 def _shifts(today: date, staff: dict) -> list[dict]:
@@ -356,7 +483,7 @@ def _orders(rng: random.Random, now: datetime, menu: dict) -> tuple[list[dict], 
     for days_ago in range(HISTORY_DAYS, -1, -1):
         day = now.date() - timedelta(days=days_ago)
         # A gentle upward trend, and some day-to-day noise.
-        base = ORDERS_PER_WEEKDAY[day.weekday()] * (0.85 + 0.15 * (HISTORY_DAYS - days_ago) / HISTORY_DAYS)
+        base = VOLUME * ORDERS_PER_WEEKDAY[day.weekday()] * (0.85 + 0.15 * (HISTORY_DAYS - days_ago) / HISTORY_DAYS)
         for _ in range(max(1, round(base * rng.uniform(0.85, 1.15)))):
             placed = datetime.combine(day, time(11, 30), tzinfo=timezone.utc) + timedelta(
                 minutes=rng.randint(0, 10 * 60)
@@ -384,17 +511,18 @@ def _proposals(db, now, today, agent_id, suppliers, inventory, menu, staff) -> i
         ("inventory", "Morning stock check.",
          [("list_low_stock_items", "4 items are below their reorder point: Tomatoes, Basil, Chicken Breast, "
                                    "Romaine Lettuce.")],
-         "Tomatoes are at 6 lb against a reorder point of 15, with a 1-day lead time. Proposed a 30 lb reorder.",
+         f"Tomatoes are at {6 * STOCK_SCALE} lb against a reorder point of {15 * STOCK_SCALE}, with a 1-day lead time. "
+         f"Proposed a {30 * STOCK_SCALE} lb reorder.",
          "inventory_reorder",
-         {"inventory_item_id": inventory["Tomatoes"], "item_name": "Tomatoes", "quantity": 30,
-          "note": "6 lb on hand, reorder point 15 lb. Margherita and Caprese both depend on it."}),
+         {"inventory_item_id": inventory["Tomatoes"], "item_name": "Tomatoes", "quantity": 30 * STOCK_SCALE,
+          "note": f"{6 * STOCK_SCALE} lb on hand, reorder point {15 * STOCK_SCALE} lb. Margherita and Caprese both depend on it."}),
         ("supply_chain", "Check what needs ordering from suppliers this week.",
          [("list_suppliers", "Sysco Foods (2d), Green Valley Farms (1d), Harbor Dairy Co. (3d)")],
          "Chicken Breast is short and Sysco needs two days' notice, so I drafted the order now.",
          "purchase_order",
          {"supplier_id": suppliers["Sysco Foods"], "supplier_name": "Sysco Foods",
-          "inventory_item_id": inventory["Chicken Breast"], "item_name": "Chicken Breast", "quantity": 40,
-          "note": "11 lb left; two pizzas and the sandwich use it."}),
+          "inventory_item_id": inventory["Chicken Breast"], "item_name": "Chicken Breast", "quantity": 40 * STOCK_SCALE,
+          "note": f"{11 * STOCK_SCALE} lb left; two pizzas and the sandwich use it."}),
         ("marketing", "Find slow sellers worth promoting.",
          [("get_slow_moving_items", "Affogato and Garlic Bread sell least over the last 30 days.")],
          "Garlic Bread is a slow seller with a high margin. Suggested a promotion, but I didn't set a price.",
