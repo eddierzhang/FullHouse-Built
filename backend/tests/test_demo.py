@@ -36,12 +36,13 @@ def test_the_demo_gives_every_page_something_real_to_show(db):
     assert [p.name for p in db.query(Staff) if p.id not in scheduled] == ["Taylor Brooks"]
 
 
-def test_the_proposal_queue_covers_every_kind_including_one_missing_its_price(db):
+def test_the_proposal_queue_covers_every_kind_including_one_missing_its_price(db, monkeypatch):
+    monkeypatch.setattr("app.config.settings.demo_mode", True)  # as the public demo runs: mail goes to the log
     reset_demo_data(db)
 
     pending = db.query(AgentAction).filter_by(status="pending").all()
     assert sorted(a.action_type for a in pending) == [
-        "inventory_reorder", "menu_change", "purchase_order", "purchase_order", "recipe", "shift_change",
+        "inventory_reorder", "menu_change", "purchase_order", "purchase_order", "purchase_order", "recipe", "shift_change",
     ]
     # Five dishes already have a confirmed recipe; the best seller without one gets a proposal.
     assert sorted(a.payload["name"] for a in pending if a.action_type == "recipe") == ["Tiramisu"]
@@ -172,3 +173,22 @@ def test_every_page_of_the_demo_tells_the_same_story(db):
     assert db.query(CalendarItem).count() == 4
     assert db.query(PrepSheet).count() == 1
     assert db.query(InventoryItem).count() and sum(i.quantity_on_hand * i.unit_cost for i in db.query(InventoryItem)) > 3_000
+
+
+def test_the_demo_shows_autopilot_passing_one_order_and_holding_another(db, monkeypatch):
+    from app.ordering.models import AutopilotDecision, Outbox
+    from app.restaurant.models import PurchaseOrder
+
+    monkeypatch.setattr("app.config.settings.demo_mode", True)  # as the public demo runs: mail goes to the log
+    reset_demo_data(db)
+
+    decisions = {d.outcome: d for d in db.query(AutopilotDecision)}
+    assert set(decisions) == {"passed", "held"}
+    # Green Valley's order is inside its limits and waits out the cancel window, as a draft with its send queued.
+    farm = db.query(PurchaseOrder).filter_by(autopilot=True).one()
+    assert (farm.supplier_name, farm.status) == ("Green Valley Farms", "draft")
+    assert db.query(Outbox).one().status == "pending"
+    # Sysco's is over the owner's limit for one order: held, with the reason, for a person.
+    assert [r["rule"] for r in decisions["held"].rules if not r["ok"]] == ["per_order_cap"]
+    held = next(a for a in db.query(AgentAction).filter_by(status="pending") if (a.payload or {}).get("autopilot_held"))
+    assert "over your $350.00 limit" in held.payload["autopilot_held"][0]

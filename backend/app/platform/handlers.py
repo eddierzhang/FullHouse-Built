@@ -124,6 +124,10 @@ def run_workflow(db: Session, payload: dict) -> None:
         from app.recipes import engine as recipes
 
         recipes.onboarding(db, restaurant_id, today)
+    elif kind == "autopilot" and flags.enabled(db, restaurant_id, flags.V3_AUTOPILOT):
+        from app.ordering import autopilot
+
+        autopilot.run(db, restaurant_id)
     elif kind == "stock" and flags.enabled(db, restaurant_id, flags.V3_STOCK):
         from app.stock import engine as stock
 

@@ -331,6 +331,7 @@ def reset_demo_data(db: Session, now: datetime | None = None) -> dict:
     proposals += len(recipe_engine.onboarding(db, restaurant_id, today))
     _back_office(db, restaurant_id, now, today)
     _spread_out_the_agents_work(db, restaurant_id, now)
+    proposals += _ordering(db, restaurant_id, suppliers, now, today)
     # The schedules every restaurant gets at setup, made here so they are not the first thing in History.
     from app.platform import workflows
 
@@ -458,6 +459,41 @@ def _stock_story(db: Session, restaurant_id: str, now: datetime, today: date, in
     restaurant.inventory_settings = {**(restaurant.inventory_settings or {}), "deplete_from": today.isoformat()}
     db.flush()
     stock_engine.rollup(db, restaurant_id, today=today)
+
+
+#: supplier -> (order weekdays, cutoff, delivery weekdays, minimum dollars, order address)
+ORDER_DAYS = {
+    "Green Valley Farms": ([0, 2, 4], "14:00", [1, 3, 5], 150, "orders@greenvalley.example.com"),
+    "Sysco Foods": ([1, 4], "15:00", [3, 6], 300, "orders@sysco.example.com"),
+    "Harbor Dairy Co.": ([0, 3], "12:00", [3, 6], 250, "sales@harbordairy.example.com"),
+    "Empire Wine & Spirits": ([2], "16:00", [0], 200, "orders@empirewine.example.com"),
+}
+#: supplier -> the owner's autopilot limits. Sysco's order is bigger than its limit, so it waits for a person.
+AUTOPILOT_LIMITS = {"Green Valley Farms": (1500, 4000), "Sysco Foods": (350, 1500)}
+
+
+def _ordering(db: Session, restaurant_id: str, suppliers: dict, now: datetime, today: date) -> int:
+    """Each supplier's order days, autopilot switched on for two of them, and today's drafts run through the
+    limits: the farm's order passes and waits out its cancel window; Sysco's is over its limit and is held.
+    Returns how many proposals were left for a person."""
+    from app.ordering import autopilot, pars
+    from app.ordering.models import AutopilotPolicy, SupplierCalendar
+
+    for name, (order_days, cutoff, delivery_days, minimum, address) in ORDER_DAYS.items():
+        db.add(SupplierCalendar(restaurant_id=restaurant_id, supplier_id=suppliers[name], order_days=order_days, cutoff_time=cutoff,
+                                delivery_days=delivery_days, minimum_dollars=minimum, channel="email", order_email=address))
+    for name, (per_order, weekly) in AUTOPILOT_LIMITS.items():
+        db.add(AutopilotPolicy(restaurant_id=restaurant_id, supplier_id=suppliers[name], enabled=True, per_order_cap=per_order,
+                               weekly_cap=weekly, updated_by=DEMO_EMAIL))
+    db.flush()
+    pars.recompute(db, restaurant_id)
+    held = 0
+    for name in AUTOPILOT_LIMITS:
+        action = autopilot.draft_for(db, restaurant_id, db.get(Supplier, suppliers[name]), today)
+        if action is not None:
+            decision = autopilot.decide(db, action, now, today)
+            held += 1 if decision is None or decision.outcome == "held" else 0
+    return held
 
 
 def _pos_id(dish: str) -> str:

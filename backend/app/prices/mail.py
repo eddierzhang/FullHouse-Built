@@ -234,22 +234,32 @@ def render(db: Session, digest_row: PriceDigest, restaurant: Restaurant | None, 
 Attachment = tuple[str, str, bytes]
 
 
-def send(to: list[str], subject: str, body_html: str, body_text: str, attachments: list[Attachment] | None = None) -> bool:
-    """Deliver with Resend, else over SMTP, else print to the log. Returns whether it was delivered."""
+def can_send() -> bool:
+    """Whether this site has a mailbox to send from at all."""
+    return bool(settings.resend_api_key or settings.smtp_configured)
+
+
+def send(to: list[str], subject: str, body_html: str, body_text: str, attachments: list[Attachment] | None = None,
+         reply_to: str | None = None) -> bool:
+    """Deliver with Resend, else over SMTP, else print to the log. Returns whether it was delivered.
+    `reply_to` is where an answer should go when it isn't the sending mailbox (an order's own reply address)."""
     if not to:
         return False
     if settings.resend_api_key:
-        return _send_resend(to, subject, body_html, body_text, attachments or [])
+        return _send_resend(to, subject, body_html, body_text, attachments or [], reply_to)
     if settings.smtp_configured:
-        return _send_smtp(to, subject, body_html, body_text, attachments or [])
+        return _send_smtp(to, subject, body_html, body_text, attachments or [], reply_to)
     logger.info("mail (no RESEND_API_KEY or SMTP_HOST, not sent) to=%s subject=%r attachments=%s\n%s", ", ".join(to), subject,
                 [a[0] for a in attachments or []], body_text)
     return False
 
 
-def _send_smtp(to: list[str], subject: str, body_html: str, body_text: str, attachments: list[Attachment] = ()) -> bool:
+def _send_smtp(to: list[str], subject: str, body_html: str, body_text: str, attachments: list[Attachment] = (),
+               reply_to: str | None = None) -> bool:
     message = EmailMessage()
     message["From"] = settings.mail_from
+    if reply_to:
+        message["Reply-To"] = reply_to
     message["To"] = ", ".join(to)
     message["Subject"] = subject
     message.set_content(body_text)
@@ -270,8 +280,11 @@ def _send_smtp(to: list[str], subject: str, body_html: str, body_text: str, atta
     return True
 
 
-def _send_resend(to: list[str], subject: str, body_html: str, body_text: str, attachments: list[Attachment] = ()) -> bool:
+def _send_resend(to: list[str], subject: str, body_html: str, body_text: str, attachments: list[Attachment] = (),
+                 reply_to: str | None = None) -> bool:
     payload: dict = {"from": settings.mail_from, "to": to, "subject": subject, "html": body_html, "text": body_text}
+    if reply_to:
+        payload["reply_to"] = reply_to
     if attachments:
         payload["attachments"] = [{"filename": name, "content": base64.b64encode(data).decode("ascii"), "content_type": media}
                                   for name, media, data in attachments]

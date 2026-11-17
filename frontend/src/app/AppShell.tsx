@@ -48,6 +48,7 @@ import { ItemsPage } from '../pages/ItemsPage'
 import { QuestionsPage } from '../pages/QuestionsPage'
 import { ThreadPage } from '../pages/ThreadPage'
 import { HelpPage } from '../pages/HelpPage'
+import { AutopilotPage } from '../pages/AutopilotPage'
 import { CountPage } from '../pages/CountPage'
 import { InsightsPage } from '../pages/InsightsPage'
 import { VariancePage } from '../pages/VariancePage'
@@ -72,7 +73,7 @@ const CHANGE_POLL_MS = 10_000
 type NavItem = { route: Route; label: string; icon: IconName }
 
 /** Pages only owners and admins see: the profit figures are theirs. */
-const MANAGER_ROUTES = new Set<Route>(['profit', 'insights'])
+const MANAGER_ROUTES = new Set<Route>(['profit', 'insights', 'autopilot'])
 
 /**
  * Grouped by what people come to do: the day's check-in and what the agent
@@ -175,6 +176,8 @@ const PAGE_KEYWORDS: Partial<Record<Route, string>> = {
   insights: 'charts prime cost spend money',
   tools: 'calculator par simulator what if',
   count: 'counting stocktake shelves areas walk-in',
+  autopilot: 'auto order ordering pars order days limits send',
+  receive: 'delivery deliveries check in receiving packing slip',
   variance: 'shrink waste missing loss spoiled',
   connect: 'pos payroll square gusto quickbooks integrations',
   profile: 'settings features team security',
@@ -441,6 +444,8 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
         return <CalendarPage app={app} />
       case 'prep':
         return readHashParam() ? <PrepSheetPage app={app} /> : <PrepSheetsPage app={app} />
+      case 'autopilot':
+        return flags.v3_autopilot && app.canManage ? <AutopilotPage app={app} /> : <InventoryPage app={app} user={user} />
       case 'count':
         return flags.v3_stock ? <CountPage app={app} /> : <InventoryPage app={app} user={user} />
       case 'variance':
@@ -470,6 +475,7 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
   const extra = (label: string | null): NavItem[] => {
     const more: NavItem[] = []
     if (label === 'Inventory' && flags.v3_stock) more.push({ route: 'count', label: 'Count sheet', icon: 'check' }, { route: 'variance', label: 'Variance & waste', icon: 'trend' })
+    if (label === 'Inventory' && flags.v3_autopilot) more.push({ route: 'autopilot', label: 'Ordering autopilot', icon: 'play' })
     if (label === 'Restaurant' && flags.v2_calendar) more.push({ route: 'calendar', label: 'Calendar', icon: 'clock' })
     if (label === 'Restaurant' && flags.v2_connect) more.push({ route: 'connect', label: 'Connections', icon: 'suppliers' })
     if (label === 'Invoices & prices' && flags.v2_documents) more.push({ route: 'documents', label: 'Documents', icon: 'clock' })

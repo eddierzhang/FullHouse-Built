@@ -44,8 +44,26 @@ def render(db: Session, order: PurchaseOrder, restaurant: Restaurant | None) -> 
     return subject, "\n".join(body), pdf_lines
 
 
+def reply_address(order: PurchaseOrder) -> str | None:
+    """Where the supplier's answer to this order goes: an address of its own on the inbound domain, so the reply
+    finds its order (app.receiving.replies). None when the site has no inbound domain. Gives the order its token."""
+    import secrets
+
+    from app.config import settings
+
+    if not settings.inbound_domain:
+        return None
+    if not order.reply_token:
+        order.reply_token = secrets.token_hex(12)
+    return f"po-{order.reply_token}@{settings.inbound_domain}"
+
+
 def send(db: Session, order: PurchaseOrder, to: list[str], restaurant: Restaurant | None) -> bool:
     subject, text, pdf_lines = render(db, order, restaurant)
     html = "<pre style=\"font-family:ui-monospace,Menlo,monospace;font-size:14px\">" + text.replace("&", "&amp;").replace("<", "&lt;") + "</pre>"
     pdf = pdf_bytes(pdf_lines)
-    return mail.send(to, subject, html, text, attachments=[(f"purchase-order-{order.id[:8]}.pdf", "application/pdf", pdf)])
+    attachments = [(f"purchase-order-{order.id[:8]}.pdf", "application/pdf", pdf)]
+    reply_to = reply_address(order)
+    if reply_to:
+        return mail.send(to, subject, html, text, attachments=attachments, reply_to=reply_to)
+    return mail.send(to, subject, html, text, attachments=attachments)

@@ -4561,3 +4561,140 @@ fieldset.field {
     grid-row: 2;
   }
 }
+
+/* ---------- v3 phase 4: ordering autopilot ---------------------------------- */
+
+.autopilot-suppliers {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.autopilot-supplier {
+  border-top: 1px solid var(--border);
+}
+
+.autopilot-supplier:first-child {
+  border-top: 0;
+}
+
+.autopilot-supplier-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+}
+
+.autopilot-edit {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 24px;
+  padding: 4px 20px 20px;
+}
+
+.autopilot-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+.pane-title {
+  margin: 0;
+  font-size: 15px;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-items: end;
+}
+
+.affix {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.affix .input {
+  min-width: 0;
+}
+
+.autopilot-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.rule-ok {
+  color: var(--success);
+  flex: none;
+}
+
+.rule-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 10px 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+
+.rule-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--text-muted);
+}
+
+.rule-list li .icon {
+  flex: none;
+  margin-top: 2px;
+}
+
+.rule-list li.ok .icon {
+  color: var(--success);
+}
+
+.rule-list li.no {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.rule-list li.no .icon {
+  color: var(--danger);
+}
+
+.autopilot-decision {
+  width: 100%;
+}
+
+.autopilot-decision summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.par-input {
+  width: 96px;
+  text-align: right;
+}
+
+@media (max-width: 520px) {
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+}

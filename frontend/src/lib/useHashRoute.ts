@@ -25,6 +25,9 @@ export const ROUTES = [
   // v3: counting, waste and the variance report (behind v3_stock).
   'count',
   'variance',
+  // v3: order days, pars and autopilot limits (v3_autopilot); checking deliveries in (v3_receiving).
+  'autopilot',
+  'receive',
   'approvals',
   'runs',
   'agents',
@@ -65,6 +68,10 @@ const ALIASES: Record<string, Route> = {
   archive: 'overview',
   savings: 'insights',
   counts: 'count',
+  ordering: 'autopilot',
+  pars: 'autopilot',
+  receiving: 'receive',
+  deliveries: 'receive',
   waste: 'variance',
   shrink: 'variance',
   charts: 'insights',

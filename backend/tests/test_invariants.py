@@ -121,6 +121,7 @@ def test_no_agent_code_imports_the_mail_client_or_a_connector_write():
     offenders = []
     for path in (APP / "agents").rglob("*.py"):
         text = path.read_text()
-        if "app.prices.mail" in text or "smtplib" in text or "app.connectors" in text:
+        # app.ordering is the owner's autopilot: it may use the agent's proposals, never the other way round.
+        if "app.prices.mail" in text or "smtplib" in text or "app.connectors" in text or "app.ordering" in text or "po_mail" in text:
             offenders.append(str(path.relative_to(APP)))
     assert offenders == []
