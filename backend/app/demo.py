@@ -292,6 +292,9 @@ def reset_demo_data(db: Session, now: datetime | None = None) -> dict:
     from app.sales.models import LaborDay, SalesDay
 
     flags.enable_all(db, restaurant_id)
+    # Voice is built but has only been tried with typed text, never a real microphone: off in the demo for now.
+    # An owner can switch it on under Profile, Features.
+    flags.set_flag(db, restaurant_id, flags.V3_VOICE, False)
     # The POS and payroll figures are the same trading the operations pages show: each day's sales
     # are that day's orders, so Today, Profit and the Digest can never disagree.
     by_day: dict[date, float] = {}

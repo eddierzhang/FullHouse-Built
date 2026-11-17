@@ -5,7 +5,7 @@ const STEPS: { title: string; body: string; href: string; go: string; icon: Icon
   { title: 'Start with the digest', body: 'Once a week: the dollars at stake, then which items to move to a cheaper supplier, which prices went up, and what you are owed.', href: '#digest', go: 'Open the digest', icon: 'profit' },
   { title: 'Answer a question', body: 'When the agent can’t tell what a printed line is, it asks. Two taps, five a week at most, and it never asks the same thing twice.', href: '#questions', go: 'See the questions', icon: 'approvals' },
   { title: 'Approve what it recommends', body: 'Reorders, recipes and schedule fixes wait for you. Nothing changes until you approve it, and anything approved can be undone.', href: '#approvals', go: 'Open recommendations', icon: 'check' },
-  { title: 'Try a decision first', body: 'See when an item runs out, what a supplier switch saves in a year, or what a price rise does to a dish, on your own numbers.', href: '#tools', go: 'Open the tools', icon: 'trend' },
+  { title: 'Test a decision first', body: 'See when an item runs out, what a supplier switch saves in a year, or what a price rise does to a dish, on your own numbers.', href: '#tools', go: 'Test one', icon: 'trend' },
   { title: 'Find anything', body: 'Press Ctrl or ⌘ K, or the search button, and type an item, a supplier, an invoice or a page. Anything else goes to the assistant as a question.', href: '', go: 'Done', icon: 'search' },
 ]
 

@@ -161,7 +161,7 @@ const INSIGHTS_GROUP: { label: string; items: NavItem[] } = {
   label: 'Insights',
   items: [
     { route: 'insights', label: 'Savings & costs', icon: 'trend' },
-    { route: 'tools', label: 'What-if tools', icon: 'play' },
+    { route: 'tools', label: 'Test a decision', icon: 'play' },
   ],
 }
 
@@ -176,7 +176,7 @@ const PAGE_KEYWORDS: Partial<Record<Route, string>> = {
   profit: 'revenue sales margin money',
   history: 'undo changes log',
   insights: 'charts prime cost spend money',
-  tools: 'calculator par simulator what if',
+  tools: 'calculator par simulator what if tools run out switch supplier menu price',
   count: 'counting stocktake shelves areas walk-in',
   autopilot: 'auto order ordering pars order days limits send',
   receive: 'delivery deliveries check in receiving packing slip',
@@ -184,6 +184,14 @@ const PAGE_KEYWORDS: Partial<Record<Route, string>> = {
   connect: 'pos payroll square gusto quickbooks integrations',
   profile: 'settings features team security',
 }
+
+/**
+ * The public demo's short menu: the pages a five-minute walk-through uses (what the invoices found, the
+ * what-if tools, counting, deliveries, autopilot). Every other page is still there: one click on "Show all
+ * pages" brings the whole menu back, and search reaches all of them either way.
+ */
+const DEMO_MENU = new Set<Route>(['overview', 'approvals', 'insights', 'tools', 'inventory', 'count', 'variance', 'receive', 'autopilot', 'invoices', 'questions', 'digest', 'help'])
+const FULL_MENU_KEY = 'fullhouse.nav.full'
 
 const COLLAPSED_KEY = 'fullhouse.nav.collapsed'
 function readCollapsed(): string[] {
@@ -237,6 +245,23 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
   const [busyActionId, setBusyActionId] = useState<string | null>(null)
   const [focusRunId, setFocusRunId] = useState<string | null>(null)
   const [commandOpen, setCommandOpen] = useState(false)
+  // The demo's short menu, until someone asks for everything; remembered in this browser.
+  const [fullMenu, setFullMenu] = useState(() => {
+    try {
+      return window.localStorage.getItem(FULL_MENU_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
+  const toggleFullMenu = () =>
+    setFullMenu((held) => {
+      try {
+        window.localStorage.setItem(FULL_MENU_KEY, held ? '0' : '1')
+      } catch {
+        /* a private window forgets it */
+      }
+      return !held
+    })
   const [tourOpen, setTourOpen] = useState(false)
   // Sidebar groups a person has folded away; every group starts open.
   const [collapsed, setCollapsed] = useState<string[]>(readCollapsed)
@@ -488,10 +513,17 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
     if (label === 'Menu' && flags.v2_orders) more.push({ route: 'prep', label: 'Prep sheets', icon: 'inventory' })
     return more
   }
-  const groups = [...NAV.slice(0, 1), ...(navOn ? [INSIGHTS_GROUP] : []), ...NAV.slice(1)]
+  const allGroups = [...NAV.slice(0, 1), ...(navOn ? [INSIGHTS_GROUP] : []), ...NAV.slice(1)]
     .map((group) => ({ label: group.label, items: [...group.items, ...extra(group.label)].filter(allowed) }))
     .filter((group) => group.items.length > 0)
-  const commandPages: CommandPage[] = groups.flatMap((group) =>
+  // In the demo the sidebar starts short; search still offers every page.
+  const shortMenu = runtime?.demo_mode === true && !fullMenu
+  const groups = shortMenu
+    ? allGroups.map((group) => ({ label: group.label, items: group.items.filter((item) => DEMO_MENU.has(item.route)) })).filter((group) => group.items.length > 0)
+    : allGroups
+  const pageCount = allGroups.reduce((sum, group) => sum + group.items.length, 0)
+  const tabs = shortMenu && flags.v3_receiving ? TABS.map((tab) => (tab.route === 'staff' ? { route: 'receive' as Route, label: 'Deliveries', icon: 'suppliers' as IconName } : tab)) : TABS
+  const commandPages: CommandPage[] = allGroups.flatMap((group) =>
     group.items.map((item) => ({ label: item.label, href: `#${item.route}`, group: group.label ?? 'Today', icon: item.icon, keywords: PAGE_KEYWORDS[item.route] })),
   )
   const navLink = (item: NavItem) => {
@@ -542,6 +574,12 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
             </nav>
           )
         })}
+
+        {runtime?.demo_mode && (
+          <button className="nav-more" onClick={toggleFullMenu} aria-pressed={fullMenu}>
+            {fullMenu ? 'Show the short menu' : `Show all ${pageCount} pages`}
+          </button>
+        )}
 
         <div className="sidebar-footer">
           <a className="sidebar-user" href="#profile" title="Your profile">
@@ -662,7 +700,7 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
       )}
 
       <nav className="tabbar" aria-label="Daily tasks">
-        {TABS.map((tab) => {
+        {tabs.map((tab) => {
           const count = counts[tab.route]
           return (
             <a key={tab.route} className="tab" href={`#${tab.route}`} aria-current={route === tab.route ? 'page' : undefined}>

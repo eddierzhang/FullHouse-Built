@@ -331,8 +331,8 @@ export function ToolsPage({ app }: { app: AppContext }) {
     <main className="page">
       <div className="page-header">
         <div>
-          <h1 className="page-title">What-if tools</h1>
-          <p className="page-subtitle">Try a decision on your own numbers before you make it. Nothing here changes anything.</p>
+          <h1 className="page-title">Test a decision before you make it</h1>
+          <p className="page-subtitle">See what a par, a supplier switch or a menu price would do, on your own numbers. Nothing here changes anything.</p>
         </div>
         <div className="segmented" role="group" aria-label="Tool">
           {tools.map((t) => (

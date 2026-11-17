@@ -23,7 +23,7 @@ a per-restaurant flag (Profile, Features) and is done when its acceptance tests 
       dishes; anything else is a question for the assistant. `GET /api/v1/insights/search`.
 - [x] Savings & costs page: what the digests found and what was acted on, prime cost by week, spend by supplier and
       category against the period before. Every chart has a table. `app/insights/engine.py`.
-- [x] What-if tools page: when an item runs out and what par to hold, what a supplier switch saves in a year, what a
+- [x] "Test a decision" page (first called What-if tools): when an item runs out and what par to hold, what a supplier switch saves in a year, what a
       price or cost change does to a dish. They read; nothing is written.
 - [x] An Insights group in the sidebar, groups that fold (all open by default), a savings tally on Today, a five-card
       tour on first sign-in that Help can replay.

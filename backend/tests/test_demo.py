@@ -192,3 +192,13 @@ def test_the_demo_shows_autopilot_passing_one_order_and_holding_another(db, monk
     assert [r["rule"] for r in decisions["held"].rules if not r["ok"]] == ["per_order_cap"]
     held = next(a for a in db.query(AgentAction).filter_by(status="pending") if (a.payload or {}).get("autopilot_held"))
     assert "over your $350.00 limit" in held.payload["autopilot_held"][0]
+
+
+def test_the_demo_has_every_feature_on_except_voice(db):
+    from app.platform import flags
+    from app.restaurant.models import Restaurant
+
+    reset_demo_data(db)
+
+    on = flags.all_for(db, db.query(Restaurant).one().id)
+    assert [flag for flag, enabled in on.items() if not enabled] == ["v3_voice"]
