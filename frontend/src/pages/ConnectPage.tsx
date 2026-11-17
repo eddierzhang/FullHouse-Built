@@ -13,6 +13,8 @@ import {
   syncNow,
 } from '../api/client'
 import type { AppContext } from '../app/context'
+import { DataImport } from '../ml/DataImport'
+import { ML_FLAGS } from '../ml/api'
 import { Icon } from '../components/Icon'
 import { Empty, Loaded } from '../components/PageState'
 import { relativeTime } from '../lib/format'
@@ -143,6 +145,8 @@ export function ConnectPage({ app, user }: { app: AppContext; user: User }) {
               <CsvCard app={app} profiles={data.csv_profiles} onDone={() => void load.reload()} />
 
               <InboundCard app={app} inbound={data.inbound} canEdit={app.canManage} onDone={() => void load.reload()} />
+
+              {ML_FLAGS.some((flag) => app.flags[flag]) && <DataImport app={app} />}
             </div>
           )
         }}

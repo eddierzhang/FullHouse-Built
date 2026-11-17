@@ -19,3 +19,14 @@ One line per decision made where `docs/SPEC-margin-labor.md` was silent, or wher
 | 2026-11-17 | Default: each module gets its own detail page | Spec section 14 |
 | 2026-11-17 | Default: order-level data comes from CSV import only | Spec section 14 |
 | 2026-11-17 | Open, recommended: a real `findings` table, with digest cards built from it | Findings need state the JSON cards cannot hold. Awaiting Eddie |
+| 2026-11-17 | Additive only: new tables, new optional columns, new pages and cards. No existing table, column, page, route or behavior is replaced or removed | Eddie, 2026-11-17: "do not override anything that already exists, only add new features and make improvements to the current design" |
+| 2026-11-17 | The `findings` table is built (the recommended default) | Unanswered; a table nothing reads yet costs nothing to change |
+| 2026-11-17 | New module settings live in a new `restaurant_settings` table; the time zone and hours stay on `restaurants` | Additive only |
+| 2026-11-17 | `supplier_schedules` and `item_conversions` are new tables beside v3's `supplier_calendars` and `unit_conversions`, which are untouched | Additive only; the spec's shapes differ (one row per delivery day; a factor to a base unit) |
+| 2026-11-17 | On SQLite the decimal column type binds as a float and reads back through the column's scale; Postgres stores exact numerics. Python only sees `Decimal` | SQLite has no decimal type; production is Postgres |
+| 2026-11-17 | `rollup_intervals` writes `sales_items` rows (source "orders") only for a date no other source supplies | Older readers see CSV-imported days without anything that exists being overwritten |
+| 2026-11-17 | An order with one unreadable line is left out whole and reported with its line number | Half an order would give wrong totals; nothing is guessed |
+| 2026-11-17 | Derived-table recomputes run on one new job queue, `derive`, one job per restaurant-day, keyed so a replay is a no-op | Ground rule 4 |
+| 2026-11-17 | The module flags (`ml_*`) are off by default and off in the demo until each module has a page | A flag with nothing behind it would show an empty page |
+| 2026-11-17 | Phase 0's read-performance check times the three indexed reads module pages will make (five restaurants, 120 days each), not a page | No module page exists until phase 1; the page-level 300 ms check moves there |
+| 2026-11-17 | The interface-text lint runs before every frontend build (`npm run lint:text`), on `src/ml` only | Spec 10.5; existing pages are out of scope |
