@@ -124,6 +124,10 @@ def run_workflow(db: Session, payload: dict) -> None:
         from app.recipes import engine as recipes
 
         recipes.onboarding(db, restaurant_id, today)
+    elif kind == "stock" and flags.enabled(db, restaurant_id, flags.V3_STOCK):
+        from app.stock import engine as stock
+
+        stock.run(db, restaurant_id, today)
     elif kind == "calendar_scan" and flags.enabled(db, restaurant_id, flags.V2_CALENDAR):
         try:
             from app.calendar import engine as calendar
@@ -140,6 +144,16 @@ def _forecast_after_sales(db: Session, event: Event) -> None:
     if event.restaurant_id and flags.enabled(db, event.restaurant_id, flags.V2_ORDERS):
         jobs.enqueue(db, "forecast", f"forecast:{event.restaurant_id}:{date.today().isoformat()}",
                      {"restaurant_id": event.restaurant_id}, restaurant_id=event.restaurant_id)
+
+
+@events.subscribe("sales_items.synced")
+def _stock_after_sales(db: Session, event: Event) -> None:
+    """New sales take their ingredients off the shelf as soon as they arrive, not at the next half hour."""
+    from app.platform import flags, jobs
+
+    if event.restaurant_id and flags.enabled(db, event.restaurant_id, flags.V3_STOCK):
+        jobs.enqueue(db, "workflow", f"stock:{event.restaurant_id}:after-sync", {"restaurant_id": event.restaurant_id, "kind": "stock"},
+                     restaurant_id=event.restaurant_id)
 
 
 # --- events that cause jobs -------------------------------------------------------------------

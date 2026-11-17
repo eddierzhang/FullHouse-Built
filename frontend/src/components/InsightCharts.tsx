@@ -217,3 +217,45 @@ export function RunwayChart({ days, unit, reorderAt, par, height = 230 }: { days
     </div>
   )
 }
+
+type ShrinkRow = { key: string; label: string; dollars: number; detail: string }
+
+/**
+ * What counts found, in dollars, about a zero line: missing to the left,
+ * extra to the right. Two hues because the sign is the point, a neutral
+ * rule at zero, and every bar carries its own figure, so nothing is read
+ * from colour alone.
+ */
+export function ShrinkChart({ rows }: { rows: ShrinkRow[] }) {
+  const [hover, setHover] = useState<string | null>(null)
+  const max = niceMax(Math.max(1, ...rows.map((r) => Math.abs(r.dollars))))
+  const hasExtra = rows.some((r) => r.dollars > 0)
+  // Missing is the common case: give it the room unless something came up extra.
+  const zero = hasExtra ? 62 : 100
+  if (rows.length === 0) return <div className="empty">Nothing counted in this window.</div>
+  return (
+    <ul className="shrink-chart" aria-label="What counts found missing or extra, by item">
+      {rows.map((r) => {
+        const width = (Math.abs(r.dollars) / max) * (r.dollars < 0 ? zero : 100 - zero)
+        return (
+          <li key={r.key} className="shrink-row" onMouseEnter={() => setHover(r.key)} onMouseLeave={() => setHover(null)} title={r.detail}>
+            <span className="compare-label">{r.label}</span>
+            <span className="shrink-track">
+              <span className="shrink-zero" style={{ left: `${zero}%` }} />
+              {r.dollars !== 0 && (
+                <span
+                  className={`shrink-bar ${r.dollars < 0 ? 'missing' : 'extra'}`}
+                  style={r.dollars < 0 ? { right: `${100 - zero}%`, width: `${width}%` } : { left: `${zero}%`, width: `${width}%` }}
+                />
+              )}
+            </span>
+            <span className="compare-value">
+              <span className="strong">{r.dollars === 0 ? 'On the nose' : `${r.dollars < 0 ? '−' : '+'}${money(Math.abs(r.dollars), true)}`}</span>
+              <span className="muted small">{hover === r.key || rows.length <= 8 ? r.detail : ''}</span>
+            </span>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}

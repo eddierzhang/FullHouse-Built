@@ -52,6 +52,11 @@ STAFF_MAY = {
     ("POST", "/api/v1/restaurant/purchase-orders/{order_id}/receive"): "staff receive the deliveries",
     ("PATCH", "/api/v1/restaurant/inventory-items/{inventory_item_id}"): "item details are checked in the route",
     ("POST", "/api/v1/restaurant/orders"): "staff take orders",
+    ("POST", "/api/v1/stock/counts"): "staff count the shelves",
+    ("POST", "/api/v1/stock/counts/now"): "staff count the shelves; a phone catching up after poor signal",
+    ("PUT", "/api/v1/stock/counts/{count_id}/lines"): "staff count the shelves; nothing moves until the count is posted",
+    ("POST", "/api/v1/stock/counts/{count_id}/post"): "staff post the count they made, as they record a count on the Inventory page",
+    ("POST", "/api/v1/stock/waste"): "staff record what was thrown away",
     ("PATCH", "/api/v1/restaurant/staff/{staff_id}"): "own phone and emergency contact only, checked in the route",
 }
 

@@ -36,9 +36,34 @@ navigation, so the new pages are one more group and folding is each person's cho
 `E2E_PYTHON=backend/.venv/bin/python` on a machine with no `python` on the PATH. A stock hit in search opens the
 Inventory page, not the item's row.
 
-## Phases 3 to 6
+## Phase 3: stock that tracks itself (flag `v3_stock`)
 
-- [ ] 3 Stock ledger (`v3_stock`): sales deplete stock through recipes, count sheets, waste, variance.
+- [x] Sales deplete stock: each POS sale line, through its dish's recipe (`recipe_items`), with the item's yield
+      applied. `app/stock/engine.py::deplete`; a line already taken off is skipped, a revised day moves only the
+      difference. Runs every 30 minutes (workflow `stock`) and after each `sales_items.synced` event.
+- [x] Tracking starts the day it is first run (`inventory_settings.deplete_from`); earlier sales are in the opening figures.
+- [x] Count sheets by storage area in shelf order: open, save as you go, post. Kept on the phone and re-sent after
+      poor signal; `POST /api/v1/stock/counts/now` posts a whole count once per `client_key`.
+- [x] Waste in three taps with a reason; never takes more than is on the shelf; once per Idempotency-Key.
+- [x] `stock_daily` rollup and the variance report read from it: received, used by sales, wasted, and what counts
+      found, in units and dollars. An item nobody counted has no shrink figure.
+- [x] Alerts: runs out before a delivery could arrive, and "86 this dish"; written as notifications once a day.
+- [x] Pages: Count sheet (with Arrange shelves) and Variance & waste, in the Inventory group.
+- [x] Demo: two weeks of ledger history that ends at today's figures, a walk-in count a week ago, five waste entries.
+- [x] Acceptance and invariants in `tests/test_stock.py` (11 tests): seven days of sales to within 0.1%, replay
+      changes nothing (I12), the ledger is the truth under random movements (I11), another restaurant's items
+      cannot be counted.
+- [ ] Not built: per-item unit conversion table, POS modifiers, prep recipes, delivery lots and use-by dates,
+      text or push delivery of alerts (they are written to `notifications`, which no page shows yet), a browser
+      test for the new pages.
+
+Notes. Depletion uses the operations recipes (stock units), not the v2 costing recipes (invoice units); a dish
+needs a recipe on the Menu page to be tracked. Orders taken in the app still deplete at once, as before; POS
+sales lines deplete through the job. A restaurant feeding the same sales through both would count them twice.
+The demo sets `deplete_from` to the day it loads, so its seeded history is never taken off again.
+
+## Phases 4 to 6
+
 - [ ] 4 Ordering (`v3_autopilot`): pars, supplier calendars, the policy engine and outbox.
 - [ ] 5 Receiving (`v3_receiving`): supplier replies, phone receiving, three-way match. Order state is `partial`, not `part_received`.
 - [ ] 6 Voice (`v3_voice`): push-to-talk, the rule parser, confirm before write.

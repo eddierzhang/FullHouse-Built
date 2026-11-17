@@ -38,7 +38,7 @@ def test_prime_cost_is_the_weeks_the_job_worked_out_oldest_first(db):
 
     assert [w["week_of"] for w in weeks] == sorted(w["week_of"] for w in weeks) and len(weeks) == 3
     for week in weeks:
-        assert round(week["food_pct"] + week["labor_pct"] + week["paper_pct"], 1) == round(week["prime_pct"], 1)
+        assert abs(week["food_pct"] + week["labor_pct"] + week["paper_pct"] - week["prime_pct"]) < 0.06  # each is rounded to two places
 
 
 def test_spend_splits_the_same_total_by_supplier_and_by_category(db):

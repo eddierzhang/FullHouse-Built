@@ -219,14 +219,7 @@ def reset_demo_data(db: Session, now: datetime | None = None) -> dict:
              supplier_id=suppliers.get(supplier), updated_at=now)
         for name, unit, on_hand, threshold, reorder_qty, cost, supplier in stocked
     ])
-    # Each item's stock history opens with what it has now, so it adds up.
-    _insert(db, InventoryAdjustment, [
-        dict(restaurant_id=restaurant_id, inventory_item_id=inventory[name], change=on_hand, quantity_after=on_hand,
-             reason="initial", note="Counted when Botanica started on FullHouse", actor_type="system",
-             actor_id="system", created_at=now - timedelta(days=HISTORY_DAYS))
-        for name, _unit, on_hand, *_rest in stocked
-        if on_hand
-    ])
+    # The stock history (opening count, deliveries, sales, waste, a count) is written by _stock_story below.
 
     menu = {row[0]: _id() for row in MENU}
     _insert(db, MenuItem, [
@@ -326,6 +319,7 @@ def reset_demo_data(db: Session, now: datetime | None = None) -> dict:
     for (day, dish), (qty, net) in sorted(sold.items()):
         db.add(SalesItem(restaurant_id=restaurant_id, date=day, pos_item_id=_pos_id(dish), pos_item_name=dish, qty=qty, net=round(net, 2), source="square"))
     db.flush()
+    _stock_story(db, restaurant_id, now, today, inventory, stocked, sold)
     # Three whole weeks of prime cost, so the chart has a line to draw; the digest reports the latest.
     for back in (2, 1, 0):
         pnl.compute_week(db, restaurant_id, pnl.last_complete_week(today) - timedelta(weeks=back))
@@ -366,6 +360,104 @@ def _digest_history(db: Session, restaurant_id: str, suppliers: dict, now: datet
         draft = price_engine.draft_for(db, chicken, db.get(Supplier, suppliers["Sysco Foods"]), "price_challenge", today)
         draft.status, draft.sent_at, draft.sent_by = SENT, now - timedelta(days=9), DEMO_EMAIL
     db.flush()
+
+
+#: Where the demo keeps things, in the order someone walks the shelves.
+STORAGE = {
+    "Walk-in": ["Mozzarella", "Mascarpone", "Parmesan", "Chicken Breast", "Tomatoes", "Romaine Lettuce", "Basil", "Garlic"],
+    "Dry store": ["Flour", "Olive Oil", "Espresso Beans", "Ciabatta"],
+}
+#: days ago, item, amount in the item's unit (before STOCK_SCALE), reason key, note
+WASTE = [
+    (9, "Mozzarella", 0.4, "dropped", "tub tipped in the walk-in"),
+    (5, "Basil", 1.0, "spoiled", "wilted over the weekend"),
+    (3, "Tomatoes", 1.2, "spoiled", "soft case from Friday"),
+    (2, "Chicken Breast", 0.6, "overcooked", None),
+    (1, "Romaine Lettuce", 0.8, "prep", "outer leaves"),
+]
+#: What last week's walk-in count found against what the ledger expected (before STOCK_SCALE).
+COUNT_FOUND = {"Mozzarella": -2.4, "Chicken Breast": -3.2, "Basil": -2.0, "Parmesan": -0.4, "Tomatoes": 0.4}
+STORY_DAYS = 14
+
+
+def _stock_story(db: Session, restaurant_id: str, now: datetime, today: date, inventory: dict, stocked: list, sold: dict) -> None:
+    """Two weeks of stock movements that end at today's figures: an opening count, a delivery every other
+    morning, each day's sales through the recipes, a little waste, and a walk-in count a week ago that found
+    some missing. Written straight to the ledger, so each item's history adds up to what is on hand.
+    From today on, the stock job takes new sales off by itself."""
+    from app.restaurant.inventory import REASONS
+    from app.stock import engine as stock_engine
+    from app.stock.models import POSTED, StockCount, StockCountLine, StorageArea
+
+    assert "sale" in REASONS
+    areas = {}
+    for position, (name, names) in enumerate(STORAGE.items()):
+        area = StorageArea(restaurant_id=restaurant_id, name=name, position=position)
+        db.add(area)
+        db.flush()
+        areas[name] = area
+        for shelf, item_name in enumerate(names):
+            db.execute(InventoryItem.__table__.update().where(InventoryItem.id == inventory[item_name])
+                       .values(storage_area_id=area.id, shelf_order=shelf))
+    recipes = {name: recipe for name, _, _, _, _, recipe in MENU}
+    suppliers_of = {name: supplier for name, *_rest, supplier in stocked}
+    count_day = today - timedelta(days=7)
+    count = StockCount(restaurant_id=restaurant_id, storage_area_id=areas["Walk-in"].id, status=POSTED, started_by=DEMO_EMAIL,
+                       started_at=datetime.combine(count_day, time(15, 0), tzinfo=timezone.utc),
+                       posted_at=datetime.combine(count_day, time(15, 25), tzinfo=timezone.utc))
+    db.add(count)
+    db.flush()
+
+    rows = []
+    for name, unit, on_hand, _threshold, _reorder_qty, cost, _supplier in stocked:
+        item_id = inventory[name]
+        moves: list[tuple[datetime, float, str, str | None, str, str | None, str | None]] = []  # when, change, reason, note, actor type, actor, key
+        usage = {}
+        for back in range(STORY_DAYS, 0, -1):
+            day = today - timedelta(days=back)
+            for dish, recipe in recipes.items():
+                per_plate = dict(recipe).get(name)
+                plates = sold.get((day, dish), [0.0])[0]
+                if per_plate and plates:
+                    used = round(per_plate * plates, 4)
+                    usage[day] = usage.get(day, 0.0) + used
+                    moves.append((datetime.combine(day, time(23, 30), tzinfo=timezone.utc), -used, "sale", f"{plates:g} × {dish}, {day.isoformat()}",
+                                  "system", "system", f"sale:{day.isoformat()}:square:{_pos_id(dish)}:{item_id}"))
+        for back in range(STORY_DAYS, 0, -2):
+            day = today - timedelta(days=back)
+            amount = round(usage.get(day, 0.0) + usage.get(day + timedelta(days=1), 0.0), 2)
+            if amount > 0:
+                moves.append((datetime.combine(day, time(9, 10), tzinfo=timezone.utc), amount, "delivery",
+                              f"Delivered by {suppliers_of.get(name) or 'the supplier'}", "human", DEMO_EMAIL, None))
+        for back, wasted, amount, reason, note in WASTE:
+            if wasted == name:
+                text = stock_engine.WASTE_REASONS[reason] + (f": {note}" if note else "")
+                moves.append((datetime.combine(today - timedelta(days=back), time(21, 40), tzinfo=timezone.utc), -amount * STOCK_SCALE, "waste",
+                              text, "human", DEMO_EMAIL, None))
+        counted = name in STORAGE["Walk-in"]
+        if counted:
+            moves.append((count.posted_at, COUNT_FOUND.get(name, 0.0) * STOCK_SCALE, "count", "Counted in Walk-in", "human", DEMO_EMAIL,
+                          f"count:{count.id}:{item_id}"))
+        moves.sort(key=lambda m: m[0])
+        level = round(on_hand - sum(m[1] for m in moves), 4)  # the opening count that makes it all add up
+        rows.append(dict(restaurant_id=restaurant_id, inventory_item_id=item_id, change=level, quantity_after=level, reason="initial",
+                         note="Counted when Botanica started on FullHouse", actor_type="system", actor_id="system", request_id=None,
+                         source_key=None, created_at=now - timedelta(days=HISTORY_DAYS)))
+        for when, change, reason, note, actor_type, actor_id, key in moves:
+            before = level
+            level = round(level + change, 4)
+            if reason == "count":
+                db.add(StockCountLine(restaurant_id=restaurant_id, count_id=count.id, inventory_item_id=item_id, item_name=name, unit=unit,
+                                      expected_qty=before, counted_qty=level, unit_cost=cost))
+                if change == 0:
+                    continue  # counted and found right: a line on the sheet, nothing in the ledger
+            rows.append(dict(restaurant_id=restaurant_id, inventory_item_id=item_id, change=round(change, 4), quantity_after=level, reason=reason,
+                             note=note, actor_type=actor_type, actor_id=actor_id, request_id=None, source_key=key, created_at=when))
+    _insert(db, InventoryAdjustment, rows)
+    restaurant = db.get(Restaurant, restaurant_id)
+    restaurant.inventory_settings = {**(restaurant.inventory_settings or {}), "deplete_from": today.isoformat()}
+    db.flush()
+    stock_engine.rollup(db, restaurant_id, today=today)
 
 
 def _pos_id(dish: str) -> str:

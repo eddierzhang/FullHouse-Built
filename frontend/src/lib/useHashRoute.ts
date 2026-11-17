@@ -22,6 +22,9 @@ export const ROUTES = [
   // v3: the charts and what-if tools (behind the v3_nav flag).
   'insights',
   'tools',
+  // v3: counting, waste and the variance report (behind v3_stock).
+  'count',
+  'variance',
   'approvals',
   'runs',
   'agents',
@@ -61,6 +64,9 @@ const ALIASES: Record<string, Route> = {
   drafts: 'draft',
   archive: 'overview',
   savings: 'insights',
+  counts: 'count',
+  waste: 'variance',
+  shrink: 'variance',
   charts: 'insights',
   'what-if': 'tools',
 }

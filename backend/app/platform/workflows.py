@@ -27,6 +27,8 @@ DEFAULTS = {
     "forecast": ("0 2 * * *", False, "v2_orders"),
     "po_draft": ("0 18 * * 0", False, "v2_orders"),
     "prep_sheet": ("0 16 * * *", False, "v2_orders"),
+    # Sales off the shelf, the daily rollup and the day's alerts; also run after every sales sync.
+    "stock": ("*/30 * * * *", True, "v3_stock"),
 }
 
 
@@ -101,7 +103,7 @@ def enqueue_for(db: Session, workflow: Workflow, moment: datetime | None = None,
     key = f"workflow:{workflow.restaurant_id}:{workflow.kind}:{period_key(workflow.kind, local)}"
     payload = {"restaurant_id": workflow.restaurant_id, "today": today}
     queue = {"digest": "detect", "pnl": "pnl", "forecast": "forecast", "po_draft": "workflow", "prep_sheet": "workflow",
-             "recipe_onboarding": "workflow", "calendar_scan": "workflow"}[workflow.kind]
+             "recipe_onboarding": "workflow", "calendar_scan": "workflow", "stock": "workflow"}[workflow.kind]
     if queue == "workflow":
         payload["kind"] = workflow.kind
     job, created = jobs.enqueue_new(db, queue, key, payload, restaurant_id=workflow.restaurant_id)

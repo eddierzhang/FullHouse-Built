@@ -239,6 +239,10 @@ export type InventoryItem = {
   /** Bought in packs: one `pack_unit` (a case) holds `pack_size` of `unit`. Both null otherwise. */
   pack_unit: string | null
   pack_size: number | null
+  /** Where it is kept, its place on the shelf, and its usable share (count sheets and depletion). */
+  storage_area_id?: string | null
+  shelf_order?: number
+  yield_pct?: number | null
   /** When the item or its stock last changed. */
   updated_at: string
   /** At or below the reorder point. */

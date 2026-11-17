@@ -33,6 +33,10 @@ class InventoryItemOut(BaseModel):
     #: Bought in packs: one `pack_unit` holds `pack_size` of `unit`; both null otherwise.
     pack_unit: str | None = None
     pack_size: float | None = None
+    #: Where it is kept, its place on the shelf and its usable share (app.stock).
+    storage_area_id: str | None = None
+    shelf_order: int = 0
+    yield_pct: float | None = None
     updated_at: datetime
 
     @computed_field

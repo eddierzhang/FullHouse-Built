@@ -48,7 +48,9 @@ import { ItemsPage } from '../pages/ItemsPage'
 import { QuestionsPage } from '../pages/QuestionsPage'
 import { ThreadPage } from '../pages/ThreadPage'
 import { HelpPage } from '../pages/HelpPage'
+import { CountPage } from '../pages/CountPage'
 import { InsightsPage } from '../pages/InsightsPage'
+import { VariancePage } from '../pages/VariancePage'
 import { ToolsPage } from '../pages/ToolsPage'
 import { HistoryPage } from '../pages/HistoryPage'
 import { ApprovalsPage } from '../pages/ApprovalsPage'
@@ -172,6 +174,8 @@ const PAGE_KEYWORDS: Partial<Record<Route, string>> = {
   history: 'undo changes log',
   insights: 'charts prime cost spend money',
   tools: 'calculator par simulator what if',
+  count: 'counting stocktake shelves areas walk-in',
+  variance: 'shrink waste missing loss spoiled',
   connect: 'pos payroll square gusto quickbooks integrations',
   profile: 'settings features team security',
 }
@@ -437,6 +441,10 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
         return <CalendarPage app={app} />
       case 'prep':
         return readHashParam() ? <PrepSheetPage app={app} /> : <PrepSheetsPage app={app} />
+      case 'count':
+        return flags.v3_stock ? <CountPage app={app} /> : <InventoryPage app={app} user={user} />
+      case 'variance':
+        return flags.v3_stock ? <VariancePage app={app} /> : <InventoryPage app={app} user={user} />
       case 'insights':
         return app.canManage && navOn ? <InsightsPage app={app} /> : <OverviewPage app={app} />
       case 'tools':
@@ -461,6 +469,7 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
   // draws and what search offers.
   const extra = (label: string | null): NavItem[] => {
     const more: NavItem[] = []
+    if (label === 'Inventory' && flags.v3_stock) more.push({ route: 'count', label: 'Count sheet', icon: 'check' }, { route: 'variance', label: 'Variance & waste', icon: 'trend' })
     if (label === 'Restaurant' && flags.v2_calendar) more.push({ route: 'calendar', label: 'Calendar', icon: 'clock' })
     if (label === 'Restaurant' && flags.v2_connect) more.push({ route: 'connect', label: 'Connections', icon: 'suppliers' })
     if (label === 'Invoices & prices' && flags.v2_documents) more.push({ route: 'documents', label: 'Documents', icon: 'clock' })
