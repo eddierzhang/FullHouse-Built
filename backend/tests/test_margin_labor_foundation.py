@@ -140,7 +140,11 @@ def test_rollup_intervals_counts_each_order_once_in_its_interval_and_running_it_
     rid = _restaurant(client, db)
     csv_import.import_orders(db, rid, (FIXTURES / "orders.csv").read_text())
     db.commit()
-    assert jobs.drain(db, queues=("derive",)) == 2  # one job per business date touched
+    from app.platform.models import Job
+
+    queued = [j.payload["job"] for j in db.query(Job).filter(Job.queue == "derive")]
+    assert queued == ["rollup_intervals", "rollup_intervals"]  # one job per business date touched
+    jobs.drain(db, queues=("derive",))
     friday = date(2026, 11, 13)
     local = ZoneInfo(ml_settings.for_restaurant(db, rid).timezone)  # the file's times are the restaurant's own clock
 
@@ -180,7 +184,7 @@ def test_the_rollup_fills_the_per_item_table_only_where_nothing_else_supplies_th
 
 TABLES = [models.PosItem, models.SalesOrder, models.SalesOrderLine, models.LaborPunch, models.ChannelPayout, models.DemandDriver,
           models.ItemConversion, models.SupplierSchedule, models.RestaurantSettings, models.ChannelTerms, models.IntervalActual,
-          models.ForecastRun, models.ForecastInterval, models.Finding]
+          models.ForecastRun, models.ForecastInterval, models.Finding, models.DishCost]
 
 
 @pytest.mark.parametrize("model", TABLES, ids=lambda m: m.__tablename__)

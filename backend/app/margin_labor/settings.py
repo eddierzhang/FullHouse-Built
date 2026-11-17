@@ -44,7 +44,7 @@ def for_restaurant(db: Session, restaurant_id: str) -> Settings:
     row = db.query(RestaurantSettings).filter(RestaurantSettings.restaurant_id == restaurant_id).first()
     tz = (restaurant.timezone if restaurant else None) or "UTC"
     if row is None:
-        return Settings(tz, "04:00", Decimal("0.30"), None, Decimal("0.00"), "latest", {})
+        return Settings(tz, "04:00", Decimal("0.3000"), None, Decimal("0.00"), "latest", {})
     return Settings(tz, row.business_day_start, row.target_food_cost_pct, row.target_labor_pct, row.price_ending,
                     row.costing_price_policy, dict(row.overrides or {}))
 

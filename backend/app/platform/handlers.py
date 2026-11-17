@@ -195,6 +195,12 @@ def derive(db: Session, payload: dict) -> None:
         from app.margin_labor import rollup
 
         rollup.rollup_intervals(db, restaurant_id, date.fromisoformat(payload["business_date"]))
+    elif payload.get("job") == "recost" and flags.enabled(db, restaurant_id, flags.ML_MENU_COSTS):
+        from app.margin_labor import menu_costs
+
+        menu_costs.recost(db, restaurant_id, recipe_ids=set(payload["recipe_ids"]) if payload.get("recipe_ids") is not None else None,
+                          item_ids=set(payload["item_ids"]) if payload.get("item_ids") is not None else None,
+                          trigger_event_id=payload.get("trigger_event_id"))
 
 
 @events.subscribe("sales.synced")
@@ -205,3 +211,45 @@ def _rollup_after_orders(db: Session, event: Event) -> None:
     for day in (event.payload or {}).get("business_dates", [])[:800]:
         jobs.enqueue(db, "derive", f"derive:{event.restaurant_id}:rollup_intervals:{day}",
                      {"restaurant_id": event.restaurant_id, "job": "rollup_intervals", "business_date": day}, restaurant_id=event.restaurant_id)
+
+
+def _queue_recost(db: Session, event: Event, field: str | None) -> None:
+    """One recost per restaurant per set of inputs: the same event replayed queues nothing new while one waits."""
+    import hashlib
+
+    from app.platform import flags, jobs
+
+    if not flags.enabled(db, event.restaurant_id, flags.ML_MENU_COSTS):
+        return
+    ids = sorted((event.payload or {}).get("ids", [])) if field else None
+    key = hashlib.sha256(",".join(ids).encode()).hexdigest()[:16] if ids is not None else "all"
+    payload = {"restaurant_id": event.restaurant_id, "job": "recost", "trigger_event_id": str(event.seq)}
+    if field:
+        payload[field] = ids
+    jobs.enqueue(db, "derive", f"derive:{event.restaurant_id}:recost:{field or 'all'}:{key}", payload, restaurant_id=event.restaurant_id)
+
+
+@events.subscribe("price_point.created")
+def _recost_after_price(db: Session, event: Event) -> None:
+    _queue_recost(db, event, "item_ids")
+
+
+@events.subscribe("recipe.saved")
+def _recost_after_recipe(db: Session, event: Event) -> None:
+    _queue_recost(db, event, "recipe_ids")
+
+
+@events.subscribe("sales_items.synced")
+def _recost_after_sales(db: Session, event: Event) -> None:
+    """New sales move what sold in 28 days and the fallback menu price: check every dish against the alert rule."""
+    _queue_recost(db, event, None)
+
+
+@events.subscribe("intervals.rolled_up")
+def _recost_after_rollup(db: Session, event: Event) -> None:
+    _queue_recost(db, event, None)
+
+
+from app.margin_labor import triggers as _ml_triggers  # noqa: E402
+
+_ml_triggers.install()

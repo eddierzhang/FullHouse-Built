@@ -14,7 +14,7 @@ import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import JSON, Boolean, Date, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, Date, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.session import Base
@@ -321,3 +321,42 @@ class Finding(_Row, Base):
     closed_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
     proposal_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+# --- Module A: live recipe costing ---------------------------------------------------------------
+
+
+class DishCost(_Row, Base):
+    """What one recipe cost to make at one moment, with everything used to work it out (`basis`).
+
+    A new row is written whenever an input changes; exactly one row per recipe is current. The older
+    `plate_costs` table (one float per recipe per week) is left as it is for the pages that read it.
+    """
+
+    __tablename__ = "dish_costs"
+    __table_args__ = (
+        Index("uq_dish_costs_current", "restaurant_id", "recipe_id", unique=True, sqlite_where=text("is_current"), postgresql_where=text("is_current")),
+        Index("ix_dish_costs_restaurant_recipe_at", "restaurant_id", "recipe_id", "effective_at"),
+    )
+
+    restaurant_id: Mapped[str] = _tenant("dish_costs")
+    recipe_id: Mapped[str] = mapped_column(ForeignKey("recipes.id", name="fk_dish_costs_recipe", ondelete="CASCADE"), nullable=False)
+    week_of: Mapped[date] = mapped_column(Date, nullable=False)
+    effective_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now, nullable=False)
+    is_current: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    batch_cost: Mapped[Decimal] = mapped_column(Dec(), nullable=False)
+    plate_cost: Mapped[Decimal] = mapped_column(Dec(), nullable=False)
+    #: Excluding tax. Null when neither the POS nor recent sales give one: the cost then shows with no percentage.
+    menu_price: Mapped[Decimal | None] = mapped_column(Dec(), nullable=True)
+    food_cost_pct: Mapped[Decimal | None] = mapped_column(Dec(8, 4), nullable=True)
+    margin_dollars: Mapped[Decimal | None] = mapped_column(Dec(), nullable=True)
+    lines_priced: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    lines_total: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    calc_version: Mapped[str] = mapped_column(String(12), nullable=False)
+    #: The event (`events.seq`) that caused this recost, when one did.
+    trigger_event_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    #: A hash of every input: the same inputs never write a second row.
+    inputs_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    #: {"lines": [...per line: price point, unit price, conversion, yield, cost], "menu_price": {...}, "policy": ...}
+    basis: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    unpriced: Mapped[list] = mapped_column(JSON, default=list, nullable=False)

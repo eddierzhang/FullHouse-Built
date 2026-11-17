@@ -7,7 +7,9 @@ from sqlalchemy import JSON, Date, Float, ForeignKey, Index, String, UniqueConst
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
-from app.db.types import UTCDateTime
+from decimal import Decimal
+
+from app.db.types import Dec, UTCDateTime
 
 
 def _uuid() -> str:
@@ -38,6 +40,11 @@ class Recipe(Base):
     source: Mapped[str] = mapped_column(String(10), default="agent", nullable=False)  # agent|user|document
     #: The document it was read from, if any.
     document_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # --- Margin & Labor Engine, Module A. Optional; older code does not read them. ---
+    #: menu_item or sub_recipe. Null: worked out from how the recipe is used.
+    kind: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    #: Portions one batch makes (1 for a plated dish). Null: `yield_qty` for a dish.
+    portions: Mapped[Decimal | None] = mapped_column(Dec(), nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now, onupdate=_now, nullable=False)
 
@@ -61,6 +68,8 @@ class RecipeLine(Base):
     unit: Mapped[str] = mapped_column(String(32), nullable=False)
     #: The ingredient as the chef wrote it, kept for the page and for re-matching.
     ingredient_text: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    #: Module A: the usable share after trim and cooking, more than 0 and at most 1. Null means 1.
+    yield_pct: Mapped[Decimal | None] = mapped_column(Dec(6, 4), nullable=True)
 
     recipe: Mapped[Recipe] = relationship(back_populates="lines", foreign_keys=[recipe_id])
 

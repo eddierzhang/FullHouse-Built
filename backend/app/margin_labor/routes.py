@@ -4,7 +4,9 @@ as each phase lands. The tenant always comes from the session."""
 
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from decimal import Decimal
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -73,3 +75,165 @@ def data_status(user: User = Depends(current_user), db: Session = Depends(get_db
 
 def _aware(moment: datetime) -> datetime:
     return moment if moment.tzinfo is not None else moment.replace(tzinfo=timezone.utc)
+
+
+# --- shared: the Why panel, digest cards ------------------------------------------------------------
+
+
+def _module(db: Session, user: User, flag: str) -> str:
+    """The signed-in user's restaurant, when this module is switched on for it."""
+    restaurant_id = scope_for(db, user)
+    if restaurant_id is None:
+        raise HTTPException(404, "Set up your restaurant first.")
+    if not flags.enabled(db, restaurant_id, flag):
+        raise HTTPException(404, "This module is not switched on for this restaurant (Profile, Features).")
+    return restaurant_id
+
+
+def _etag(response: Response, if_none_match: str | None, *parts) -> bool:
+    """Set the ETag from what the page was computed from; True when the caller already has it."""
+    import hashlib
+
+    tag = '"' + hashlib.sha256("|".join(str(p) for p in parts).encode()).hexdigest()[:24] + '"'
+    response.headers["ETag"] = tag
+    return if_none_match == tag
+
+
+@router.get("/why/{table}/{row_id}")
+def why(table: str, row_id: str, figure: str = "plate_cost", user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """The stored basis of one derived row, for the Why panel. It reads what was stored; it never recomputes."""
+    from app.margin_labor import whys
+
+    restaurant_id = _scope(db, user)
+    out = whys.explain(db, restaurant_id, table, row_id, figure, user)
+    if out is None:
+        raise HTTPException(404, "No such figure.")
+    return out
+
+
+@router.get("/digest-cards")
+def digest_cards(user: User = Depends(current_user), db: Session = Depends(get_db)) -> list[dict]:
+    """At most one card per module that is on, for the Digest."""
+    from app.margin_labor import cards
+
+    restaurant_id = _scope(db, user)
+    return cards.build(db, restaurant_id, user)
+
+
+# --- Module A: Menu costs ---------------------------------------------------------------------------
+
+
+@router.get("/menu-costs")
+def menu_costs_list(response: Response, if_none_match: str | None = Header(default=None), user: User = Depends(current_user),
+                    db: Session = Depends(get_db)):
+    """Dishes with their current cost, food cost, 28-day change and units sold, largest dollars a week first."""
+    from app.margin_labor import menu_costs_read
+
+    restaurant_id = _module(db, user, flags.ML_MENU_COSTS)
+    out = menu_costs_read.overview(db, restaurant_id)
+    proposals = [(d["finding"] or {}).get("proposal_status") for d in out["dishes"]]
+    if _etag(response, if_none_match, out["computed_at"], out["state"], out["stale"], out["today"], len(out["dishes"]), out["header"], proposals):
+        return Response(status_code=304, headers={"ETag": response.headers["ETag"]})
+    return out
+
+
+@router.get("/menu-costs/{recipe_id}")
+def menu_cost_detail(recipe_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """One dish: its lines, 26 weeks of cost, and its open finding."""
+    from app.margin_labor import menu_costs_read
+
+    restaurant_id = _module(db, user, flags.ML_MENU_COSTS)
+    out = menu_costs_read.detail(db, restaurant_id, recipe_id)
+    if out is None:
+        raise HTTPException(404, "No such dish.")
+    return out
+
+
+@router.post("/menu-costs/{recipe_id}/reprice")
+def menu_cost_reprice(recipe_id: str, idempotency_key: str | None = Header(default=None), user: User = Depends(manager),
+                      db: Session = Depends(get_db)) -> dict:
+    """Ask for a reprice suggestion for a dish. It is a proposal: a person approves it, then changes the price in
+    the POS. Asking twice returns the one already waiting."""
+    from app.margin_labor import menu_costs
+    from app.margin_labor.models import DishCost, Finding
+
+    restaurant_id = _module(db, user, flags.ML_MENU_COSTS)
+    world = menu_costs.load(db, restaurant_id)
+    cost = db.query(DishCost).filter(DishCost.restaurant_id == restaurant_id, DishCost.recipe_id == recipe_id, DishCost.is_current.is_(True)).first()
+    if cost is None or recipe_id not in world.rows:
+        raise HTTPException(404, "No such dish.")
+    finding = db.query(Finding).filter(Finding.restaurant_id == restaurant_id, Finding.type == menu_costs.FINDING, Finding.subject_id == recipe_id,
+                                       Finding.status == "open").first()
+    action = menu_costs.propose_reprice(db, world, world.rows[recipe_id], cost, finding)
+    if action is None:
+        db.commit()  # a hold-back is logged
+        raise HTTPException(409, "No price to suggest: the dish has no menu price or an unpriced line, the price cap leaves no room, "
+                                 "or three reprice suggestions were already made this week.")
+    if finding is not None and finding.proposal_id != action.id:
+        finding.proposal_id = action.id
+    db.commit()
+    return {"proposal_id": action.id, "suggested_price": action.payload.get("suggested_price"), "note": action.payload.get("note")}
+
+
+class RecipeLineIn(BaseModel):
+    ingredient_text: str | None = Field(default=None, max_length=200)
+    item_id: str | None = Field(default=None, max_length=32)
+    sub_recipe_id: str | None = Field(default=None, max_length=32)
+    qty: Decimal = Field(gt=0, max_digits=12, decimal_places=4)
+    unit: str = Field(min_length=1, max_length=32)
+    yield_pct: Decimal = Field(default=Decimal(1), gt=0, le=1, max_digits=6, decimal_places=4)
+
+
+class RecipeIn(BaseModel):
+    kind: str | None = Field(default=None, pattern="^(menu_item|sub_recipe)$")
+    portions: Decimal | None = Field(default=None, gt=0, max_digits=12, decimal_places=4)
+    yield_qty: Decimal | None = Field(default=None, gt=0, max_digits=12, decimal_places=4)
+    yield_unit: str | None = Field(default=None, min_length=1, max_length=32)
+    lines: list[RecipeLineIn] = Field(min_length=1, max_length=80)
+
+
+@router.put("/recipes/{recipe_id}")
+def save_recipe(recipe_id: str, body: RecipeIn, user: User = Depends(manager), db: Session = Depends(get_db)) -> dict:
+    """Edit a recipe and its lines, then recost it and every recipe that uses it. A save that would make a recipe
+    use itself, through any chain of sub-recipes, is rejected."""
+    from app.margin_labor import costing, menu_costs
+    from app.prices.models import PriceItem
+    from app.recipes.models import Recipe, RecipeLine
+
+    restaurant_id = _module(db, user, flags.ML_MENU_COSTS)
+    recipe = db.get(Recipe, recipe_id)
+    if recipe is None or recipe.restaurant_id != restaurant_id:
+        raise HTTPException(404, "No such recipe.")
+    for line in body.lines:
+        if bool(line.item_id) == bool(line.sub_recipe_id):
+            raise HTTPException(422, "Each line is one invoice item or one sub-recipe.")
+        if line.item_id:
+            item = db.get(PriceItem, line.item_id)
+            if item is None or item.restaurant_id != restaurant_id:
+                raise HTTPException(422, "A line names an item this restaurant does not have.")
+        else:
+            sub = db.get(Recipe, line.sub_recipe_id)
+            if sub is None or sub.restaurant_id != restaurant_id:
+                raise HTTPException(422, "A line names a sub-recipe this restaurant does not have.")
+    world = menu_costs.load(db, restaurant_id)
+    if costing.would_cycle(world.recipes, recipe_id, {l.sub_recipe_id for l in body.lines if l.sub_recipe_id}):
+        raise HTTPException(422, "This would make the recipe use itself through its sub-recipes. Remove that line.")
+    if body.kind is not None:
+        recipe.kind = body.kind
+    if body.portions is not None:
+        recipe.portions = body.portions
+    if body.yield_qty is not None:
+        recipe.yield_qty = float(body.yield_qty)
+    if body.yield_unit is not None:
+        recipe.yield_unit = body.yield_unit
+    for line in list(recipe.lines):
+        db.delete(line)
+    db.flush()
+    for position, line in enumerate(body.lines):
+        db.add(RecipeLine(restaurant_id=restaurant_id, recipe_id=recipe.id, position=position, item_id=line.item_id, sub_recipe_id=line.sub_recipe_id,
+                          qty=float(line.qty), unit=line.unit, yield_pct=line.yield_pct, ingredient_text=(line.ingredient_text or "").strip() or None))
+    db.flush()
+    db.expire(recipe)
+    done = menu_costs.recost(db, restaurant_id, recipe_ids={recipe_id})
+    db.commit()
+    return {"recipe_id": recipe_id, **done}
