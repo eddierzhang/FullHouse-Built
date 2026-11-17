@@ -27,6 +27,8 @@ import { VoiceButton } from '../components/VoiceButton'
 import { FeedbackButton } from '../components/FeedbackButton'
 import { Icon, type IconName } from '../components/Icon'
 import { NewTaskModal } from '../components/NewTaskModal'
+import { NoticesBell } from '../components/NoticesBell'
+import { fetchNotices, type Notices } from '../api/notifications'
 import { AskField } from '../components/prices'
 import { Toast, type ToastState } from '../components/Toast'
 import { relativeTime } from '../lib/format'
@@ -238,6 +240,7 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
   const [questions, setQuestions] = useState<AgentQuestion[]>([])
   const [runtime, setRuntime] = useState<Runtime | null>(null)
   const [flags, setFlags] = useState<Record<string, boolean>>({})
+  const [notices, setNotices] = useState<Notices>({ unread: 0, items: [] })
 
   const [toastState, setToastState] = useState<ToastState>(null)
   const [taskAgent, setTaskAgent] = useState<string | null | undefined>(undefined)
@@ -286,6 +289,7 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
     listQuestions().then(setQuestions).catch(() => {})
     fetchRuntime().then(setRuntime).catch(() => {})
     fetchFlags().then((f) => setFlags(f.flags)).catch(() => {})
+    fetchNotices().then(setNotices).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -640,6 +644,7 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
             </div>
           )}
           <div className="topbar-spacer" />
+          {(notices.items.length > 0 || flags.v3_stock || flags.v3_autopilot || flags.v3_receiving) && <NoticesBell notices={notices} onChange={setNotices} />}
           {navOn && (
             <button className="btn btn-ghost btn-icon topbar-search" aria-label="Search" title="Search (Ctrl or ⌘ K)" onClick={() => setCommandOpen(true)}>
               <Icon name="search" />

@@ -17,6 +17,12 @@ from sqlalchemy.orm import Session
 
 from app.notify.models import Notification, UsageMeter
 
+#: Kinds that are also mailed to the owners and managers, because they need someone to act and the person may
+#: not have the app open: an order about to go out by itself, one held or failed, a late or short delivery.
+EMAIL_KINDS = {"autopilot_send", "autopilot_held", "autopilot_failed", "autopilot_off", "order_late", "delivery_short", "supplier_reply"}
+#: Kinds only owners and managers see: they are about spending.
+MANAGER_KINDS = {"autopilot_send", "autopilot_held", "autopilot_failed", "autopilot_off", "autopilot_sent", "supplier_reply", "order_below_minimum"}
+
 #: What a restaurant may use in a month before the feature says no. One plan for now.
 MONTHLY_BUDGETS = {"model_usd": 20.0, "voice_seconds": 6 * 3600.0, "messages": 500.0}
 
@@ -29,8 +35,63 @@ def tell(db: Session, restaurant_id: str, *, kind: str, title: str, dedupe_key: 
     row = Notification(restaurant_id=restaurant_id, user_email=user_email, kind=kind[:24], title=title[:200], body=body,
                        link=link, dedupe_key=dedupe_key[:120])
     db.add(row)
+    if kind in EMAIL_KINDS:
+        # Mailed by a job, from a row written with the notification: said once, even if the job runs twice.
+        from app.ordering.models import Outbox
+
+        db.add(Outbox(restaurant_id=restaurant_id, kind="notice", dedupe_key=f"notice:{dedupe_key}"[:120],
+                      payload={"title": title[:200], "body": body or "", "link": link or ""}))
     db.flush()
     return row
+
+
+def deliver_notices(db: Session, restaurant_id: str | None = None) -> int:
+    """Mail every notice waiting, to the restaurant's owners and managers. Each row is claimed before its mail
+    goes, so none is sent twice. On a site with no mailbox the notices stay in the app only. Returns how many went."""
+    from html import escape
+
+    from app.config import settings
+    from app.ordering.models import Outbox
+    from app.prices import mail
+
+    query = db.query(Outbox).filter(Outbox.kind == "notice", Outbox.status == "pending")
+    if restaurant_id:
+        query = query.filter(Outbox.restaurant_id == restaurant_id)
+    sent = 0
+    for row in query.order_by(Outbox.created_at).limit(200).all():
+        if not mail.can_send():
+            row.status = "logged"  # nowhere to send from: it is in the app's notifications, and that is all
+            continue
+        to = mail.recipients(db, row.restaurant_id)
+        claimed = db.query(Outbox).filter(Outbox.id == row.id, Outbox.status == "pending").update(
+            {"status": "sending", "attempts": Outbox.attempts + 1}, synchronize_session=False)
+        db.commit()
+        if claimed != 1 or not to:
+            continue
+        db.refresh(row)
+        link = f"{settings.link_base}/{row.payload.get('link') or ''}" if settings.link_base else ""
+        text = "\n\n".join(part for part in (row.payload.get("body") or "", f"Open FullHouse: {link}" if link else "") if part)
+        html = (f'<div style="font-family:system-ui,sans-serif;font-size:15px;line-height:22px">{escape(row.payload.get("body") or "")}'
+                + (f'<p><a href="{escape(link)}">Open FullHouse</a></p>' if link else "") + "</div>")
+        try:
+            delivered = mail.send(to, str(row.payload.get("title") or "FullHouse"), html, text)
+        except Exception as err:
+            delivered, row.last_error = False, str(err)[:500]
+        row.status = "sent" if delivered else "failed"
+        row.sent_at = datetime.now(timezone.utc) if delivered else None
+        sent += 1 if delivered else 0
+        db.commit()
+    db.flush()
+    return sent
+
+
+def visible_to(db: Session, restaurant_id: str, user_email: str, is_manager: bool, limit: int = 30) -> list[Notification]:
+    """A person's notifications, newest first: the restaurant's, less the ones about spending for staff."""
+    query = db.query(Notification).filter(Notification.restaurant_id == restaurant_id,
+                                          (Notification.user_email.is_(None)) | (Notification.user_email == user_email))
+    if not is_manager:
+        query = query.filter(Notification.kind.notin_(MANAGER_KINDS))
+    return query.order_by(Notification.created_at.desc()).limit(limit).all()
 
 
 def _month(now: datetime | None = None) -> str:

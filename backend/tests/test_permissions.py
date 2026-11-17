@@ -58,6 +58,7 @@ STAFF_MAY = {
     ("POST", "/api/v1/stock/counts/{count_id}/post"): "staff post the count they made, as they record a count on the Inventory page",
     ("POST", "/api/v1/stock/waste"): "staff record what was thrown away",
     ("POST", "/api/v1/receiving/receipts"): "staff check deliveries in at the door",
+    ("POST", "/api/v1/notifications/read"): "anyone marks their own notifications read",
     ("POST", "/api/v1/voice/parse"): "anyone on the team may speak; a parse writes only its own preview",
     ("POST", "/api/v1/voice/commands/{command_id}/confirm"): "staff count, log waste and check deliveries in; voice does the same three things and no others",
     ("POST", "/api/v1/voice/commands/{command_id}/discard"): "anyone may drop their own preview",

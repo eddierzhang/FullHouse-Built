@@ -196,7 +196,7 @@ def test_the_demo_shows_autopilot_passing_one_order_and_holding_another(db, monk
     # Green Valley's order is inside its limits and waits out the cancel window, as a draft with its send queued.
     farm = db.query(PurchaseOrder).filter_by(autopilot=True).one()
     assert (farm.supplier_name, farm.status) == ("Green Valley Farms", "draft")
-    assert db.query(Outbox).one().status == "pending"
+    assert db.query(Outbox).filter_by(kind="po_email").one().status == "pending"
     # Sysco's is over the owner's limit for one order: held, with the reason, for a person.
     assert [r["rule"] for r in decisions["held"].rules if not r["ok"]] == ["per_order_cap"]
     held = next(a for a in db.query(AgentAction).filter_by(status="pending") if (a.payload or {}).get("autopilot_held"))

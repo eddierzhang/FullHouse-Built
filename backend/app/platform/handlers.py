@@ -143,6 +143,10 @@ def run_workflow(db: Session, payload: dict) -> None:
             calendar.scan(db, restaurant_id, today)
         except ImportError:
             logger.info("calendar scan requested before the calendar phase exists")
+    # Whatever the job just said that needs someone to act (an order about to go, a late delivery) is mailed now.
+    from app.notify import service as notify
+
+    notify.deliver_notices(db, restaurant_id)
 
 
 @events.subscribe("sales_items.synced")

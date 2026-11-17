@@ -121,3 +121,37 @@ carried out only as "everything arrived" or "everything arrived except…"; anyt
 Stateless web processes, split queues, row-level security, month partitions, per-restaurant model budgets
 enforced on agent runs, live Square/Toast/Clover/Gusto/QuickBooks/Bill.com against their sandboxes, and text and
 push delivery. `notifications` and `usage_meters` exist and are written; no page lists notifications yet.
+
+## After the reviews (Nov 17)
+
+Two independent reviews (correctness, security) of the v3 backend, and the four gaps named before a pilot.
+
+- [x] Alerts reach people: a bell in the app (`/api/v1/notifications`), and mail to owners and managers for the kinds
+      that need someone to act (an order about to go, held or failed; a late or short delivery; a supplier's reply).
+      Staff do not see the ones about spending. No text or push yet.
+- [x] One source of sales: the point of sale's lines or orders taken here deduct stock, never both
+      (`stock.engine.sales_source`; the owner can pin either).
+- [x] A restaurant's own unit conversions (`unit_conversions`): a pound of basil into bunches.
+- [x] POS items that are not dishes (`pos_item_maps`): another name for a dish, an add-on that uses an ingredient,
+      or not food. Square's nested modifiers are still not pulled by its adapter; an add-on is mapped when the POS
+      reports it as its own line.
+- [x] Demo data: invoices buy what the recipes use, a little over, at the prices stock is valued at; four weeks of
+      stock history. `test_every_page_of_the_demo_tells_the_same_story` checks purchases against usage.
+- [x] Browser tests for the v3 pages (`frontend/e2e/v3.spec.ts`, 8 tests).
+- [x] Security: autopilot decides only the order it drafted for an order day (not any proposal); orders waiting to
+      send count toward the weekly cap; only an owner resumes after a pause; a mailed reply acts only from the
+      supplier's own address or domain and never on a closed order; the order address is one plain address; a
+      restaurant whose address begins "po-" keeps its mail; voice previews belong to their author and a nickname
+      cannot take an item's name.
+- [x] Correctness: sale days older than three days are settled (a recipe change does not re-deduct history); a sale
+      before an item's last count is not taken off again; a count carries movements made after it was entered; an
+      order is claimed before it is mailed, so a crash or a second run cannot send it twice, and one left unsent for
+      six hours goes back to a person; the cancel window never passes the cutoff; a rejected draft is not remade the
+      same day; part-received orders finish correctly from the older receive paths; waste never adds stock; the
+      rollup is on the restaurant's day and drops undone entries; daily use, pars and alerts read POS sales.
+- [ ] Left from the reviews: an invoice for a delivery already checked in can still match the next open order's
+      line first when orders are frequent; pars ignore yield for orders taken in the app; the single-item Receive
+      route errors after committing when used on an order with lines (it predates v3).
+
+The browser suite is timing-sensitive: with the machine under load, one unrelated test (a different one each
+time) can time out. A clean run is 53 passed.

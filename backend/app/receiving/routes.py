@@ -86,6 +86,10 @@ def check_in(body: ReceiptIn, user: User = Depends(current_user), db: Session = 
 
         stock.rollup(db, restaurant_id, days=3)
     db.commit()
+    from app.notify import service as notify
+
+    notify.deliver_notices(db, restaurant_id)  # a short delivery is mailed to the managers straight away
+    db.commit()
     return {"id": receipt.id, "po_id": order.id, **summary}
 
 

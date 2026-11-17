@@ -42,6 +42,9 @@ export function CommandBar({ open, onClose, pages, canAsk, onError }: { open: bo
       return
     }
     let stale = false
+    // Results for what was typed before are not results for this: without clearing them, Enter in the moment
+    // before the new ones arrive would open the old first hit.
+    setHits([])
     setSearching(true)
     const timer = window.setTimeout(() => {
       searchEverything(query)

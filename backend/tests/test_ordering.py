@@ -140,7 +140,7 @@ def test_acceptance_a_passing_draft_sends_once_after_the_cancel_window(client, d
     assert sent == [(order.id, ["orders@green.example.com"])]
     assert (order.status, order.sent_by) == ("ordered", "autopilot")
     # I14: an outbox row, a decision with its rules, and history.
-    assert db.query(Outbox).one().status == "sent"
+    assert db.query(Outbox).filter_by(kind="po_email").one().status == "sent"
     assert db.query(AutopilotDecision).one().outcome == "sent" and len(decision.rules) == 10
     assert db.query(ChangeLog).filter(ChangeLog.entity_type == "purchase_orders").count() >= 2
     # Looked at once: the same proposal is never decided twice.
@@ -162,7 +162,7 @@ def test_cancelling_inside_the_window_sends_nothing_and_leaves_a_draft(client, d
     assert autopilot.deliver_due(db, NOW + timedelta(hours=2)) == 0 and sent == []
     db.expire_all()
     assert db.query(PurchaseOrder).one().status == "draft"
-    assert db.query(Outbox).one().status == "cancelled"
+    assert db.query(Outbox).filter_by(kind="po_email").one().status == "cancelled"
 
 
 def test_a_price_jump_holds_the_order_for_a_person_with_the_reason(client, db, monkeypatch):
@@ -178,7 +178,7 @@ def test_a_price_jump_holds_the_order_for_a_person_with_the_reason(client, db, m
     assert decision.outcome == "held"
     assert [r["rule"] for r in decision.rules if not r["ok"]] == ["price_steady"]
     assert "Chicken" in action.payload["autopilot_held"][0] and "16%" in action.payload["autopilot_held"][0]
-    assert action.status == "pending" and db.query(PurchaseOrder).count() == 0 and db.query(Outbox).count() == 0
+    assert action.status == "pending" and db.query(PurchaseOrder).count() == 0 and db.query(Outbox).filter_by(kind="po_email").count() == 0
     assert autopilot.deliver_due(db, NOW + timedelta(days=1)) == 0 and sent == []
 
 
@@ -194,7 +194,7 @@ def test_nothing_goes_for_a_supplier_whose_owner_has_not_switched_it_on(client, 
     db.commit()
 
     assert (result["passed"], result["sent"]) == (0, 0) and sent == []
-    assert action.status == "pending" and db.query(Outbox).count() == 0 and db.query(AutopilotDecision).count() == 0
+    assert action.status == "pending" and db.query(Outbox).filter_by(kind="po_email").count() == 0 and db.query(AutopilotDecision).count() == 0
 
 
 def test_pausing_or_having_no_mailbox_stops_a_send_and_three_strikes_switch_it_off(client, db, monkeypatch):
@@ -340,7 +340,7 @@ def test_only_the_order_autopilot_drafted_itself_can_go_out_by_itself(client, db
     result = autopilot.run(db, rid, NOW + timedelta(hours=2))
     db.commit()
     assert (result["passed"], result["sent"]) == (0, 0) and sent == []
-    assert asked_for.status == "pending" and db.query(Outbox).count() == 0
+    assert asked_for.status == "pending" and db.query(Outbox).filter_by(kind="po_email").count() == 0
 
 
 def test_an_order_waiting_to_send_counts_toward_the_weekly_cap_and_blocks_a_second(client, db, monkeypatch):
@@ -391,21 +391,21 @@ def test_an_order_is_claimed_before_it_is_mailed_so_a_crash_or_a_second_run_cann
 
     def crash(db_, order, to, restaurant_):
         from app.db.session import SessionLocal  # what another worker would read at this moment
-        seen_during_send.append(db.query(Outbox).one().status)
+        seen_during_send.append(db.query(Outbox).filter_by(kind="po_email").one().status)
         raise KeyboardInterrupt  # the process dies after the provider took the mail
 
     monkeypatch.setattr(autopilot.po_mail, "send", crash)
     with pytest.raises(KeyboardInterrupt):
         autopilot.deliver_due(db, NOW + timedelta(minutes=31))
     db.rollback()
-    assert seen_during_send == ["sending"] and db.query(Outbox).one().status == "sending"
+    assert seen_during_send == ["sending"] and db.query(Outbox).filter_by(kind="po_email").one().status == "sending"
 
     # The retry does not mail it again; once it has sat there a while a person is told to check.
     monkeypatch.setattr(autopilot.po_mail, "send", lambda *a: sent.append(a) or True)
     assert autopilot.deliver_due(db, NOW + timedelta(minutes=33)) == 0 and sent == []
     assert autopilot.deliver_due(db, NOW + timedelta(minutes=50)) == 0 and sent == []
     db.commit()
-    assert db.query(Outbox).one().status == "failed" and db.query(AutopilotDecision).one().outcome == "failed"
+    assert db.query(Outbox).filter_by(kind="po_email").one().status == "failed" and db.query(AutopilotDecision).one().outcome == "failed"
     assert db.query(PurchaseOrder).one().status == "draft"
 
 
@@ -429,7 +429,7 @@ def test_an_order_never_goes_after_the_cutoff_or_long_after_it_was_due_and_a_rej
     # Left unsent for a day (the worker was down): too old to send unasked.
     assert autopilot.deliver_due(db, NOW + timedelta(hours=30)) == 0 and sent == []
     db.commit()
-    assert db.query(Outbox).one().status == "cancelled" and db.query(AutopilotDecision).one().outcome == "held"
+    assert db.query(Outbox).filter_by(kind="po_email").one().status == "cancelled" and db.query(AutopilotDecision).one().outcome == "held"
     # And the same order day does not get a second draft five minutes later.
     assert autopilot.draft_for(db, rid, farm, TODAY) is None
     assert client.put(f"{API}/suppliers/{farm.id}/policy", json={"enabled": True, "cancel_window_minutes": 720}).status_code == 422
