@@ -16,6 +16,8 @@ names the item, the supplier and the dollars, and has one button: move the item,
 One agent does the reading, matching, drafting and answering. When it isn't sure what a line is, it asks a one-tap
 question instead of guessing, at most five a week. It never places an order, changes a supplier, sends anything, pays
 anything or edits an invoice, and it never says a price is "wrong", only that it changed or that someone charged less.
+The one thing that can go out without a person is an order to a supplier whose owner has switched autopilot on (v3):
+a rules engine, not the agent, sends it inside the owner's limits after a cancel window.
 
 > FullHouse started as a hackathon project — the original version is at
 > [eddierzhang/FullHouse](https://github.com/eddierzhang/FullHouse). Its first product, an operations dashboard with
@@ -107,6 +109,15 @@ forecasting and prep sheets, the compliance calendar) is implemented on this sta
 [docs/V2_TASKS.md](docs/V2_TASKS.md) is the task list with each phase's notes;
 [docs/V2_COMPLETION.md](docs/V2_COMPLETION.md) has the commands, every credential, the flags, the load-test figures and
 the invariant tests.
+
+## v3: stock, ordering, receiving and voice
+
+Behind per-restaurant flags (`v3_nav`, `v3_stock`, `v3_autopilot`, `v3_receiving`, `v3_voice`): search from anywhere
+with savings and cost charts and what-if tools; stock that comes off the shelf as sales arrive, with count sheets, waste
+and a variance report; pars, supplier order days and orders sent inside an owner's limits; deliveries checked in from a
+phone, with supplier replies read and shorts drafted as credit claims; and counting, waste, deliveries and questions by
+voice, previewed before anything is saved. [docs/V3_TASKS.md](docs/V3_TASKS.md) has each phase's notes and what is
+not built.
 
 ## Architecture
 
@@ -287,7 +298,6 @@ dev.py              developer tasks
 - **Single process.** The event broker and scheduler live in the API process, so it can't be scaled horizontally without
   moving them to something like Redis.
 - **Gross, not net.** Profit excludes labour and overheads.
-- **No purchase-order lifecycle.** Approving a reorder books the goods as received immediately.
 - **Reading photos needs a model.** A photo of an invoice is read into lines by Claude (`ANTHROPIC_API_KEY`) or by a
   vision model on the OpenAI-compatible API (`LLM_API_KEY`, Gemini for one). A PDF that carries text is read by rule
   with any model or none; a scanned PDF, or a photo on a site with no model, is typed up. The demo's scripted reader

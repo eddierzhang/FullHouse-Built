@@ -23,6 +23,7 @@ import {
 import { ActionDrawer } from '../components/ActionDrawer'
 import { CommandBar, type CommandPage } from '../components/CommandBar'
 import { TOUR_EVENT, Tour, tourSeen } from '../components/Tour'
+import { VoiceButton } from '../components/VoiceButton'
 import { FeedbackButton } from '../components/FeedbackButton'
 import { Icon, type IconName } from '../components/Icon'
 import { NewTaskModal } from '../components/NewTaskModal'
@@ -59,6 +60,7 @@ import { InventoryPage } from '../pages/InventoryPage'
 import { MenuPage } from '../pages/MenuPage'
 import { OverviewPage } from '../pages/OverviewPage'
 import { ProfitPage } from '../pages/ProfitPage'
+import { ReceivePage } from '../pages/ReceivePage'
 import { RunsPage } from '../pages/RunsPage'
 import { ProfilePage } from '../pages/ProfilePage'
 import { StaffPage } from '../pages/StaffPage'
@@ -444,6 +446,8 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
         return <CalendarPage app={app} />
       case 'prep':
         return readHashParam() ? <PrepSheetPage app={app} /> : <PrepSheetsPage app={app} />
+      case 'receive':
+        return flags.v3_receiving ? <ReceivePage app={app} /> : <InventoryPage app={app} user={user} />
       case 'autopilot':
         return flags.v3_autopilot && app.canManage ? <AutopilotPage app={app} /> : <InventoryPage app={app} user={user} />
       case 'count':
@@ -475,6 +479,7 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
   const extra = (label: string | null): NavItem[] => {
     const more: NavItem[] = []
     if (label === 'Inventory' && flags.v3_stock) more.push({ route: 'count', label: 'Count sheet', icon: 'check' }, { route: 'variance', label: 'Variance & waste', icon: 'trend' })
+    if (label === 'Inventory' && flags.v3_receiving) more.push({ route: 'receive', label: 'Deliveries', icon: 'suppliers' })
     if (label === 'Inventory' && flags.v3_autopilot) more.push({ route: 'autopilot', label: 'Ordering autopilot', icon: 'play' })
     if (label === 'Restaurant' && flags.v2_calendar) more.push({ route: 'calendar', label: 'Calendar', icon: 'clock' })
     if (label === 'Restaurant' && flags.v2_connect) more.push({ route: 'connect', label: 'Connections', icon: 'suppliers' })
@@ -683,6 +688,7 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
         </button>
       </nav>
 
+      {flags.v3_voice && <VoiceButton app={app} />}
       <CommandBar open={commandOpen} onClose={() => setCommandOpen(false)} pages={commandPages} canAsk onError={(m) => toast('Couldn’t ask that', m)} />
       <Tour open={tourOpen && !commandOpen} onClose={() => setTourOpen(false)} />
       <ActionDrawer app={app} action={drawerAction} onClose={() => setDrawerAction(null)} />

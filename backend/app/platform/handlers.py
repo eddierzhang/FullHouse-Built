@@ -128,6 +128,10 @@ def run_workflow(db: Session, payload: dict) -> None:
         from app.ordering import autopilot
 
         autopilot.run(db, restaurant_id)
+    elif kind == "late_orders" and flags.enabled(db, restaurant_id, flags.V3_RECEIVING):
+        from app.receiving import engine as receiving
+
+        receiving.late(db, restaurant_id, today)
     elif kind == "stock" and flags.enabled(db, restaurant_id, flags.V3_STOCK):
         from app.stock import engine as stock
 

@@ -162,6 +162,14 @@ def book_deliveries(db: Session, restaurant_id: str | None, today: date) -> list
                 line.stocked_at = now
                 booked.append(line)
                 continue
+            # Checked in at the door already (app.receiving): this invoice is for that delivery, and books nothing more.
+            from app.receiving import engine as receiving
+
+            checked_in = receiving.received_line_without_invoice(db, restaurant_id, item.id, stock.id if stock else None, line.supplier_id, today)
+            if checked_in is not None:
+                checked_in.invoice_line_id = line.id
+                line.stocked_at = now
+                continue
             if stock is None:
                 line.stocked_at = now  # not counted in Inventory: nothing to book, and no need to look again
                 continue
@@ -173,6 +181,12 @@ def book_deliveries(db: Session, restaurant_id: str | None, today: date) -> list
                 continue
             # An order placed for this item: the invoice is its delivery, and receives it.
             order = orders.open_for(db, restaurant_id, stock.id, line.supplier_id, invoice.invoice_date)
+            if order is not None and order.status == "partial":
+                # Part of it was checked in at the door and the rest is still expected: the invoice is for the
+                # order, and what arrives is booked when someone checks it in.
+                order.invoice_line_id = line.id
+                line.stocked_at = now
+                continue
             if order is not None:
                 orders.receive(db, order, quantity=units, note=note, received_by=AGENT_KEY, invoice_line_id=line.id)
                 line.stocked_at = now

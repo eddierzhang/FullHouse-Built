@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { addArea, discardCount, getCount, listAreas, listCounts, placeItem, postCount, removeArea, saveCountLines, startCount, type StorageArea } from '../api/stock'
+import { type CountLine, addArea, discardCount, getCount, listAreas, listCounts, placeItem, postCount, removeArea, saveCountLines, startCount, type StorageArea } from '../api/stock'
 import type { AppContext } from '../app/context'
 import { Icon } from '../components/Icon'
 import { Empty, Loaded } from '../components/PageState'
 import { WasteDialog } from '../components/WasteDialog'
 import { money, qty, relativeTime } from '../lib/format'
+import { say, spokenNumber, useSpeech } from '../lib/speech'
 import { readHashParam } from '../lib/useHashRoute'
 import { useLoad } from '../lib/useLoad'
 
@@ -43,6 +44,10 @@ function Sheet({ app, id, onLeave }: { app: AppContext; id: string; onLeave: () 
   const [busy, setBusy] = useState(false)
   const pending = useRef<Draft>({})
   const timer = useRef<number | null>(null)
+  // Hands-free: the sheet reads each item out and takes a number, "same", "skip", "back" or "stop".
+  const speech = useSpeech()
+  const [speaking, setSpeaking] = useState<string | null>(null)
+  const halt = useRef(false)
 
   const value = (itemId: string, fromServer: number | null) => (itemId in entered ? entered[itemId] : fromServer)
 
@@ -88,6 +93,48 @@ function Sheet({ app, id, onLeave }: { app: AppContext; id: string; onLeave: () 
     }
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const countAloud = async (lines: CountLine[]) => {
+    halt.current = false
+    let index = Math.max(0, lines.findIndex((l) => value(l.inventory_item_id, l.counted_qty) === null))
+    let misses = 0
+    while (index < lines.length && !halt.current) {
+      const line = lines[index]
+      setSpeaking(line.inventory_item_id)
+      document.getElementById(`count-${line.inventory_item_id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      await say(`${line.item_name}. Expected ${qty(line.expected_qty)} ${line.unit}.`)
+      if (halt.current) break
+      let heard = ''
+      try {
+        heard = (await speech.listen()).toLowerCase()
+      } catch {
+        if (++misses >= 3) break
+        await say('I didn’t catch that.')
+        continue
+      }
+      if (/\b(stop|done|finish|finished|pause|that's all)\b/.test(heard)) break
+      if (/\b(back|previous)\b/.test(heard)) {
+        index = Math.max(0, index - 1)
+        continue
+      }
+      if (/\b(skip|next|pass)\b/.test(heard)) {
+        index += 1
+        continue
+      }
+      const amount = /\b(same|correct|yes|right|yep)\b/.test(heard) ? line.expected_qty : spokenNumber(heard)
+      if (amount === null) {
+        if (++misses >= 3) break
+        await say('Say a number, or same, skip, back or stop.')
+        continue
+      }
+      misses = 0
+      set(line.inventory_item_id, amount)
+      index += 1
+    }
+    setSpeaking(null)
+    halt.current = true
+    await say(index >= lines.length ? 'That’s the last one. Post the count when you’re ready.' : 'Paused.')
+  }
+
   const post = async () => {
     setBusy(true)
     try {
@@ -125,6 +172,19 @@ function Sheet({ app, id, onLeave }: { app: AppContext; id: string; onLeave: () 
                 counted
                 {!posted && <span className="muted small"> · {saveState === 'saved' ? 'saved' : saveState === 'saving' ? 'saving…' : 'kept on this phone, not sent yet'}</span>}
               </div>
+              {!posted && app.flags.v3_voice && speech.supported && (
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    if (speaking) {
+                      halt.current = true
+                      speech.stop()
+                    } else void countAloud(sheet.lines)
+                  }}
+                >
+                  {speaking ? 'Stop' : 'Count by voice'}
+                </button>
+              )}
               {!posted && (
                 <button className="btn btn-primary" disabled={done.length === 0} onClick={() => setConfirming(true)}>
                   Post count
@@ -148,7 +208,7 @@ function Sheet({ app, id, onLeave }: { app: AppContext; id: string; onLeave: () 
                   const off = l.counted !== null && Math.abs(l.counted - l.expected_qty) > 1e-6
                   const step = l.unit === 'lb' || l.unit === 'kg' || l.unit === 'L' ? 0.5 : 1
                   return (
-                    <li key={l.inventory_item_id} className={`count-row${l.counted !== null ? ' done' : ''}`}>
+                    <li key={l.inventory_item_id} id={`count-${l.inventory_item_id}`} className={`count-row${l.counted !== null ? ' done' : ''}${speaking === l.inventory_item_id ? ' speaking' : ''}`}>
                       <div className="count-row-main">
                         <div className="count-row-name">{l.item_name}</div>
                         <div className="muted small">

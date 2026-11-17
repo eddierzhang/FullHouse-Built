@@ -99,6 +99,7 @@ def _parse(payload: dict) -> dict:
             "content": att.get("content") or att.get("content_base64") or "",
         })
     return {"from": str(data.get("from") or ""), "to": str(to or ""), "subject": str(data.get("subject") or "")[:200],
+            "text": str(data.get("text") or data.get("body") or data.get("stripped-text") or "")[:20000],
             "message_id": str(data.get("email_id") or data.get("message_id") or data.get("id") or ""), "attachments": attachments}
 
 
@@ -107,6 +108,19 @@ def receive(db: Session, payload: dict, external_id: str) -> dict:
     from app.platform import events, jobs
 
     mail = _parse(payload)
+    # A supplier answering an order: its reply address carries the order's own token (app.receiving).
+    local = (mail["to"] or "").split("@", 1)[0].strip().lower()
+    if local.startswith("po-"):
+        from app.platform import flags
+        from app.receiving import engine as receiving
+
+        order = receiving.order_for_token(db, local[3:])
+        if order is None or not flags.enabled(db, order.restaurant_id, flags.V3_RECEIVING):
+            logger.info("inbound reply for an unknown order address %r dropped", mail["to"])
+            return {"restaurant_id": None, "documents": 0, "reason": "unknown order address"}
+        kind = receiving.handle_reply(db, order, mail["text"] or mail["subject"], mail["from"])
+        db.flush()
+        return {"restaurant_id": order.restaurant_id, "documents": 0, "reply": kind, "order_id": order.id}
     connection = restaurant_for_address(db, mail["to"])
     if connection is None:
         logger.info("inbound mail for an unknown address %r dropped", mail["to"])

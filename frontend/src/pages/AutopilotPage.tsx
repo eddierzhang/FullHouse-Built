@@ -457,11 +457,12 @@ export function AutopilotPage({ app }: { app: AppContext }) {
                                 min="0"
                                 step="any"
                                 aria-label={`Par for ${r.name}, in ${r.unit}`}
-                                defaultValue={r.par ?? ''}
+                                defaultValue={r.par === null ? '' : Math.round(r.par * 10) / 10}
                                 key={`${r.inventory_item_id}-${r.par}-${r.pinned}`}
                                 onBlur={(e) => {
                                   const value = e.target.value === '' ? null : Number(e.target.value)
-                                  if (value !== null && value !== r.par) void act(r.inventory_item_id, () => setPar(r.inventory_item_id, value), `Par pinned for ${r.name}`)
+                                  if (value !== null && r.par !== null && Math.abs(value - Math.round(r.par * 10) / 10) < 1e-9) return
+                                  if (value !== null) void act(r.inventory_item_id, () => setPar(r.inventory_item_id, value), `Par pinned for ${r.name}`)
                                 }}
                               />
                             </td>

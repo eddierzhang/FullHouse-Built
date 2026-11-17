@@ -62,8 +62,62 @@ needs a recipe on the Menu page to be tracked. Orders taken in the app still dep
 sales lines deplete through the job. A restaurant feeding the same sales through both would count them twice.
 The demo sets `deplete_from` to the day it loads, so its seeded history is never taken off again.
 
-## Phases 4 to 6
+## Phase 4: ordering (flag `v3_autopilot`)
 
-- [ ] 4 Ordering (`v3_autopilot`): pars, supplier calendars, the policy engine and outbox.
-- [ ] 5 Receiving (`v3_receiving`): supplier replies, phone receiving, three-way match. Order state is `partial`, not `part_received`.
-- [ ] 6 Voice (`v3_voice`): push-to-talk, the rule parser, confirm before write.
+- [x] Pars: a day's use × (lead time + days between order days + safety days); a pinned par is never overwritten.
+      `app/ordering/pars.py`.
+- [x] Supplier calendars: order days, cutoff, delivery days, minimum, channel, order address.
+- [x] Policy as pure functions (`app/ordering/policy.py`): ten rules, all always evaluated, each said in words.
+- [x] Autopilot (`app/ordering/autopilot.py`): a draft on the order day within three hours of the cutoff, brought
+      to par where stock is tracked; decide; an outbox row written with the approval; send after the cancel
+      window; cancel; three failed or cancelled sends in a row switch it off. Job every five minutes.
+- [x] A held order stays an ordinary proposal with the failed rules on it. Only an owner sets limits; any manager
+      can pause all or stop a send.
+- [x] Preview: the supplier's last eight weeks of invoices replayed against the limits.
+- [x] Acceptance and I13/I14 in `tests/test_ordering.py` (22 tests): each rule blocks its draft, a fuzz over 3,000
+      drafts, sends once after the window, cancel sends nothing, nothing goes for a supplier that is off.
+- [ ] Not built: top-up suggestions under a minimum (the order is held to the next order day instead), text or
+      push for the "about to send" notice, portal or EDI ordering.
+
+Notes. Autopilot needs a mailbox on the site; without one every order is held (the public demo treats the
+server log as delivery). Orders autopilot may send are not counted against the weekly cap on order proposals.
+The landing page, README and user guide now say an order can go out by itself when an owner switches it on.
+
+## Phase 5: receiving (flag `v3_receiving`)
+
+- [x] Deliveries page: what is due, one tap when everything arrived, per-line amounts and reasons otherwise, a
+      photo of the slip kept as a document. Stock is booked through the ledger once per receipt line.
+- [x] Part received: a line marked "rest still coming" stays open; the order closes when every line is settled.
+      The state is `partial` (the status column is 12 characters; the design says `part_received`).
+- [x] Anything short, damaged or missing drafts a message to the rep (`short_delivery`) and a notice.
+- [x] The invoice for a delivery already checked in is matched to it and books nothing more.
+- [x] Supplier replies: each order mail carries its own reply address (`po-<token>@INBOUND_DOMAIN`); a reply is
+      read by rule as confirmed, shipped, or a change for a person. A manager can also paste a reply in.
+- [x] Late orders are said once a morning, with a chase message to send from your own mail.
+- [x] `tests/test_receiving.py` (13 tests).
+- [ ] Not built: reading the slip photo to pre-fill the lines, price-on-invoice against price-on-order as its own
+      check, cheapest alternative supplier for a late item, offline queueing of a check-in (it retries, and is
+      recorded once, but needs signal).
+
+## Phase 6: voice (flag `v3_voice`)
+
+- [x] `app/voice/parser.py`: count, waste, delivery, question, page. Numbers said many ways, units and pack words,
+      items by name or a learned spoken alias, entry boundaries without commas. No model.
+- [x] `POST /voice/parse` writes only a preview; `POST /voice/commands/{id}/confirm` is the only write (I15), once.
+- [x] Microphone button on every page: the browser's own recognition, or typing; the preview is read back;
+      amounts can be corrected and an unclear item picked (and remembered) before Confirm.
+- [x] Hands-free count on the count sheet: each item read out; a number, "same", "skip", "back" or "stop".
+- [x] `tests/test_voice.py` (18 tests): 260 spoken lines, all parsed; no write before confirm; the budget blocks
+      transcription (I16).
+- [ ] Not built: server-side speech to text (`/voice/transcribe` checks the budget, then says no service is
+      connected), a phone line, Spanish, a model fallback for sentences the rules can't read, a spoken digest.
+
+Notes. Voice has only been driven by typed text in a headless browser here; the microphone path uses the
+browser's speech recognition and has not been tried on a real device in a real kitchen. A spoken delivery is
+carried out only as "everything arrived" or "everything arrived except…"; anything else goes to the Deliveries page.
+
+## Workstream G (scale): not built
+
+Stateless web processes, split queues, row-level security, month partitions, per-restaurant model budgets
+enforced on agent runs, live Square/Toast/Clover/Gusto/QuickBooks/Bill.com against their sandboxes, and text and
+push delivery. `notifications` and `usage_meters` exist and are written; no page lists notifications yet.

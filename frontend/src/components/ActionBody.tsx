@@ -44,7 +44,16 @@ export function ActionBody({ action }: { action: AgentAction }) {
     )
   }
   if (action.action_type === 'purchase_order' && Array.isArray(p.lines)) {
+    const held = Array.isArray(p.autopilot_held) ? (p.autopilot_held as string[]) : []
     return (
+      <>
+        {held.length > 0 && (
+          <div className="callout callout-warning" role="note" style={{ marginTop: 8 }}>
+            <div className="callout-grow">
+              <span className="strong">Autopilot held this for you.</span> {held.join(' ')}
+            </div>
+          </div>
+        )}
       <table className="table small" style={{ marginTop: 8 }} aria-label="Order lines">
         <tbody>
           {(p.lines as { description: string; qty: number; unit: string; unit_price_expected: number | null }[]).map((l, i) => (
@@ -65,6 +74,7 @@ export function ActionBody({ action }: { action: AgentAction }) {
           )}
         </tbody>
       </table>
+      </>
     )
   }
   if (action.action_type === 'prep_sheet' && Array.isArray(p.lines)) {

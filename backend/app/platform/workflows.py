@@ -31,6 +31,8 @@ DEFAULTS = {
     "stock": ("*/30 * * * *", True, "v3_stock"),
     # Pars, drafts on order days, the limits check, and orders whose cancel window has closed.
     "autopilot": ("*/5 * * * *", True, "v3_autopilot"),
+    # Once a morning: say which orders are past their date.
+    "late_orders": ("0 9 * * *", True, "v3_receiving"),
 }
 
 
@@ -105,7 +107,7 @@ def enqueue_for(db: Session, workflow: Workflow, moment: datetime | None = None,
     key = f"workflow:{workflow.restaurant_id}:{workflow.kind}:{period_key(workflow.kind, local)}"
     payload = {"restaurant_id": workflow.restaurant_id, "today": today}
     queue = {"digest": "detect", "pnl": "pnl", "forecast": "forecast", "po_draft": "workflow", "prep_sheet": "workflow",
-             "recipe_onboarding": "workflow", "calendar_scan": "workflow", "stock": "workflow", "autopilot": "workflow"}[workflow.kind]
+             "recipe_onboarding": "workflow", "calendar_scan": "workflow", "stock": "workflow", "autopilot": "workflow", "late_orders": "workflow"}[workflow.kind]
     if queue == "workflow":
         payload["kind"] = workflow.kind
     job, created = jobs.enqueue_new(db, queue, key, payload, restaurant_id=workflow.restaurant_id)

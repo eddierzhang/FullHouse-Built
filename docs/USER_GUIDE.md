@@ -76,7 +76,8 @@ the Inventory page shows the last price paid for each item with a link to its pr
 reorder point and the invoices price it, a reorder is proposed under Recommendations from the cheapest supplier of
 the last four weeks (its own supplier for beer, wine and liquor), in whole packs, with what it comes to. Approve it
 and the order is placed (see "Track an order" below); a delivery that lifts the stock, or an order already on its way,
-withdraws it. Nothing is sent to a supplier for you. An item counted in a unit the invoice can't be read in (bunches
+withdraws it. Nothing is sent to a supplier for you unless an owner has switched on autopilot for that supplier
+(Ordering autopilot, under Inventory). An item counted in a unit the invoice can't be read in (bunches
 against pounds) is priced but never booked, and the page says so.
 
 **Bookkeepers.** An owner invites an accountant from Profile → Team access with the role *Bookkeeper*. They sign in

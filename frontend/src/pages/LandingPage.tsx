@@ -49,8 +49,8 @@ const AREAS: { icon: IconName; title: string; body: string }[] = [
   },
   {
     icon: "approvals",
-    title: "Never on its own",
-    body: "It never places an order, changes a supplier, sends anything, pays anything or alters an invoice. It never claims a market price, only that a price changed or another supplier charged less.",
+    title: "Inside your limits",
+    body: "The agent never sends an order, changes a supplier, pays anything or alters an invoice. An order goes out by itself only if you switch autopilot on for that supplier, inside limits you set, with time to stop it. It never claims a market price, only that a price changed or another supplier charged less.",
   },
 ];
 
@@ -118,7 +118,7 @@ function DigestPreview({ card }: { card?: AuthOptions["demo_card"] }) {
         <span className="btn btn-primary btn-sm">Move {short}</span>
         <span className="btn btn-secondary btn-sm">Not useful</span>
         <span className="landing-preview-status">
-          Nothing is ordered or sent for you
+          Nothing is sent unless you say so
         </span>
       </div>
     </figure>

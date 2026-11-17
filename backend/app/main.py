@@ -175,7 +175,8 @@ SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
     "Referrer-Policy": "same-origin",
-    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+    # The microphone is for this site alone: push-to-talk (app.voice). Nothing embedded can ask for it.
+    "Permissions-Policy": "camera=(), microphone=(self), geolocation=()",
 }
 
 
