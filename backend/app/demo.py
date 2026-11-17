@@ -326,7 +326,10 @@ def reset_demo_data(db: Session, now: datetime | None = None) -> dict:
     for (day, dish), (qty, net) in sorted(sold.items()):
         db.add(SalesItem(restaurant_id=restaurant_id, date=day, pos_item_id=_pos_id(dish), pos_item_name=dish, qty=qty, net=round(net, 2), source="square"))
     db.flush()
-    pnl.compute_week(db, restaurant_id, pnl.last_complete_week(today))
+    # Three whole weeks of prime cost, so the chart has a line to draw; the digest reports the latest.
+    for back in (2, 1, 0):
+        pnl.compute_week(db, restaurant_id, pnl.last_complete_week(today) - timedelta(weeks=back))
+    _digest_history(db, restaurant_id, suppliers, now, today)
     # The top sellers get a recipe proposed, built from what the demo buys; the owner's first "Learn" step.
     from app.recipes import engine as recipe_engine
 
@@ -348,6 +351,21 @@ def reset_demo_data(db: Session, now: datetime | None = None) -> dict:
     counts = {"orders": len(orders), "order_items": len(lines), "proposals": proposals, **{f"price_{k}": v for k, v in prices.items()}}
     logger.info("demo data reset: %s", counts)
     return counts
+
+
+def _digest_history(db: Session, restaurant_id: str, suppliers: dict, now: datetime, today: date) -> None:
+    """The digests of the five weeks before this one, as they would have read then, and one card the owner
+    acted on: the chicken rise was raised with the Sysco rep nine days ago. So "found so far" has a history."""
+    from app.prices import engine as price_engine
+    from app.prices.models import SENT, PriceItem
+
+    for back in range(5, 0, -1):
+        price_engine.build_digest(db, restaurant_id, today - timedelta(weeks=back))
+    chicken = db.query(PriceItem).filter(PriceItem.restaurant_id == restaurant_id, PriceItem.name.like("Chicken breast%")).first()
+    if chicken is not None:
+        draft = price_engine.draft_for(db, chicken, db.get(Supplier, suppliers["Sysco Foods"]), "price_challenge", today)
+        draft.status, draft.sent_at, draft.sent_by = SENT, now - timedelta(days=9), DEMO_EMAIL
+    db.flush()
 
 
 def _pos_id(dish: str) -> str:

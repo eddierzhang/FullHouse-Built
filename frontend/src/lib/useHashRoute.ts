@@ -19,6 +19,9 @@ export const ROUTES = [
   'po',
   'prep',
   'calendar',
+  // v3: the charts and what-if tools (behind the v3_nav flag).
+  'insights',
+  'tools',
   'approvals',
   'runs',
   'agents',
@@ -57,6 +60,9 @@ const ALIASES: Record<string, Route> = {
   conversation: 'thread',
   drafts: 'draft',
   archive: 'overview',
+  savings: 'insights',
+  charts: 'insights',
+  'what-if': 'tools',
 }
 
 function readRoute(): Route {

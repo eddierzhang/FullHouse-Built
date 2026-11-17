@@ -72,6 +72,8 @@ const PATHS: Record<string, ReactNode> = {
       <path d="M10 20v-6h4v6" />
     </>
   ),
+  search: <path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4" />,
+  chevron: <path d="m6 9 6 6 6-6" />,
   trash: <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />,
 }
 

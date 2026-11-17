@@ -1,5 +1,6 @@
 import { type ReactNode, useState } from 'react'
 import { downloadExport, fetchSupportInfo, listFeedback } from '../api/client'
+import { showTour } from '../components/Tour'
 import type { AppContext } from '../app/context'
 import { FeedbackButton } from '../components/FeedbackButton'
 import { Empty, Loaded } from '../components/PageState'
@@ -225,6 +226,11 @@ export function HelpPage({ app }: { app: AppContext }) {
             </Loaded>
             <div>
               <FeedbackButton onSent={() => (app.toast('Thanks, feedback sent'), void feedback.reload())} />
+              {app.flags.v3_nav && (
+                <button className="btn btn-secondary" style={{ marginLeft: 8 }} onClick={showTour}>
+                  Take the one-minute tour
+                </button>
+              )}
             </div>
           </div>
         </section>

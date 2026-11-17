@@ -156,7 +156,8 @@ def test_every_page_of_the_demo_tells_the_same_story(db):
 
     reset_demo_data(db)
 
-    week = db.query(PnlWeek).one()
+    week = db.query(PnlWeek).order_by(PnlWeek.week_of.desc()).first()
+    assert db.query(PnlWeek).count() == 3
     orders = sum(o.total for o in db.query(Order) if week.week_of <= o.created_at.date() < week.week_of + timedelta(days=7))
     assert round(orders, 2) == round(week.sales_net, 2)
     for day in db.query(SalesDay):

@@ -21,6 +21,8 @@ import {
   triggerRun,
 } from '../api/client'
 import { ActionDrawer } from '../components/ActionDrawer'
+import { CommandBar, type CommandPage } from '../components/CommandBar'
+import { TOUR_EVENT, Tour, tourSeen } from '../components/Tour'
 import { FeedbackButton } from '../components/FeedbackButton'
 import { Icon, type IconName } from '../components/Icon'
 import { NewTaskModal } from '../components/NewTaskModal'
@@ -46,6 +48,8 @@ import { ItemsPage } from '../pages/ItemsPage'
 import { QuestionsPage } from '../pages/QuestionsPage'
 import { ThreadPage } from '../pages/ThreadPage'
 import { HelpPage } from '../pages/HelpPage'
+import { InsightsPage } from '../pages/InsightsPage'
+import { ToolsPage } from '../pages/ToolsPage'
 import { HistoryPage } from '../pages/HistoryPage'
 import { ApprovalsPage } from '../pages/ApprovalsPage'
 import { InventoryPage } from '../pages/InventoryPage'
@@ -66,7 +70,7 @@ const CHANGE_POLL_MS = 10_000
 type NavItem = { route: Route; label: string; icon: IconName }
 
 /** Pages only owners and admins see: the profit figures are theirs. */
-const MANAGER_ROUTES = new Set<Route>(['profit'])
+const MANAGER_ROUTES = new Set<Route>(['profit', 'insights'])
 
 /**
  * Grouped by what people come to do: the day's check-in and what the agent
@@ -147,6 +151,41 @@ const TABS: NavItem[] = [
   { route: 'approvals', label: 'Recommend', icon: 'approvals' },
 ]
 
+/** The v3 group (behind v3_nav): the charts and the calculators, beside the pages they draw from. */
+const INSIGHTS_GROUP: { label: string; items: NavItem[] } = {
+  label: 'Insights',
+  items: [
+    { route: 'insights', label: 'Savings & costs', icon: 'trend' },
+    { route: 'tools', label: 'What-if tools', icon: 'play' },
+  ],
+}
+
+/** Words people type for a page that its name doesn't contain. */
+const PAGE_KEYWORDS: Partial<Record<Route, string>> = {
+  overview: 'home dashboard',
+  approvals: 'inbox approve proposals',
+  inventory: 'stock count low',
+  staff: 'shifts rota team',
+  digest: 'prices weekly savings',
+  thread: 'ask assistant chat messages',
+  profit: 'revenue sales margin money',
+  history: 'undo changes log',
+  insights: 'charts prime cost spend money',
+  tools: 'calculator par simulator what if',
+  connect: 'pos payroll square gusto quickbooks integrations',
+  profile: 'settings features team security',
+}
+
+const COLLAPSED_KEY = 'fullhouse.nav.collapsed'
+function readCollapsed(): string[] {
+  try {
+    const raw = window.localStorage.getItem(COLLAPSED_KEY)
+    return raw ? (JSON.parse(raw) as string[]) : []
+  } catch {
+    return []
+  }
+}
+
 /** Whether the browser thinks it's online, kept current. */
 function useOnline(): boolean {
   const [online, setOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine))
@@ -188,6 +227,20 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
   const [drawerAction, setDrawerAction] = useState<AgentAction | null>(null)
   const [busyActionId, setBusyActionId] = useState<string | null>(null)
   const [focusRunId, setFocusRunId] = useState<string | null>(null)
+  const [commandOpen, setCommandOpen] = useState(false)
+  const [tourOpen, setTourOpen] = useState(false)
+  // Sidebar groups a person has folded away; every group starts open.
+  const [collapsed, setCollapsed] = useState<string[]>(readCollapsed)
+  const toggleGroup = (label: string) =>
+    setCollapsed((held) => {
+      const next = held.includes(label) ? held.filter((l) => l !== label) : [...held, label]
+      try {
+        window.localStorage.setItem(COLLAPSED_KEY, JSON.stringify(next))
+      } catch {
+        /* a private window forgets it; nothing else depends on it */
+      }
+      return next
+    })
 
   const refresh = useCallback(() => {
     fetchHealth()
@@ -239,6 +292,35 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
   }, [online, refresh])
 
   useEffect(() => setSidebarOpen(false), [route])
+
+  // Search from anywhere: Ctrl or Cmd K, or "/" when not typing in a field.
+  const navOn = flags.v3_nav === true
+  useEffect(() => {
+    if (!navOn) return
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null
+      const typing = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)
+      if ((e.key === 'k' || e.key === 'K') && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault()
+        setCommandOpen((open) => !open)
+      } else if (e.key === '/' && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault()
+        setCommandOpen(true)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [navOn])
+
+  // The tour: once per browser when the new navigation is on, and whenever Help asks for it.
+  useEffect(() => {
+    if (navOn && !tourSeen()) setTourOpen(true)
+  }, [navOn])
+  useEffect(() => {
+    const show = () => setTourOpen(true)
+    window.addEventListener(TOUR_EVENT, show)
+    return () => window.removeEventListener(TOUR_EVENT, show)
+  }, [])
 
   const toast = useCallback((title: string, subtitle?: string) => {
     setToastState({ title, subtitle })
@@ -355,6 +437,10 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
         return <CalendarPage app={app} />
       case 'prep':
         return readHashParam() ? <PrepSheetPage app={app} /> : <PrepSheetsPage app={app} />
+      case 'insights':
+        return app.canManage && navOn ? <InsightsPage app={app} /> : <OverviewPage app={app} />
+      case 'tools':
+        return navOn ? <ToolsPage app={app} /> : <OverviewPage app={app} />
       case 'profit':
         return app.canManage ? <ProfitPage app={app} /> : <OverviewPage app={app} />
       case 'overview':
@@ -371,6 +457,23 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
   })()
 
   const allowed = (item: { route: Route }) => app.canManage || !MANAGER_ROUTES.has(item.route)
+  // Every group with the pages this person can open, flag-gated pages included: what the sidebar
+  // draws and what search offers.
+  const extra = (label: string | null): NavItem[] => {
+    const more: NavItem[] = []
+    if (label === 'Restaurant' && flags.v2_calendar) more.push({ route: 'calendar', label: 'Calendar', icon: 'clock' })
+    if (label === 'Restaurant' && flags.v2_connect) more.push({ route: 'connect', label: 'Connections', icon: 'suppliers' })
+    if (label === 'Invoices & prices' && flags.v2_documents) more.push({ route: 'documents', label: 'Documents', icon: 'clock' })
+    if (label === 'Menu' && flags.v2_documents) more.push({ route: 'recipes', label: 'Recipes', icon: 'menu' })
+    if (label === 'Menu' && flags.v2_orders) more.push({ route: 'prep', label: 'Prep sheets', icon: 'inventory' })
+    return more
+  }
+  const groups = [...NAV.slice(0, 1), ...(navOn ? [INSIGHTS_GROUP] : []), ...NAV.slice(1)]
+    .map((group) => ({ label: group.label, items: [...group.items, ...extra(group.label)].filter(allowed) }))
+    .filter((group) => group.items.length > 0)
+  const commandPages: CommandPage[] = groups.flatMap((group) =>
+    group.items.map((item) => ({ label: item.label, href: `#${item.route}`, group: group.label ?? 'Today', icon: item.icon, keywords: PAGE_KEYWORDS[item.route] })),
+  )
   const navLink = (item: NavItem) => {
     const count = counts[item.route]
     return (
@@ -393,17 +496,32 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
           </span>
         </a>
 
-        {NAV.map((group) => (
-          <nav key={group.label ?? 'main'} className="nav-group" aria-label={group.label ?? 'Today'}>
-            {group.label && <div className="nav-label">{group.label}</div>}
-            {group.items.filter(allowed).map(navLink)}
-            {group.label === 'Restaurant' && flags.v2_calendar && navLink({ route: 'calendar', label: 'Calendar', icon: 'clock' })}
-            {group.label === 'Restaurant' && flags.v2_connect && navLink({ route: 'connect', label: 'Connections', icon: 'suppliers' })}
-            {group.label === 'Invoices & prices' && flags.v2_documents && navLink({ route: 'documents', label: 'Documents', icon: 'clock' })}
-            {group.label === 'Menu' && flags.v2_documents && navLink({ route: 'recipes', label: 'Recipes', icon: 'menu' })}
-            {group.label === 'Menu' && flags.v2_orders && navLink({ route: 'prep', label: 'Prep sheets', icon: 'inventory' })}
-          </nav>
-        ))}
+        {navOn && (
+          <button className="nav-search" onClick={() => setCommandOpen(true)}>
+            <Icon name="search" size={16} />
+            <span>Search</span>
+            <kbd className="hide-mobile">{navigator.platform.toLowerCase().includes('mac') ? '⌘K' : 'Ctrl K'}</kbd>
+          </button>
+        )}
+
+        {groups.map((group) => {
+          const label = group.label
+          const folded = navOn && !!label && collapsed.includes(label) && !group.items.some((item) => item.route === route)
+          return (
+            <nav key={label ?? 'main'} className="nav-group" aria-label={label ?? 'Today'}>
+              {label &&
+                (navOn ? (
+                  <button className="nav-label nav-label-button" aria-expanded={!folded} onClick={() => toggleGroup(label)}>
+                    {label}
+                    <Icon name="chevron" size={14} className={folded ? 'nav-chevron folded' : 'nav-chevron'} />
+                  </button>
+                ) : (
+                  <div className="nav-label">{label}</div>
+                ))}
+              {!folded && group.items.map(navLink)}
+            </nav>
+          )
+        })}
 
         <div className="sidebar-footer">
           <a className="sidebar-user" href="#profile" title="Your profile">
@@ -464,6 +582,11 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
             </div>
           )}
           <div className="topbar-spacer" />
+          {navOn && (
+            <button className="btn btn-ghost btn-icon topbar-search" aria-label="Search" title="Search (Ctrl or ⌘ K)" onClick={() => setCommandOpen(true)}>
+              <Icon name="search" />
+            </button>
+          )}
           {!pricePage && pendingActions.length > 0 && route !== 'approvals' && (
             <a className="btn btn-secondary hide-mobile" href="#approvals">
               <span className="dot" style={{ color: 'var(--danger)' }} />
@@ -545,6 +668,8 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
         </button>
       </nav>
 
+      <CommandBar open={commandOpen} onClose={() => setCommandOpen(false)} pages={commandPages} canAsk onError={(m) => toast('Couldn’t ask that', m)} />
+      <Tour open={tourOpen && !commandOpen} onClose={() => setTourOpen(false)} />
       <ActionDrawer app={app} action={drawerAction} onClose={() => setDrawerAction(null)} />
       <Toast toast={toastState} />
     </div>

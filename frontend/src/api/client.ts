@@ -112,8 +112,9 @@ async function request(path: string, options: RequestOptions = {}): Promise<Resp
   return res
 }
 
-const get = <T>(path: string) => request(path).then((r) => r.json() as Promise<T>)
-const send = <T>(method: string, path: string, body?: unknown, idempotencyKey?: string) =>
+/** GET and decode. Exported for the per-feature API files beside this one. */
+export const get = <T>(path: string) => request(path).then((r) => r.json() as Promise<T>)
+export const send = <T>(method: string, path: string, body?: unknown, idempotencyKey?: string) =>
   request(path, { method, body: body === undefined ? undefined : JSON.stringify(body), idempotencyKey }).then(
     (r) => r.json() as Promise<T>,
   )
