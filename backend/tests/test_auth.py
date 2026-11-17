@@ -32,7 +32,7 @@ def test_data_routes_refuse_anyone_signed_out(anon_client, method, path):
 
 def test_health_and_login_options_stay_public(anon_client):
     assert anon_client.get("/health").status_code == 200
-    assert anon_client.get("/api/v1/auth/options").json() == {"signup_enabled": True, "demo": None}
+    assert anon_client.get("/api/v1/auth/options").json() == {"signup_enabled": True, "demo": None, "demo_card": None}
 
 
 def test_signup_signs_you_in(anon_client):

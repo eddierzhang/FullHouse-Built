@@ -36,6 +36,8 @@ REASONS = {
     "reorder": "Order received",
     "revert": "Undone",
     "correction": "Correction",
+    "prep": "Used in prep",
+    "transfer": "Moved",
 }
 STAFF_REASONS = ("delivery", "used", "waste", "count")
 
@@ -145,19 +147,25 @@ def claim_unassigned(db: Session, restaurant: Restaurant) -> None:
 
 # --- history -----------------------------------------------------------------------
 
-_reason: ContextVar[tuple[str, str | None, str | None] | None] = ContextVar("stock_change_reason", default=None)
+_reason: ContextVar[tuple[str, str | None, str | None, str | None] | None] = ContextVar("stock_change_reason", default=None)
 
 
 @contextmanager
-def stock_change(reason: str, note: str | None = None, request_id: str | None = None) -> Iterator[None]:
+def stock_change(reason: str, note: str | None = None, request_id: str | None = None,
+                 source_key: str | None = None) -> Iterator[None]:
     """Record every stock change made in this block with this reason and note.
 
     `request_id` is the client's Idempotency-Key, for a change to one item
     that must not be recorded twice (see models.InventoryAdjustment).
+    `source_key` names the outside fact behind an automatic movement of ONE
+    item (a sale line, a count line, a receipt line); the same key cannot
+    move stock twice, so a replayed sync changes nothing. Check
+    `app.stock.ledger.seen` before making the change, since the unique
+    index would otherwise fail the flush.
     """
     if reason not in REASONS:
         raise ValueError(f"Unknown stock change reason {reason!r}")
-    token = _reason.set((reason, note, request_id))
+    token = _reason.set((reason, note, request_id, source_key))
     try:
         yield
     finally:
@@ -165,7 +173,7 @@ def stock_change(reason: str, note: str | None = None, request_id: str | None = 
 
 
 def _adjustment(item: InventoryItem, change: float, default_reason: str) -> InventoryAdjustment:
-    reason, note, request_id = _reason.get() or (default_reason, None, None)
+    reason, note, request_id, source_key = _reason.get() or (default_reason, None, None, None)
     actor = get_actor()
     return InventoryAdjustment(
         restaurant_id=item.restaurant_id,
@@ -178,6 +186,7 @@ def _adjustment(item: InventoryItem, change: float, default_reason: str) -> Inve
         actor_type=actor.type,
         actor_id=actor.id,
         request_id=request_id,
+        source_key=source_key,
     )
 
 

@@ -18,6 +18,11 @@ V2_CONNECT = "v2_connect"
 V2_DOCUMENTS = "v2_documents"
 V2_ORDERS = "v2_orders"
 V2_CALENDAR = "v2_calendar"
+V3_NAV = "v3_nav"
+V3_STOCK = "v3_stock"
+V3_AUTOPILOT = "v3_autopilot"
+V3_RECEIVING = "v3_receiving"
+V3_VOICE = "v3_voice"
 
 #: Every flag the app knows, with what it turns on. Unknown flags are refused.
 FLAGS: dict[str, str] = {
@@ -25,6 +30,11 @@ FLAGS: dict[str, str] = {
     V2_DOCUMENTS: "Documents, agreed prices, recipes and plate cost, menu-margin findings.",
     V2_ORDERS: "Purchase-order drafts from the agent, forecasting and prep sheets.",
     V2_CALENDAR: "Licenses, permits, inspections and warranties on a calendar, with 'Coming due' in the digest.",
+    V3_NAV: "The short menu, search from anywhere, savings and cost charts, and the what-if tools.",
+    V3_STOCK: "Stock that tracks itself from sales and deliveries, count sheets, waste and the variance report.",
+    V3_AUTOPILOT: "Pars, supplier order days, and orders sent by themselves inside limits you set per supplier.",
+    V3_RECEIVING: "Checking deliveries in from a phone, supplier confirmations by email, and credit claims for shorts.",
+    V3_VOICE: "Counting, logging waste, receiving and asking by voice, with a read-back before anything is saved.",
 }
 #: Settings that live in the same table but are numbers, not switches: agent runs per day.
 AGENT_RUNS_PER_DAY = "agent_runs_per_day"
