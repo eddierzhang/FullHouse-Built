@@ -45,6 +45,7 @@ import { RecipesPage } from '../pages/RecipesPage'
 import { CustomersPage } from '../pages/CustomersPage'
 import { DigestPage } from '../pages/DigestPage'
 import { MenuCostsPage } from '../ml/MenuCostsPage'
+import { UsagePage } from '../ml/UsagePage'
 import { DraftPage } from '../pages/DraftPage'
 import { InvoicesPage } from '../pages/InvoicesPage'
 import { ItemPage } from '../pages/ItemPage'
@@ -169,7 +170,10 @@ const INSIGHTS_GROUP: { label: string; items: NavItem[] } = {
 }
 
 /** The Margin & Labor Engine's pages, each behind its own flag, with the spec's labels. */
-const MARGIN_LABOR: { flag: string; item: NavItem }[] = [{ flag: 'ml_menu_costs', item: { route: 'menu-costs', label: 'Menu costs', icon: 'menu' } }]
+const MARGIN_LABOR: { flag: string; item: NavItem }[] = [
+  { flag: 'ml_menu_costs', item: { route: 'menu-costs', label: 'Menu costs', icon: 'menu' } },
+  { flag: 'ml_usage', item: { route: 'usage', label: 'Usage', icon: 'inventory' } },
+]
 
 /** Words people type for a page that its name doesn't contain. */
 const PAGE_KEYWORDS: Partial<Record<Route, string>> = {
@@ -439,6 +443,8 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
         return <DigestPage app={app} />
       case 'menu-costs':
         return <MenuCostsPage app={app} />
+      case 'usage':
+        return <UsagePage app={app} />
       case 'items':
         return <ItemsPage app={app} />
       case 'item':

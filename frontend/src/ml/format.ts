@@ -46,3 +46,14 @@ export function confidenceWords(weeks: number, needed: number): string {
 
 /** Words in a sentence, for the 20-word limit on header sentences. */
 export const wordCount = (text: string) => text.trim().split(/\s+/).filter(Boolean).length
+
+/** A quantity in an ingredient's base unit, in the unit a kitchen says it in: "112 kg", "480 ml", "840". */
+export function amount(qty: number | string, baseUnit: string): string {
+  const n = typeof qty === 'string' ? Number(qty) : qty
+  if (!Number.isFinite(n)) return '—'
+  const big = Math.abs(n) >= 1000
+  const shown = (v: number) => (Math.round(v * 10 + 1e-7 * Math.sign(v)) / 10).toLocaleString('en-US', { maximumFractionDigits: 1 })
+  if (baseUnit === 'g') return big ? `${shown(n / 1000)} kg` : `${shown(n)} g`
+  if (baseUnit === 'ml') return big ? `${shown(n / 1000)} l` : `${shown(n)} ml`
+  return shown(n)
+}

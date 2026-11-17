@@ -546,3 +546,102 @@ export function StepLines({ points, label, secondLabel, unit, format, height = 2
     </div>
   )
 }
+
+
+export type GapPoint = { date: string; expected: number; purchased: number; noise: number }
+
+/**
+ * Expected use against what was bought, over weekly 28-day windows. The band above Expected is one typical
+ * delivery of slack; purchases above the band are hatched, so the gap reads without colour. Both lines are named
+ * on the chart.
+ */
+export function GapLines({ points, format, unit, height = 280 }: { points: GapPoint[]; format: (v: number) => string; unit: string; height?: number }) {
+  const [hover, setHover] = useState<number | null>(null)
+  const [ref, W] = useElementWidth<HTMLDivElement>()
+  const pad = { top: 24, right: 96, bottom: 44, left: 64 }
+  const innerW = W - pad.left - pad.right
+  const innerH = height - pad.top - pad.bottom
+  const n = points.length
+  if (n === 0) return <div ref={ref} />
+  const max = niceMax(Math.max(1, ...points.flatMap((p) => [p.purchased, p.expected + p.noise])))
+  const x = (i: number) => pad.left + (n <= 1 ? innerW / 2 : (i / (n - 1)) * innerW)
+  const y = (v: number) => pad.top + innerH - (Math.max(0, v) / max) * innerH
+  const line = (pick: (p: GapPoint) => number) => points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(pick(p)).toFixed(1)}`).join(' ')
+  const area = (top: (p: GapPoint) => number, bottom: (p: GapPoint) => number) =>
+    `${points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(top(p)).toFixed(1)}`).join(' ')} ${[...points].reverse().map((p, i) => `L${x(n - 1 - i).toFixed(1)},${y(bottom(p)).toFixed(1)}`).join(' ')} Z`
+  const last = points[n - 1]
+  const slot = innerW / Math.max(1, n - 1)
+  const labelGap = Math.abs(y(last.purchased) - y(last.expected)) < 14 ? 14 : 0
+  return (
+    <div className="chart" ref={ref}>
+      <svg width={W} height={height} viewBox={`0 0 ${W} ${height}`} role="img" aria-label={`Expected use and purchased quantity over ${n} weekly windows, in ${unit}`}>
+        <defs>
+          <pattern id="gap-hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <line x1="0" y1="0" x2="0" y2="6" stroke="var(--danger)" strokeWidth="1.5" />
+          </pattern>
+        </defs>
+        {[0, 0.5, 1].map((f) => (
+          <g key={f}>
+            <line className="chart-grid" x1={pad.left} x2={W - pad.right} y1={y(max * f)} y2={y(max * f)} />
+            <text className="chart-axis" x={pad.left - 8} y={y(max * f) + 4} textAnchor="end">
+              {format(max * f)}
+            </text>
+          </g>
+        ))}
+        <text className="chart-axis" transform={`translate(14 ${pad.top + innerH / 2}) rotate(-90)`} textAnchor="middle">
+          {unit}
+        </text>
+        <path d={area((p) => p.expected + p.noise, (p) => p.expected)} fill="var(--chart-1)" opacity={0.14} />
+        <path d={area((p) => Math.max(p.purchased, p.expected + p.noise), (p) => p.expected + p.noise)} fill="url(#gap-hatch)" />
+        <path d={line((p) => p.expected)} fill="none" stroke="var(--chart-1)" strokeWidth={2.5} />
+        <path d={line((p) => p.purchased)} fill="none" stroke="var(--ink)" strokeWidth={2} strokeDasharray="7 4" />
+        {points.map((p, i) => (
+          <g key={p.date}>
+            <circle cx={x(i)} cy={y(p.purchased)} r={3.5} fill="var(--ink)" />
+            <circle cx={x(i)} cy={y(p.expected)} r={3.5} fill="var(--chart-1)" />
+            <text className="chart-axis" x={x(i)} y={height - 24} textAnchor="middle">
+              {dayLabel(p.date).split(' ').slice(1).join(' ')}
+            </text>
+            <rect x={x(i) - slot / 2} y={pad.top} width={slot} height={innerH} fill="transparent" onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} />
+          </g>
+        ))}
+        <text className="chart-label" x={W - pad.right + 8} y={y(last.purchased) + 4 - (last.purchased >= last.expected ? labelGap : -labelGap)}>
+          Purchased
+        </text>
+        <text className="chart-label" x={W - pad.right + 8} y={y(last.expected) + 4 + (last.purchased >= last.expected ? labelGap : -labelGap)}>
+          Expected use
+        </text>
+        <text className="chart-axis" x={pad.left + innerW / 2} y={height - 6} textAnchor="middle">
+          28 days ending
+        </text>
+      </svg>
+      <div className="ml-coverage-key">
+        <span><span className="ml-key-fill" /> One typical delivery</span>
+        <span><span className="ml-key-under" /> Unexplained use</span>
+      </div>
+      {hover !== null && (
+        <div className="tooltip" style={{ left: `${(x(hover) / W) * 100}%` }}>
+          <div className="tooltip-title">28 days ending {dayLabel(points[hover].date)}</div>
+          <div className="tooltip-row">Purchased {format(points[hover].purchased)}</div>
+          <div className="tooltip-row">Expected use {format(points[hover].expected)}</div>
+          <div className="tooltip-row">One typical delivery {format(points[hover].noise)}</div>
+          <div className="tooltip-row">Source: invoices, recipes and sales</div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Recipe coverage as a bar, with a marker at the level findings need. The figures are written beside it. */
+export function CoverageBar({ value, needed, label }: { value: number; needed: number; label: string }) {
+  const pct = Math.max(0, Math.min(1, value)) * 100
+  return (
+    <div className="ml-cover" data-testid="coverage-bar">
+      <div className="ml-cover-track" role="img" aria-label={label}>
+        <div className="ml-cover-fill" style={{ width: `${pct}%` }} />
+        <div className="ml-cover-mark" style={{ left: `${needed * 100}%` }} />
+      </div>
+      <div className="ml-cover-words">{label}</div>
+    </div>
+  )
+}

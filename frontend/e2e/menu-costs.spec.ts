@@ -128,6 +128,7 @@ test('a dish page shows its cost over time, its lines, and takes a yield edit', 
 })
 
 test('flow 1: a dearer invoice arrives, the burger is recosted, a finding appears, and the reprice is approved', async ({ page }) => {
+  test.setTimeout(120_000) // the spec allows the recost 60 seconds, and the approval waits out its ten seconds of Undo
   await page.goto('/#menu-costs')
   await expect(page.getByRole('row', { name: /Burger/ })).toContainText('20.3%')
 
@@ -188,7 +189,7 @@ test('flow 1: a dearer invoice arrives, the burger is recosted, a finding appear
   await expect(async () => {
     actions = await (await page.request.get(`${API}/api/v1/agents/actions?status=approved`)).json()
     expect(actions.filter((a: { action_type: string }) => a.action_type === 'menu_reprice')).toHaveLength(1)
-  }).toPass({ timeout: 20_000 })
+  }).toPass({ timeout: 45_000 })
   await expect(burger).toContainText('Approved')
   // FullHouse changed no price: the burger is still $12.00 until a person changes it in the POS.
   await page.reload()

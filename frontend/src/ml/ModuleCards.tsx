@@ -28,6 +28,25 @@ function words(card: ModuleCard): Shown | null {
       button: 'Review price',
     }
   }
+  if (card.module === 'usage') {
+    if (card.state === 'setup') {
+      const n = Number(card.recipes_needed)
+      const sentence = card.has_sales ? `Add ${n} ${n === 1 ? 'recipe' : 'recipes'} to turn on Usage.` : 'Import 28 days of sales to turn on Usage.'
+      return { key: card.module, title: 'Usage', sentence, href: '#usage', button: 'Open' }
+    }
+    const n = Number(card.items)
+    const top = card.top as { item_id: string; name: string; trend: (string | null)[] }
+    return {
+      key: card.module,
+      title: 'Usage',
+      sentence: `About ${dollars(String(card.weekly_dollars))} a week of ingredients is unexplained, across ${n} ${n === 1 ? 'item' : 'items'}.`,
+      number: `${dollars(String(card.weekly_dollars))} a week`,
+      trend: top.trend.map((v) => (v == null ? null : Math.max(0, Number(v)))),
+      trendLabel: `${top.name}: unexplained dollars a week over 8 weeks`,
+      href: `#usage?checks=${top.item_id}`,
+      button: 'See checks',
+    }
+  }
   return null
 }
 

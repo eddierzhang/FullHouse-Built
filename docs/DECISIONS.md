@@ -47,4 +47,13 @@ One line per decision made where `docs/SPEC-margin-labor.md` was silent, or wher
 | 2026-11-17 | The Margin & Labor browser tests run in their own seeded restaurant | So their invoices, recipes and sales never show in the other suites |
 | 2026-11-17 | `@axe-core/playwright` added as a dev dependency | The spec requires automated WCAG 2.1 AA checks |
 | 2026-11-17 | `test_two_managers_approving_at_once_apply_it_once` gained a second barrier so both threads read before either writes | The test relied on timing for that; the new session watcher shifted the timing and exposed it |
+| 2026-11-17 | Shares (food cost, coverage, unexplained share) are stored to six places, not four | Rounding to four and then to one for display can show 15.8% for a true 15.85% |
+| 2026-11-17 | Usage windows are the 28 business dates ending on the last Sunday, and each run rewrites the last eight weekly windows | "Two consecutive weekly runs" needs stable weekly windows; rewriting them keeps the job a pure function and gives the ingredient page its eight points |
+| 2026-11-17 | Expected use takes units sold from `sales_items` plus lines voided after fire from `sales_order_lines` | The spec counts food that was made and voided; daily sales are what every restaurant has |
+| 2026-11-17 | An invoice line left out by the outlier guard is also left out of purchased quantity | Its quantity rests on the same pack size the price does |
+| 2026-11-17 | A usage finding closes when it stops being true; a dismissed one stays dismissed while it stays true | The spec says when to open one and is silent on closing |
+| 2026-11-17 | A data-gap finding needs the module live but not two weeks | The spec says "instead" and gives no second condition |
+| 2026-11-17 | Rows under $5 a week are collapsed into one line; the level is a setting | Spec 10.4 gives the example and no number for Usage |
+| 2026-11-17 | Usage is recomputed when sales, an invoice price or a recipe changes, and on the first read of a new week; there is no new scheduled workflow | Additive only: the workflow table is counted by an existing test, and a pure recompute on change covers the weekly run |
+| 2026-11-17 | One confirmed dish per POS item is used for expected use: the first by name | Two confirmed recipes on one POS item would double the expected use |
 

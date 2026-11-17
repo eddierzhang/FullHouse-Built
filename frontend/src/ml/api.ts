@@ -165,3 +165,63 @@ export const fetchMenuCosts = () => get<MenuCosts>(`${BASE}/menu-costs`)
 export const fetchDish = (recipeId: string) => get<DishDetail>(`${BASE}/menu-costs/${recipeId}`)
 export const requestReprice = (recipeId: string) => send<{ proposal_id: string }>('POST', `${BASE}/menu-costs/${recipeId}/reprice`)
 export const saveRecipe = (recipeId: string, body: RecipeEdit) => send<{ recipe_id: string; written: number }>('PUT', `${BASE}/recipes/${recipeId}`, body)
+
+// --- Module B: Usage ---------------------------------------------------------------------------------
+
+export type UsageChecks = {
+  top_dish: { recipe_id: string; name: string; sold: string; per_portion: string; expected: string } | null
+  last_delivery: { invoice_id: string; day: string; qty: string; supplier: string | null } | null
+}
+export type UsageItem = {
+  item_id: string
+  row_id: string
+  name: string
+  base_unit: string
+  expected: string
+  purchased: string
+  unexplained: string
+  pct: string | null
+  weekly_dollars: string
+  material: boolean
+  trend: (string | null)[]
+  finding: { id: string; type: 'usage_variance' | 'usage_data_gap'; checks: UsageChecks | null } | null
+}
+export type MissingRecipe = { pos_item_id: string; name: string; net: string; share: string | null; has_recipe: boolean }
+export type Usage = {
+  state: ModuleState
+  coverage: string
+  coverage_then: string
+  coverage_learning: string
+  coverage_live: string
+  window_start: string
+  window_end: string
+  today: string
+  computed_at: string | null
+  stale: boolean
+  last_sales_date: string | null
+  has_sales: boolean
+  missing_recipes: MissingRecipe[]
+  recipes_needed: number
+  items: UsageItem[]
+  header: { weekly_dollars: string; items: number } | null
+  tiles: { unexplained: { value: string; then: string }; coverage: { value: string; then: string; needed: string }; flagged: { value: number; then: number } } | null
+  more_under: { count: number; threshold: string } | null
+}
+export type UsageWindow = { window_end: string; expected: string; purchased: string; noise: string; unexplained: string; weekly_dollars: string }
+export type UsageDetail = {
+  state: ModuleState
+  coverage: string
+  today: string
+  computed_at: string | null
+  stale: boolean
+  item: { id: string; name: string; base_unit: string; track_usage: boolean }
+  current: (UsageWindow & { row_id: string; window_start: string; pct: string | null; avg_unit_price: string; deliveries: number; prices_left_out: number }) | null
+  windows: UsageWindow[]
+  dishes: { recipe_id: string; name: string; sold: string; per_portion: string; expected: string }[]
+  finding: { id: string; type: 'usage_variance' | 'usage_data_gap'; title: string; weekly_dollars: string; checks: UsageChecks | null } | null
+  checks: UsageChecks | null
+}
+export const fetchUsage = () => get<Usage>(`${BASE}/usage`)
+export const fetchUsageItem = (itemId: string) => get<UsageDetail>(`${BASE}/usage/${itemId}`)
+export const setUsageTracking = (itemId: string, track: boolean) => send<{ track_usage: boolean }>('PUT', `${BASE}/usage/${itemId}/tracking`, { track_usage: track })
+export const dismissFinding = (findingId: string) => send<{ id: string; status: string }>('POST', `${BASE}/findings/${findingId}/dismiss`)

@@ -11,7 +11,7 @@ from app.auth.models import User  # noqa: E402
 from app.auth.security import hash_password  # noqa: E402
 from app.db.session import SessionLocal  # noqa: E402
 from app.demo import DEMO_PROFILE  # noqa: E402
-from app.margin_labor import fixtures, menu_costs  # noqa: E402
+from app.margin_labor import fixtures, menu_costs, usage  # noqa: E402
 from app.platform import flags  # noqa: E402
 from app.restaurant.models import Restaurant  # noqa: E402
 
@@ -34,13 +34,15 @@ def seed() -> None:
         db.flush()
         db.add(User(email=EMAIL, name="Margin Owner", password_hash=hash_password(PASSWORD), restaurant_id=restaurant.id))
         db.add(User(email="ml-staff@example.com", name="Margin Staff", password_hash=hash_password(PASSWORD), restaurant_id=restaurant.id, role="member"))
-        for flag in (flags.V2_CONNECT, flags.ML_MENU_COSTS):
+        for flag in (flags.V2_CONNECT, flags.V2_DOCUMENTS, flags.ML_MENU_COSTS, flags.ML_USAGE):
             flags.set_flag(db, restaurant.id, flag, True)
         db.commit()
         today = menu_costs.load(db, restaurant.id).today
         fixtures.seed_kitchen(db, restaurant.id, today)
         db.commit()
         menu_costs.recost(db, restaurant.id)
+        db.commit()
+        usage.run(db, restaurant.id)
         db.commit()
         print("Seeded the Margin & Labor test kitchen")
     finally:

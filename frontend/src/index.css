@@ -5153,3 +5153,9 @@ button.ml-bars-row { cursor: pointer; }
   .ml-sentence { font-size: 18px; }
   .ml-proposal-side { align-items: flex-start; }
 }
+.ml-pad { padding: 16px 18px; margin-bottom: 16px; }
+.ml-checks { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 10px; }
+.ml-cover-track { position: relative; height: 16px; border-radius: 8px; background: #efe6d8; }
+.ml-cover-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 8px; background: var(--chart-1); }
+.ml-cover-mark { position: absolute; top: -5px; bottom: -5px; border-left: 2px dashed var(--ink); }
+.ml-cover-words { margin-top: 8px; font-size: 14px; }
