@@ -496,7 +496,8 @@ def _stock_story(db: Session, restaurant_id: str, now: datetime, today: date, in
                              note=note, actor_type=actor_type, actor_id=actor_id, request_id=None, source_key=key, created_at=when))
     _insert(db, InventoryAdjustment, rows)
     restaurant = db.get(Restaurant, restaurant_id)
-    restaurant.inventory_settings = {**(restaurant.inventory_settings or {}), "deplete_from": today.isoformat()}
+    # The demo's sales come from its (sample) point of sale, so that is what takes stock off the shelf.
+    restaurant.inventory_settings = {**(restaurant.inventory_settings or {}), "deplete_from": today.isoformat(), "sales_source": "pos"}
     db.flush()
     stock_engine.rollup(db, restaurant_id, today=today)
 
