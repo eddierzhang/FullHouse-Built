@@ -28,6 +28,7 @@ from app.receiving.routes import router as receiving_router
 from app.voice.routes import router as voice_router
 from app.insights.routes import router as insights_router
 from app.notify.routes import router as notify_router
+from app.margin_labor.routes import router as margin_labor_router
 from app.documents.routes import router as documents_router
 from app.forecast.routes import router as forecast_router
 from app.recipes.routes import router as recipes_router
@@ -222,6 +223,7 @@ app.include_router(receiving_router, dependencies=signed_in)
 app.include_router(voice_router, dependencies=signed_in)
 app.include_router(insights_router, dependencies=signed_in)
 app.include_router(notify_router, dependencies=signed_in)
+app.include_router(margin_labor_router, dependencies=signed_in)
 # Webhooks, the cron route, mail links and OAuth returns: no session, their own checks.
 app.include_router(prices_public_router)
 app.include_router(connect_public_router)

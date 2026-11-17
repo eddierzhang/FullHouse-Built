@@ -18,13 +18,14 @@ bills and compares prices, and that is all.
 """
 
 import uuid
+from decimal import Decimal
 from datetime import date, datetime, timezone
 
-from sqlalchemy import JSON, Date, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, Date, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
-from app.db.types import UTCDateTime
+from app.db.types import Dec, UTCDateTime
 
 OPEN, ANSWERED, HELD = "open", "answered", "held"
 DRAFT, SENT, DISCARDED = "draft", "sent", "discarded"
@@ -66,6 +67,14 @@ class PriceItem(Base):
         String(32), ForeignKey("inventory_items.id", ondelete="SET NULL"), nullable=True, index=True
     )
     inventory_link: Mapped[str] = mapped_column(String(8), default="auto", nullable=False)
+    # --- Margin & Labor Engine (docs/SPEC-margin-labor.md). All optional; nothing older reads them. ---
+    #: The unit recipes are costed in: g, ml or each. Null until worked out from `unit`.
+    base_unit: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    #: How many base units one `unit` is (1 lb = 453.592 g).
+    to_base_factor: Mapped[Decimal | None] = mapped_column(Dec(16, 6), nullable=True)
+    shelf_life_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: False for things not worth tracking by use: salt, fryer oil.
+    track_usage: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, server_default="1")
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now, nullable=False)
 
 

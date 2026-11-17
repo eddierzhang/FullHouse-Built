@@ -41,6 +41,7 @@ from app.documents import models as document_models  # noqa: E402,F401
 from app.recipes import models as recipe_models  # noqa: E402,F401
 from app.forecast import models as forecast_models  # noqa: E402,F401
 from app.calendar import models as calendar_models  # noqa: E402,F401
+from app.margin_labor import models as margin_labor_models  # noqa: E402,F401
 from app.stock import models as stock_models  # noqa: E402,F401
 from app.ordering import models as ordering_models  # noqa: E402,F401
 from app.receiving import models as receiving_models  # noqa: E402,F401

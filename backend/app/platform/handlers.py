@@ -177,3 +177,31 @@ def _digest_after_invoice(db: Session, event: Event) -> None:
 
     jobs.enqueue(db, "digest", f"digest:{event.restaurant_id}:{event.payload.get('week', '')}",
                  {"restaurant_id": event.restaurant_id}, restaurant_id=event.restaurant_id)
+
+
+# --- Margin & Labor Engine: recomputes that run because an input changed ----------------------------
+
+
+@handler("derive")
+def derive(db: Session, payload: dict) -> None:
+    """One recompute of a derived table, named by `job`. Each is a pure function of its inputs, so a retry or a
+    replay leaves the same rows."""
+    from app.platform import flags
+
+    restaurant_id = payload["restaurant_id"]
+    if not flags.any_margin_labor(db, restaurant_id):
+        return
+    if payload.get("job") == "rollup_intervals":
+        from app.margin_labor import rollup
+
+        rollup.rollup_intervals(db, restaurant_id, date.fromisoformat(payload["business_date"]))
+
+
+@events.subscribe("sales.synced")
+def _rollup_after_orders(db: Session, event: Event) -> None:
+    """Order-level sales arrived: roll up each business date they touched. One job per restaurant-day."""
+    from app.platform import jobs
+
+    for day in (event.payload or {}).get("business_dates", [])[:800]:
+        jobs.enqueue(db, "derive", f"derive:{event.restaurant_id}:rollup_intervals:{day}",
+                     {"restaurant_id": event.restaurant_id, "job": "rollup_intervals", "business_date": day}, restaurant_id=event.restaurant_id)

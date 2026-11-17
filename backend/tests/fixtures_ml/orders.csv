@@ -1,0 +1,11 @@
+Order ID,Opened,Closed,Dining Option,Guests,SKU,Item,Category,Price,Qty,Net,Tax,Tip,Voided,Voided After Fire,Modifiers
+A-1001,2026-11-13 18:05,2026-11-13 18:50,Dine In,2,BURGER,Burger,Mains,12.00,2,24.00,2.40,5.00,,,No onion|Extra pickles
+A-1001,2026-11-13 18:05,2026-11-13 18:50,Dine In,2,FRIES,Fries,Sides,5.00,1,5.00,2.40,5.00,,,
+A-1002,2026-11-13 18:20,2026-11-13 18:32,To Go,,SALAD,House Salad,Salads,9.00,1,9.00,0.72,0,,,
+A-1003,2026-11-14 01:30,2026-11-14 01:45,DoorDash,,BURGER,Burger,Mains,13.50,1,13.50,1.08,0,,,
+A-1003,2026-11-14 01:30,2026-11-14 01:45,DoorDash,,SODA,Soda,Drinks,3.00,2,6.00,1.08,0,,,
+A-1004,2026-11-14 04:00,2026-11-14 04:20,Dine In,1,PASTA,Rigatoni,Mains,16.00,1,16.00,1.28,3.00,,,
+A-1005,2026-11-14 12:10,2026-11-14 12:40,Dine In,3,WINGS,Wings,Starters,11.00,1,11.00,0.88,2.00,yes,yes,
+A-1005,2026-11-14 12:10,2026-11-14 12:40,Dine In,3,BURGER,Burger,Mains,12.00,3,36.00,0.88,2.00,,,
+A-1006,not a time,,Dine In,2,BURGER,Burger,Mains,12.00,1,12.00,0.96,0,,,
+,2026-11-14 12:15,,Dine In,2,BURGER,Burger,Mains,12.00,1,12.00,0.96,0,,,

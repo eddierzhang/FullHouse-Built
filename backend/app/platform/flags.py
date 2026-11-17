@@ -23,6 +23,13 @@ V3_STOCK = "v3_stock"
 V3_AUTOPILOT = "v3_autopilot"
 V3_RECEIVING = "v3_receiving"
 V3_VOICE = "v3_voice"
+# The Margin & Labor Engine (docs/SPEC-margin-labor.md): one flag per module, all off by default.
+ML_MENU_COSTS = "ml_menu_costs"
+ML_USAGE = "ml_usage"
+ML_ORDERING = "ml_ordering"
+ML_LABOR = "ml_labor"
+ML_CHANNELS = "ml_channels"
+ML_FLAGS = (ML_MENU_COSTS, ML_USAGE, ML_ORDERING, ML_LABOR, ML_CHANNELS)
 
 #: Every flag the app knows, with what it turns on. Unknown flags are refused.
 FLAGS: dict[str, str] = {
@@ -35,6 +42,11 @@ FLAGS: dict[str, str] = {
     V3_AUTOPILOT: "Pars, supplier order days, and orders sent by themselves inside limits you set per supplier.",
     V3_RECEIVING: "Checking deliveries in from a phone, supplier confirmations by email, and credit claims for shorts.",
     V3_VOICE: "Counting, logging waste, receiving and asking by voice, with a read-back before anything is saved.",
+    ML_MENU_COSTS: "Menu costs: what each dish costs to make as ingredient prices change, and which are over target.",
+    ML_USAGE: "Usage: ingredients bought beyond what recipes say was used, in dollars a week, without counting.",
+    ML_ORDERING: "Ordering and prep: draft orders and prep sheets from the item forecast.",
+    ML_LABOR: "Labor: people needed by interval, draft schedules, and cut or extend suggestions during service.",
+    ML_CHANNELS: "Channels: what each item keeps on each delivery platform after fees and food cost.",
 }
 #: Settings that live in the same table but are numbers, not switches: agent runs per day.
 AGENT_RUNS_PER_DAY = "agent_runs_per_day"
@@ -67,6 +79,11 @@ def set_flag(db: Session, restaurant_id: str, flag: str, on: bool) -> Restaurant
         row.enabled = on
     db.flush()
     return row
+
+
+def any_margin_labor(db: Session, restaurant_id: str | None) -> bool:
+    """Whether any Margin & Labor module is on: what their shared data (imports, rollups) is gated by."""
+    return any(enabled(db, restaurant_id, flag) for flag in ML_FLAGS)
 
 
 def enable_all(db: Session, restaurant_id: str) -> None:

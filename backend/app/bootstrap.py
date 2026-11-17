@@ -20,6 +20,7 @@ def setup() -> None:
     from app.recipes import models as _recipe_models  # noqa: F401
     from app.forecast import models as _forecast_models  # noqa: F401
     from app.calendar import models as _calendar_models  # noqa: F401
+    from app.margin_labor import models as _margin_labor_models  # noqa: F401
     from app.stock import models as _stock_models  # noqa: F401
     from app.ordering import models as _ordering_models  # noqa: F401
     from app.receiving import models as _receiving_models  # noqa: F401

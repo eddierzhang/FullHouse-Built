@@ -203,11 +203,11 @@ def test_the_demo_shows_autopilot_passing_one_order_and_holding_another(db, monk
     assert "over your $750.00 limit" in held.payload["autopilot_held"][0]
 
 
-def test_the_demo_has_every_feature_on_except_voice(db):
+def test_the_demo_has_every_feature_on_except_voice_and_the_modules_still_being_built(db):
     from app.platform import flags
     from app.restaurant.models import Restaurant
 
     reset_demo_data(db)
 
     on = flags.all_for(db, db.query(Restaurant).one().id)
-    assert [flag for flag, enabled in on.items() if not enabled] == ["v3_voice"]
+    assert [flag for flag, enabled in on.items() if not enabled] == ["v3_voice", *flags.ML_FLAGS]
