@@ -22,6 +22,7 @@ def _scope(db: Session, user: User) -> str:
     return restaurant_id
 
 
+import re  # noqa: E402
 from datetime import datetime, timezone  # noqa: E402
 
 from pydantic import BaseModel, Field  # noqa: E402
@@ -48,6 +49,17 @@ class CalendarIn(BaseModel):
     minimum_dollars: float | None = Field(default=None, ge=0, le=100_000)
     channel: str = Field(default="email", pattern="^(email|portal|phone)$")
     order_email: str | None = Field(default=None, max_length=254)
+
+
+def _one_address(value: str | None) -> str | None:
+    """A single plain email address, or nothing. No lists, no names, nothing a mail client or server would read
+    as a second recipient or a header."""
+    text = (value or "").strip()
+    if not text:
+        return None
+    if not re.fullmatch(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(\.[A-Za-z0-9\-]+)+", text):
+        raise HTTPException(422, "Give one email address for orders, like orders@supplier.com.")
+    return text
 
 
 class PolicyIn(BaseModel):
@@ -120,13 +132,14 @@ def set_calendar(supplier_id: str, body: CalendarIn, user: User = Depends(manage
     supplier = _supplier(db, restaurant_id, supplier_id)
     if any(not 0 <= day <= 6 for day in [*body.order_days, *body.delivery_days]):
         raise HTTPException(422, "Days are 0 (Monday) to 6 (Sunday).")
+    address = _one_address(body.order_email)  # refused before anything is written
     row = autopilot.calendar_for(db, restaurant_id, supplier.id)
     if row is None:
         row = SupplierCalendar(restaurant_id=restaurant_id, supplier_id=supplier.id)
         db.add(row)
     row.order_days, row.delivery_days = sorted(set(body.order_days)), sorted(set(body.delivery_days))
     row.cutoff_time, row.lead_time_days, row.minimum_dollars = body.cutoff_time, body.lead_time_days, body.minimum_dollars
-    row.channel, row.order_email = body.channel, (body.order_email or "").strip() or None
+    row.channel, row.order_email = body.channel, address
     db.commit()
     return _calendar_out(row)
 
@@ -155,8 +168,11 @@ def set_policy(supplier_id: str, body: PolicyIn, user: User = Depends(manager), 
 
 @router.post("/pause")
 def pause(body: PauseIn, user: User = Depends(manager), db: Session = Depends(get_db)) -> dict:
-    """The pause-all switch. Any manager can stop autopilot; nothing goes out while it is paused."""
+    """The pause-all switch. Any manager can stop autopilot; only an owner can start it again, as only an
+    owner can switch it on. Nothing goes out while it is paused."""
     restaurant_id = _scope(db, user)
+    if not body.paused and user.role != OWNER:
+        raise HTTPException(403, "Only an owner can resume autopilot.")
     autopilot.set_paused(db, restaurant_id, body.paused, user.email)
     db.commit()
     return {"paused": body.paused}

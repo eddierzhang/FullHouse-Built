@@ -319,3 +319,60 @@ def test_only_an_owner_sets_limits_and_everything_is_behind_the_flag_and_the_res
     assert b.get(f"{API}/overview").json()["suppliers"] == []
     assert b.put(f"{API}/suppliers/{farm.id}/policy", json={"enabled": True}).status_code == 404
     assert b.post(f"{API}/suppliers/{farm.id}/preview", json={}).status_code == 404
+
+
+# --- from the security review ---------------------------------------------------------------------
+
+
+def test_only_the_order_autopilot_drafted_itself_can_go_out_by_itself(client, db, monkeypatch):
+    """An order the agent proposed because someone asked, or the weekly usual-order draft, is for a person."""
+    from app.restaurant import po_draft
+
+    rid, suppliers, sent = _restaurant(client, db, monkeypatch)
+    farm = suppliers["Green Valley Farms"]
+    _switch_on(db, rid, farm)
+
+    asked_for = po_draft.propose(db, rid, farm, TODAY)  # what the agent's tool and the Sunday workflow make
+    db.commit()
+    assert asked_for.payload["lines"] and asked_for.payload.get("drafted_by") is None
+
+    assert autopilot.decide(db, asked_for, NOW, TODAY) is None
+    result = autopilot.run(db, rid, NOW + timedelta(hours=2))
+    db.commit()
+    assert (result["passed"], result["sent"]) == (0, 0) and sent == []
+    assert asked_for.status == "pending" and db.query(Outbox).count() == 0
+
+
+def test_an_order_waiting_to_send_counts_toward_the_weekly_cap_and_blocks_a_second(client, db, monkeypatch):
+    rid, suppliers, sent = _restaurant(client, db, monkeypatch)
+    farm = suppliers["Green Valley Farms"]
+    _switch_on(db, rid, farm, per_order_cap=5000, weekly_cap=5000)
+
+    first = autopilot.decide(db, autopilot.draft_for(db, rid, farm, TODAY), NOW, TODAY)
+    db.commit()
+    assert first.outcome == "passed"
+    assert autopilot.sent_this_week(db, rid, farm.id, NOW) == first.total  # committed, though not yet sent
+    assert autopilot.draft_for(db, rid, farm, TODAY) is None  # one at a time
+
+    # Were a second order to appear anyway, the first already uses the week's room.
+    row = db.query(AutopilotPolicy).filter_by(supplier_id=farm.id).one()
+    row.weekly_cap = first.total + 1
+    db.commit()
+    draft = autopilot.draft_of(db, db.query(AgentAction).filter_by(status="approved").one(), NOW, TODAY)
+    assert [r.rule for r in policy.evaluate(draft, autopilot.limits_of(row, False)).failed] == ["weekly_cap"]
+
+
+def test_a_manager_can_pause_but_only_an_owner_resumes_and_the_order_address_is_one_plain_address(client, db, monkeypatch):
+    from app.auth.models import User
+
+    rid, suppliers, _ = _restaurant(client, db, monkeypatch)
+    farm = suppliers["Green Valley Farms"]
+    for bad in ("orders@gvf.example.com, me@evil.example", "rep@x.com?bcc=me@evil.example", "Rep <rep@x.com>", "rep@x"):
+        assert client.put(f"{API}/suppliers/{farm.id}/calendar", json={"order_email": bad}).status_code == 422, bad
+    assert client.put(f"{API}/suppliers/{farm.id}/calendar", json={"order_email": " orders@gvf.example.com "}).json()["order_email"] == "orders@gvf.example.com"
+
+    db.query(User).filter(User.restaurant_id == rid).update({"role": "admin"})
+    db.commit()
+    assert client.post(f"{API}/pause", json={"paused": True}).json() == {"paused": True}
+    assert client.post(f"{API}/pause", json={"paused": False}).status_code == 403
+    assert autopilot.is_paused(db, rid) is True

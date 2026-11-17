@@ -135,6 +135,9 @@ def to_item_unit(quantity: float, said_unit: str | None, item: dict) -> tuple[fl
     for table in (_WEIGHT, _VOLUME):
         if said_unit in table and unit in table:
             return round(quantity * table[said_unit] / table[unit], 4), True
+    own = (item.get("conversions") or {}).get(said_unit.lower())  # this restaurant's "1 lb = 8 bunches"
+    if own:
+        return round(quantity * own, 4), True
     return quantity, False
 
 
@@ -166,14 +169,16 @@ def match_item(phrase: str, items: list[dict], aliases: dict[str, str]) -> tuple
     if not key:
         return None, []
     by_id = {i["id"]: i for i in items}
+    # An item's own name always means that item: an alias can add a way of saying it, never take its name away.
+    for item in items:
+        if _key(item["name"]) == key:
+            return item, []
     for said, item_id in aliases.items():
         if _key(said) == key and item_id in by_id:
             return by_id[item_id], []
     scored = []
     for item in items:
         name = _key(item["name"])
-        if name == key:
-            return item, []
         words, said = set(name.split()), set(key.split())
         score = difflib.SequenceMatcher(None, key, name).ratio()
         if said and said <= words:
@@ -242,6 +247,8 @@ _ROUTES = [
     ("profit", r"profit|revenue|sales"), ("overview", r"today|home|dashboard"),
 ]
 # A full stop pauses; the point in "7.5" does not.
+#: More entries than anyone says in one breath; a longer transcript is cut here.
+MAX_ENTRIES = 60
 _PAUSE = re.compile(r"[,;:]|\.(?!\d)|\band then\b|\bthen\b")
 _JOINERS = {"and", "plus", "also", "with"}
 
@@ -309,7 +316,7 @@ def _entries(text: str) -> list[tuple[str, float | None, str | None, str]]:
 
 def _lines(text: str, items: list[dict], aliases: dict[str, str], default_amount: float | None = None) -> tuple[list[Line], list[dict]]:
     lines, unmatched = [], []
-    for phrase, amount, unit, said in _entries(text):
+    for phrase, amount, unit, said in _entries(text)[:MAX_ENTRIES]:
         if amount is None:
             amount = default_amount
         if not _key(phrase) or amount is None:

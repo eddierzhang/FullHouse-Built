@@ -278,14 +278,43 @@ def _own_words(text: str) -> str:
     return "\n".join(kept).strip()
 
 
-def handle_reply(db: Session, order: PurchaseOrder, text: str, sender: str | None = None) -> str:
+def _address(sender: str | None) -> str:
+    found = re.search(r"<([^>]+)>", sender or "")
+    return (found.group(1) if found else (sender or "")).strip().lower()
+
+
+def from_the_supplier(db: Session, order: PurchaseOrder, sender: str | None) -> bool:
+    """Whether a mailed reply comes from the supplier's side: the address the order went to, or the same domain.
+    The reply address is in every copy of the order, so holding it proves little by itself."""
+    address = _address(sender)
+    known = {a.lower() for a in (_rep_email(db, order),) if a}
+    rep = db.query(SupplierRep).filter(SupplierRep.restaurant_id == order.restaurant_id, SupplierRep.supplier_id == order.supplier_id).first() if order.supplier_id else None
+    if rep and rep.email:
+        known.add(rep.email.lower())
+    if not address or "@" not in address or not known:
+        return False
+    return address in known or address.rsplit("@", 1)[1] in {a.rsplit("@", 1)[1] for a in known}
+
+
+def handle_reply(db: Session, order: PurchaseOrder, text: str, sender: str | None = None, trusted: bool = True) -> str:
     """Apply a supplier's reply to its order. Confirmed and shipped update the order; a change, or anything the
-    rules can't read, leaves the order alone and tells a person, with the supplier's words."""
+    rules can't read, leaves the order alone and tells a person, with the supplier's words.
+
+    `trusted` is False for mail that did not come from the supplier's own address or domain: it can tell a
+    person something arrived, once a day, and nothing else. A closed order is never touched by a reply."""
+    import hashlib
+
     kind = classify(text)
     excerpt = " ".join(_own_words(text).split())[:220]
     name = order.supplier_name or "The supplier"
     if order.status in (RECEIVED, "cancelled") or order.status == DRAFT:
-        kind = "other"
+        return "other"
+    if not trusted:
+        notify.tell(db, order.restaurant_id, kind="supplier_reply", title=f"A reply about your {name} order came from an address we don't know",
+                    body=f"From {_address(sender) or 'an unknown sender'}: {excerpt}"[:400], link="#receive",
+                    dedupe_key=f"reply:unknown:{order.id}:{date.today().isoformat()}")
+        db.flush()
+        return "other"
     if kind == "confirmed" and order.status == ORDERED:
         order.status, order.confirmed_at = CONFIRMED, _now()
     elif kind == "confirmed":
@@ -296,7 +325,7 @@ def handle_reply(db: Session, order: PurchaseOrder, text: str, sender: str | Non
     else:
         notify.tell(db, order.restaurant_id, kind="supplier_reply", title=f"{name} replied about your order: have a look",
                     body=excerpt or "They replied without any text.", link="#receive",
-                    dedupe_key=f"reply:{order.id}:{abs(hash(excerpt)) % 10**10}")
+                    dedupe_key=f"reply:{order.id}:{hashlib.sha1(excerpt.encode()).hexdigest()[:12]}")
     stamp = {"confirmed": "confirmed it", "shipped": "says it has shipped", "change": "wants to change something", "other": "replied"}[kind]
     order.note = f"{name} {stamp}: {excerpt}"[:255] if excerpt else f"{name} {stamp}."[:255]
     db.flush()

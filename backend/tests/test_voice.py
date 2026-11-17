@@ -227,3 +227,36 @@ def test_an_alias_is_learned_per_restaurant_and_the_budget_blocks_transcription(
     assert theirs["lines"] == []  # another restaurant's items and aliases are not theirs to speak
     assert b.post(f"{API}/commands/{learned['id']}/confirm").status_code == 404
     assert db.query(VoiceCommand).filter_by(restaurant_id=other.id).count() == 1
+
+
+def test_a_nickname_cannot_take_another_items_name_and_a_preview_belongs_to_whoever_made_it(client, db):
+    from app.auth.models import User
+    from app.voice.models import SpokenAlias
+
+    rid, items, _ = _kitchen(client, db)
+    moz, chicken = items["Mozzarella"], items["Chicken Breast"]
+
+    assert client.post(f"{API}/aliases", json={"phrase": "Chicken Breast", "inventory_item_id": moz.id}).status_code == 409
+    # Even an alias already stored cannot shadow an exact name.
+    db.add(SpokenAlias(restaurant_id=rid, phrase="chicken breast", inventory_item_id=moz.id))
+    db.commit()
+    said = client.post(f"{API}/parse", json={"transcript": "chicken breast ten pounds"}).json()
+    assert [l["name"] for l in said["lines"]] == ["Chicken Breast"]
+
+    # Someone else on the team cannot confirm or drop it; a manager can.
+    db.query(VoiceCommand).filter_by(id=said["id"]).update({"user_email": "cook@example.com"})
+    db.query(User).filter(User.restaurant_id == rid).update({"role": "member"})
+    db.commit()
+    assert client.post(f"{API}/commands/{said['id']}/confirm").status_code == 404
+    assert client.post(f"{API}/commands/{said['id']}/discard").status_code == 404
+    db.expire_all()
+    assert chicken.quantity_on_hand == 50
+    db.query(User).filter(User.restaurant_id == rid).update({"role": "owner"})
+    db.commit()
+    assert client.post(f"{API}/commands/{said['id']}/discard").json()["status"] == "discarded"
+
+
+def test_a_very_long_transcript_is_cut_to_what_one_breath_holds():
+    text = " ".join(f"{n} xq{n}" for n in range(1, 400))
+    command = parser.parse(text, ITEMS, {}, AREAS, SUPPLIERS)
+    assert len(command.unmatched) <= parser.MAX_ENTRIES

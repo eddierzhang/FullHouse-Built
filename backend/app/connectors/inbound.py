@@ -110,7 +110,8 @@ def receive(db: Session, payload: dict, external_id: str) -> dict:
     mail = _parse(payload)
     # A supplier answering an order: its reply address carries the order's own token (app.receiving).
     local = (mail["to"] or "").split("@", 1)[0].strip().lower()
-    if local.startswith("po-"):
+    # Exactly "po-" and a 24-character token: a restaurant whose own address happens to begin "po-" is not one.
+    if re.fullmatch(r"po-[0-9a-f]{24}", local):
         from app.platform import flags
         from app.receiving import engine as receiving
 
@@ -118,7 +119,8 @@ def receive(db: Session, payload: dict, external_id: str) -> dict:
         if order is None or not flags.enabled(db, order.restaurant_id, flags.V3_RECEIVING):
             logger.info("inbound reply for an unknown order address %r dropped", mail["to"])
             return {"restaurant_id": None, "documents": 0, "reason": "unknown order address"}
-        kind = receiving.handle_reply(db, order, mail["text"] or mail["subject"], mail["from"])
+        kind = receiving.handle_reply(db, order, mail["text"] or mail["subject"], mail["from"],
+                                      trusted=receiving.from_the_supplier(db, order, mail["from"]))
         db.flush()
         return {"restaurant_id": order.restaurant_id, "documents": 0, "reply": kind, "order_id": order.id}
     connection = restaurant_for_address(db, mail["to"])

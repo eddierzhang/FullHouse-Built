@@ -49,7 +49,7 @@ def test_spend_splits_the_same_total_by_supplier_and_by_category(db):
     assert out["total_now"] > 0 and out["total_before"] > 0
     assert round(sum(r["now"] for r in out["by_supplier"]), 2) == out["total_now"]
     assert round(sum(r["now"] for r in out["by_category"]), 2) == out["total_now"]
-    assert out["by_supplier"][0]["label"] == "Sysco Foods"
+    assert out["by_supplier"][0]["label"] == "Harbor Dairy Co."  # the mozzarella
 
 
 def test_stock_outlook_says_how_long_each_item_lasts_and_what_is_on_the_way(db):

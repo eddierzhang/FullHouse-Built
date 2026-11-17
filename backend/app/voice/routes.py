@@ -68,7 +68,12 @@ class TranscribeIn(BaseModel):
 def _vocabulary(db: Session, restaurant_id: str) -> tuple[list[dict], dict[str, str], list[str], list[str]]:
     from app.stock.models import StorageArea
 
-    items = [{"id": i.id, "name": i.name, "unit": i.unit, "pack_size": i.pack_size, "pack_unit": i.pack_unit}
+    from app.stock.models import UnitConversion
+
+    own: dict[str, dict[str, float]] = {}
+    for c in db.query(UnitConversion).filter(UnitConversion.restaurant_id == restaurant_id):
+        own.setdefault(c.inventory_item_id, {})[c.unit] = c.factor
+    items = [{"id": i.id, "name": i.name, "unit": i.unit, "pack_size": i.pack_size, "pack_unit": i.pack_unit, "conversions": own.get(i.id, {})}
              for i in db.query(InventoryItem).filter(InventoryItem.restaurant_id == restaurant_id)]
     aliases = {a.phrase: a.inventory_item_id for a in db.query(SpokenAlias).filter(SpokenAlias.restaurant_id == restaurant_id)}
     areas = [a.name for a in db.query(StorageArea).filter(StorageArea.restaurant_id == restaurant_id)]
@@ -91,6 +96,19 @@ def _open_order(db: Session, restaurant_id: str, supplier_name: str | None) -> P
                                            PurchaseOrder.status != DRAFT)
     rows = [o for o in query.order_by(PurchaseOrder.ordered_at) if not supplier_name or o.supplier_name == supplier_name]
     return rows[0] if rows and (supplier_name or len(rows) == 1) else None
+
+
+MAX_ALIASES = 500
+
+
+def _mine(db: Session, user: User, restaurant_id: str, command_id: str) -> VoiceCommand:
+    """A preview its own author (or a manager) may confirm or drop; anyone else's reads as missing."""
+    from app.auth.models import MANAGER_ROLES
+
+    command = db.query(VoiceCommand).filter(VoiceCommand.restaurant_id == restaurant_id, VoiceCommand.id == command_id).first()
+    if command is None or (command.user_email != user.email and user.role not in MANAGER_ROLES):
+        raise HTTPException(404, "Nothing previewed under that id")
+    return command
 
 
 def _out(db: Session, command: VoiceCommand) -> dict:
@@ -127,9 +145,7 @@ def parse(body: ParseIn, user: User = Depends(current_user), db: Session = Depen
 def confirm(command_id: str, body: ConfirmIn | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
     """Carry out a previewed command. This, and only this, writes. Confirming twice does it once."""
     restaurant_id = _scope(db, user)
-    command = db.query(VoiceCommand).filter(VoiceCommand.restaurant_id == restaurant_id, VoiceCommand.id == command_id).first()
-    if command is None:
-        raise HTTPException(404, "Nothing previewed under that id")
+    command = _mine(db, user, restaurant_id, command_id)
     if command.status == "confirmed":
         return {**_out(db, command), "done": (command.parsed or {}).get("done")}
     if command.status != "previewed":
@@ -203,9 +219,7 @@ def confirm(command_id: str, body: ConfirmIn | None = None, user: User = Depends
 
 @router.post("/commands/{command_id}/discard")
 def discard(command_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
-    command = db.query(VoiceCommand).filter(VoiceCommand.restaurant_id == _scope(db, user), VoiceCommand.id == command_id).first()
-    if command is None:
-        raise HTTPException(404, "Nothing previewed under that id")
+    command = _mine(db, user, _scope(db, user), command_id)
     if command.status == "previewed":
         command.status = "discarded"
         db.commit()
@@ -220,6 +234,11 @@ def learn_alias(body: AliasIn, user: User = Depends(current_user), db: Session =
     if item is None:
         raise HTTPException(404, "Inventory item not found")
     phrase = " ".join(body.phrase.lower().split())[:120]
+    names = {parser._key(i.name) for i in db.query(InventoryItem).filter(InventoryItem.restaurant_id == restaurant_id)}
+    if parser._key(phrase) in names and parser._key(phrase) != parser._key(item.name):
+        raise HTTPException(409, "That is another item's name, so it can't be used as a nickname.")
+    if db.query(SpokenAlias).filter(SpokenAlias.restaurant_id == restaurant_id).count() >= MAX_ALIASES:
+        raise HTTPException(409, "That is as many spoken names as a restaurant can keep. Remove some first.")
     row = db.query(SpokenAlias).filter(SpokenAlias.restaurant_id == restaurant_id, SpokenAlias.phrase == phrase).first()
     if row is None:
         row = SpokenAlias(restaurant_id=restaurant_id, phrase=phrase, inventory_item_id=item.id)

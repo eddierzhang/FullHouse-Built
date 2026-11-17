@@ -42,16 +42,17 @@ def test_the_proposal_queue_covers_every_kind_including_one_missing_its_price(db
 
     pending = db.query(AgentAction).filter_by(status="pending").all()
     assert sorted(a.action_type for a in pending) == [
-        "inventory_reorder", "menu_change", "purchase_order", "purchase_order", "purchase_order", "recipe", "shift_change",
+        "inventory_reorder", "menu_change", "purchase_order", "purchase_order", "purchase_order", "purchase_order", "recipe", "recipe", "shift_change",
     ]
-    # Five dishes already have a confirmed recipe; the best seller without one gets a proposal.
-    assert sorted(a.payload["name"] for a in pending if a.action_type == "recipe") == ["Tiramisu"]
+    # Five dishes already have a confirmed recipe; the best sellers without one, whose ingredients are on the
+    # invoices, each get a proposal.
+    assert sorted(a.payload["name"] for a in pending if a.action_type == "recipe") == ["Garlic Bread", "Tiramisu"]
     # One purchase order is the agent's own; the other comes from the invoices: romaine is at its reorder
     # point, and Sysco charged less for it than Green Valley last month. Tomatoes and chicken, which the
     # agent already proposed, are not proposed twice.
     from_prices = [a for a in pending if a.payload.get("source") == "prices"]
     assert [(a.payload["item_name"], a.payload["supplier_name"], a.payload["packs"]) for a in from_prices] == [
-        ("Romaine Lettuce", "Sysco Foods", 7)
+        ("Ciabatta", "Sysco Foods", 13), ("Romaine Lettuce", "Sysco Foods", 7),
     ]
     promotion = next(a for a in pending if a.action_type == "menu_change")
     assert missing_inputs(promotion) == ["new_price"]
@@ -164,7 +165,7 @@ def test_every_page_of_the_demo_tells_the_same_story(db):
     for day in db.query(SalesDay):
         assert round(sum(o.total for o in db.query(Order) if o.created_at.date() == day.date), 2) == day.net_sales
     assert 18_000 < week.sales_net < 32_000
-    assert 25 < week.food_pct < 38
+    assert 18 < week.food_pct < 38
     assert 28 < week.labor_pct < 34
     assert pnl.last_complete_week(date.today()) == week.week_of
     # Nothing a flag switches on opens empty.
@@ -172,7 +173,15 @@ def test_every_page_of_the_demo_tells_the_same_story(db):
     assert db.query(Document).count() >= 4
     assert db.query(CalendarItem).count() == 4
     assert db.query(PrepSheet).count() == 1
-    assert db.query(InventoryItem).count() and sum(i.quantity_on_hand * i.unit_cost for i in db.query(InventoryItem)) > 3_000
+    assert db.query(InventoryItem).count() and sum(i.quantity_on_hand * i.unit_cost for i in db.query(InventoryItem)) > 2_000
+    # What the invoices bought of the things recipes use is what the recipes say was used, a little over:
+    # the purchases on Savings & costs and the usage on Variance & waste are the same kitchen.
+    from app.insights import engine as insights
+    from app.stock import engine as stock
+
+    bought = {r["key"]: r["now"] for r in insights.spend(db, week.restaurant_id, 28)["by_category"]}
+    used = stock.variance(db, week.restaurant_id, 28)["used_dollars"]
+    assert 0.9 < (bought["food"] + bought["dry"]) / used < 1.25
 
 
 def test_the_demo_shows_autopilot_passing_one_order_and_holding_another(db, monkeypatch):
@@ -191,7 +200,7 @@ def test_the_demo_shows_autopilot_passing_one_order_and_holding_another(db, monk
     # Sysco's is over the owner's limit for one order: held, with the reason, for a person.
     assert [r["rule"] for r in decisions["held"].rules if not r["ok"]] == ["per_order_cap"]
     held = next(a for a in db.query(AgentAction).filter_by(status="pending") if (a.payload or {}).get("autopilot_held"))
-    assert "over your $350.00 limit" in held.payload["autopilot_held"][0]
+    assert "over your $750.00 limit" in held.payload["autopilot_held"][0]
 
 
 def test_the_demo_has_every_feature_on_except_voice(db):

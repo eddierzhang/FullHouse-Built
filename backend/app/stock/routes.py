@@ -317,7 +317,92 @@ def read_variance(days: int = 28, user: User = Depends(manager), db: Session = D
 def read_status(user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
     """Whether sales are coming off the shelf, what needs a decision today, and POS items that match no recipe."""
     restaurant_id = _scope(db, user)
-    return {**engine.status(db, restaurant_id), "alerts": engine.alerts(db, restaurant_id), "unmapped": engine.unmapped(db, restaurant_id)}
+    return {**engine.status(db, restaurant_id), "alerts": engine.alerts(db, restaurant_id), "unmapped": engine.unmapped(db, restaurant_id),
+            "needs_conversion": engine.needs_conversion(db, restaurant_id), "conversions": engine.conversions(db, restaurant_id),
+            "pos_maps": [{"pos_item_name": m.pos_item_name, "menu_item_id": m.menu_item_id, "lines": m.lines, "ignore": m.ignore}
+                         for m in engine.pos_maps(db, restaurant_id).values()]}
+
+
+class SourceIn(BaseModel):
+    #: "pos", "app", or null to decide by whether POS sales exist.
+    sales_source: str | None = Field(default=None, pattern="^(pos|app)$")
+
+
+class ConversionIn(BaseModel):
+    #: The other unit ("lb"), and how many of the item's own unit one of it is; null factor forgets it.
+    other_unit: str = Field(min_length=1, max_length=32)
+    factor: float | None = Field(default=None, gt=0, le=100_000)
+
+
+class PosLineIn(BaseModel):
+    inventory_item_id: str
+    quantity: float = Field(gt=0, le=10_000)
+
+
+class PosMapIn(BaseModel):
+    pos_item_name: str = Field(min_length=1, max_length=200)
+    #: Exactly one of: a dish it is another name for, ingredients one sold uses, or ignore.
+    menu_item_id: str | None = None
+    lines: list[PosLineIn] = Field(default_factory=list, max_length=20)
+    ignore: bool = False
+
+
+@router.put("/settings")
+def set_settings(body: SourceIn, user: User = Depends(manager), db: Session = Depends(get_db)) -> dict:
+    """Where sales take stock off from: the point of sale, or orders taken in FullHouse. Never both."""
+    restaurant_id = _scope(db, user)
+    source = engine.set_sales_source(db, restaurant_id, body.sales_source)
+    db.commit()
+    return {"sales_source": source, "sales_source_pinned": body.sales_source is not None}
+
+
+@router.put("/items/{item_id}/conversion")
+def set_conversion(item_id: str, body: ConversionIn, user: User = Depends(manager), db: Session = Depends(get_db)) -> dict:
+    """Say how a unit an invoice uses relates to the unit the item is counted in: 1 lb of basil = 8 bunches."""
+    restaurant_id = _scope(db, user)
+    item = _item(db, restaurant_id, item_id)
+    if body.other_unit.strip().lower() == item.unit.strip().lower():
+        raise HTTPException(422, f"{item.name} is already counted in {item.unit}.")
+    engine.set_conversion(db, item, body.other_unit, body.factor)
+    db.commit()
+    return {"needs_conversion": engine.needs_conversion(db, restaurant_id), "conversions": engine.conversions(db, restaurant_id)}
+
+
+@router.put("/pos-items")
+def map_pos_item(body: PosMapIn, user: User = Depends(manager), db: Session = Depends(get_db)) -> dict:
+    """Say what a POS item means for stock: another name for a dish, a modifier that uses ingredients, or nothing."""
+    from app.restaurant.models import MenuItem
+    from app.stock.models import PosItemMap
+
+    restaurant_id = _scope(db, user)
+    chosen = sum([bool(body.menu_item_id), bool(body.lines), body.ignore])
+    if chosen != 1:
+        raise HTTPException(422, "Pick one: a dish, the ingredients it uses, or ignore.")
+    if body.menu_item_id and db.query(MenuItem.id).filter(MenuItem.restaurant_id == restaurant_id, MenuItem.id == body.menu_item_id).first() is None:
+        raise HTTPException(404, "Dish not found")
+    for line in body.lines:
+        _item(db, restaurant_id, line.inventory_item_id)
+    key = body.pos_item_name.strip().lower()
+    row = db.query(PosItemMap).filter(PosItemMap.restaurant_id == restaurant_id, PosItemMap.pos_key == key).first()
+    if row is None:
+        row = PosItemMap(restaurant_id=restaurant_id, pos_key=key, pos_item_name=body.pos_item_name.strip())
+        db.add(row)
+    row.menu_item_id, row.ignore = body.menu_item_id, body.ignore
+    row.lines = [l.model_dump() for l in body.lines]
+    db.commit()
+    return {"unmapped": engine.unmapped(db, restaurant_id)}
+
+
+@router.delete("/pos-items")
+def unmap_pos_item(pos_item_name: str, user: User = Depends(manager), db: Session = Depends(get_db)) -> dict:
+    from app.stock.models import PosItemMap
+
+    restaurant_id = _scope(db, user)
+    row = db.query(PosItemMap).filter(PosItemMap.restaurant_id == restaurant_id, PosItemMap.pos_key == pos_item_name.strip().lower()).first()
+    if row is not None:
+        db.delete(row)
+        db.commit()
+    return {"unmapped": engine.unmapped(db, restaurant_id)}
 
 
 @router.post("/run")

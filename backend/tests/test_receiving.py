@@ -132,21 +132,51 @@ def test_a_suppliers_reply_updates_the_order_or_is_flagged_for_a_person(client, 
     assert order.note.startswith("Green Valley Farms")
 
 
-def test_a_reply_to_the_orders_own_address_finds_its_order(client, db, monkeypatch):
+def test_a_reply_to_the_orders_own_address_finds_its_order_only_from_the_suppliers_side(client, db, monkeypatch):
     from app.connectors import inbound
+    from app.ordering.models import SupplierCalendar
     from app.restaurant import po_mail
 
-    rid, order, *_ = _kitchen(client, db)
+    rid, order, _, _, farm = _kitchen(client, db)
+    db.add(SupplierCalendar(restaurant_id=rid, supplier_id=farm.id, order_email="orders@greenvalley.example.com"))
     monkeypatch.setattr("app.config.settings.inbound_domain", "in.fullhouse.example")
     address = po_mail.reply_address(order)
     db.commit()
     assert address == f"po-{order.reply_token}@in.fullhouse.example" and len(order.reply_token) == 24
 
-    result = inbound.receive(db, {"from": "rep@greenvalley.example.com", "to": address, "subject": "Re: Purchase order", "text": "Shipped this morning."}, "mail-1")
+    # Anyone who was ever sent the order holds its reply address. From an address that isn't the supplier's,
+    # a reply changes nothing and is said once.
+    for n in range(3):
+        stranger = inbound.receive(db, {"from": "Mallory <m@evil.example>", "to": address, "text": f"Shipped! Confirmed! {n}"}, f"mail-x{n}")
+    db.commit()
+    assert stranger["reply"] == "other" and order.status == "ordered" and order.note is None
+    assert [n.kind for n in db.query(Notification).filter_by(restaurant_id=rid)] == ["supplier_reply"]
+
+    result = inbound.receive(db, {"from": "Rep <rep@greenvalley.example.com>", "to": address, "subject": "Re: Purchase order", "text": "Shipped this morning."}, "mail-1")
+    db.commit()
+    assert (result["reply"], result["order_id"], order.status) == ("shipped", order.id, "shipped")
+
+    # A received order is closed: nothing a reply says touches it, note included.
+    order.status, order.note = "received", "Sent by autopilot to orders@greenvalley.example.com."
+    db.commit()
+    inbound.receive(db, {"from": "rep@greenvalley.example.com", "to": address, "text": "We are out of stock, substituting."}, "mail-3")
+    db.commit()
+    assert order.status == "received" and order.note.startswith("Sent by autopilot")
+    assert inbound.receive(db, {"from": "x@example.com", "to": "po-000000000000000000000000@in.fullhouse.example", "text": "Confirmed"}, "mail-2")["reason"] == "unknown order address"
+
+
+def test_a_restaurant_whose_own_address_begins_po_still_gets_its_mail(client, db, monkeypatch):
+    from app.connectors import inbound
+
+    rid, *_ = _kitchen(client, db)
+    monkeypatch.setattr("app.config.settings.inbound_domain", "in.fullhouse.example")
+    connection = inbound.connection_for(db, rid, create=True)
+    connection.settings = {**connection.settings, "slug": "po-boy-shack-a1b2c3", "allowed_senders": ["@sysco.example.com"]}
     db.commit()
 
-    assert (result["reply"], result["order_id"], order.status) == ("shipped", order.id, "shipped")
-    assert inbound.receive(db, {"from": "x@example.com", "to": "po-000000000000000000000000@in.fullhouse.example", "text": "Confirmed"}, "mail-2")["reason"] == "unknown order address"
+    result = inbound.receive(db, {"from": "ar@sysco.example.com", "to": "po-boy-shack-a1b2c3@in.fullhouse.example", "subject": "Invoice", "attachments": []}, "mail-9")
+
+    assert result == {"restaurant_id": rid, "documents": 0}  # reached the restaurant's inbox, not the reply branch
 
 
 def test_a_late_order_is_said_once_a_day_with_a_chase_message_ready(client, db):

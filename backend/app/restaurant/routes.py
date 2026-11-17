@@ -562,11 +562,19 @@ def create_order(
         )
     order.total = total
 
-    try:
-        crud.check_and_deplete_stock(db, [(line.menu_item_id, line.qty) for line in payload.items])
-    except ValueError as exc:
-        db.rollback()
-        raise HTTPException(409, str(exc)) from exc
+    # With stock tracking on and the point of sale as the source of sales, an order taken here is a record
+    # only: the same sale arrives from the POS and comes off the shelf there, once (app.stock.engine).
+    from app.platform import flags as feature_flags
+    from app.stock import engine as stock_engine
+
+    from_pos = bool(restaurant_id) and feature_flags.enabled(db, restaurant_id, feature_flags.V3_STOCK) \
+        and stock_engine.sales_source(db, restaurant_id) == "pos"
+    if not from_pos:
+        try:
+            crud.check_and_deplete_stock(db, [(line.menu_item_id, line.qty) for line in payload.items])
+        except ValueError as exc:
+            db.rollback()
+            raise HTTPException(409, str(exc)) from exc
 
     db.add(order)
     try:

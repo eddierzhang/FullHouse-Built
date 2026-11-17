@@ -253,8 +253,102 @@ def test_the_demo_stock_history_adds_up_and_last_weeks_count_found_some_missing(
     assert ledger.out_of_balance(db, rid) == []
     report = engine.variance(db, rid, 28)
     assert report["counted"] == 8 and report["not_counted"] == 4
-    assert report["items"][0]["name"] == "Chicken Breast" and report["items"][0]["unexplained"] == -16
+    assert report["items"][0]["name"] == "Mozzarella" and report["items"][0]["unexplained"] == -20
     assert 150 < report["missing_dollars"] < 400 and report["wasted_dollars"] > 0
     assert len(engine.waste_log(db, rid)) == 5
     # Tracking starts today: loading the demo again takes nothing more off.
     assert engine.deplete(db, rid)["moved"] == 0
+
+
+# --- one source of sales, units that don't convert, and POS items that are not dishes -----------------
+
+
+def test_a_sale_in_both_the_app_and_the_pos_comes_off_the_shelf_once(client, db):
+    rid, flour, cheese, pizza = _kitchen(client, db)
+    today = date.today()
+    engine.deplete(db, rid, today)  # tracking begins; no POS sales yet
+    db.commit()
+    order = {"channel": "dine_in", "items": [{"menu_item_id": pizza.id, "qty": 4}]}
+
+    # No POS sales: orders taken in FullHouse are the sales, and deduct as placed.
+    assert client.get(f"{API}/status").json()["sales_source"] == "app"
+    assert client.post("/api/v1/restaurant/orders", json=order).status_code in (200, 201)
+    db.refresh(flour)
+    assert flour.quantity_on_hand == 98
+
+    # The POS starts reporting the same sales: from then on only its lines deduct.
+    _sale(db, rid, today, 10)
+    assert client.get(f"{API}/status").json()["sales_source"] == "pos"
+    assert client.post("/api/v1/restaurant/orders", json=order).status_code in (200, 201)
+    db.refresh(flour)
+    assert flour.quantity_on_hand == 98  # recorded, not deducted again
+    engine.deplete(db, rid, today)
+    db.commit()
+    db.refresh(flour)
+    assert flour.quantity_on_hand == 93  # the ten the POS reported
+
+    # An owner who really does take orders here can pin it; then the POS lines are left alone.
+    assert client.put(f"{API}/settings", json={"sales_source": "app"}).json() == {"sales_source": "app", "sales_source_pinned": True}
+    _sale(db, rid, today, 30)
+    assert engine.deplete(db, rid, today)["moved"] == 0
+    assert client.put(f"{API}/settings", json={}).json()["sales_source"] == "pos"
+    assert ledger.out_of_balance(db, rid) == []
+
+
+def test_a_restaurants_own_conversion_lets_an_invoice_in_pounds_book_an_item_counted_in_bunches(client, db):
+    from app.prices.models import PriceItem
+    from app.prices.stock import units_factor
+    from app.voice import parser
+
+    rid, *_ = _kitchen(client, db)
+    basil = InventoryItem(restaurant_id=rid, name="Basil", unit="bunch", quantity_on_hand=10, unit_cost=2.4)
+    db.add(basil)
+    db.flush()
+    by_the_pound = PriceItem(restaurant_id=rid, name="Basil, 1 lb", category="food", unit="lb", pack_unit="each", pack_size=1, inventory_item_id=basil.id)
+    db.add(by_the_pound)
+    db.commit()
+
+    assert units_factor(by_the_pound, basil) is None
+    assert [(n["name"], n["unit"], n["other_unit"]) for n in client.get(f"{API}/status").json()["needs_conversion"]] == [("Basil", "bunch", "lb")]
+
+    saved = client.put(f"{API}/items/{basil.id}/conversion", json={"other_unit": "LB", "factor": 8}).json()
+    assert saved["needs_conversion"] == [] and saved["conversions"] == [
+        {"inventory_item_id": basil.id, "name": "Basil", "unit": "bunch", "other_unit": "lb", "factor": 8}]
+    assert units_factor(by_the_pound, basil) == 8
+    spoken = parser.parse("basil two pounds", [{"id": basil.id, "name": "Basil", "unit": "bunch", "conversions": {"lb": 8}}])
+    assert [(l.quantity, l.sure) for l in spoken.lines] == [(16, True)]
+    assert client.put(f"{API}/items/{basil.id}/conversion", json={"other_unit": "bunch", "factor": 2}).status_code == 422
+    assert client.put(f"{API}/items/{basil.id}/conversion", json={"other_unit": "lb"}).json()["conversions"] == []
+
+
+def test_a_pos_item_that_is_not_a_dish_can_use_an_ingredient_stand_for_a_dish_or_be_ignored(client, db):
+    rid, flour, cheese, pizza = _kitchen(client, db)
+    today = date.today()
+    engine.deplete(db, rid, today)
+    _sale(db, rid, today, 6, name="Extra Cheese", pos="MOD-CHEESE")
+    _sale(db, rid, today, 3, name="Marg Pie", pos="MARGPIE")
+    _sale(db, rid, today, 2, name="Gift Card", pos="GIFT")
+    engine.deplete(db, rid, today)
+    db.commit()
+    assert sorted(u["pos_item_name"] for u in client.get(f"{API}/status").json()["unmapped"]) == ["Extra Cheese", "Gift Card", "Marg Pie"]
+
+    left = client.put(f"{API}/pos-items", json={"pos_item_name": "Extra Cheese", "lines": [{"inventory_item_id": cheese.id, "quantity": 0.1}]}).json()
+    client.put(f"{API}/pos-items", json={"pos_item_name": "marg pie", "menu_item_id": pizza.id})
+    after = client.put(f"{API}/pos-items", json={"pos_item_name": "Gift Card", "ignore": True}).json()
+    assert len(left["unmapped"]) == 2 and after["unmapped"] == []
+    assert client.put(f"{API}/pos-items", json={"pos_item_name": "Extra Cheese", "ignore": True, "menu_item_id": pizza.id}).status_code == 422
+
+    engine.deplete(db, rid, today)
+    db.commit()
+    db.refresh(cheese), db.refresh(flour)
+    # Six extra cheese at 0.1 lb, and three pizzas under another name through the pizza's recipe.
+    assert cheese.quantity_on_hand == pytest.approx(40 - 6 * 0.1 - 3 * 0.3)
+    assert flour.quantity_on_hand == pytest.approx(100 - 3 * 0.5)
+    assert engine.deplete(db, rid, today)["moved"] == 0
+
+    other, b = _second_restaurant(db)
+    flags.set_flag(db, other.id, flags.V3_STOCK, True)
+    db.commit()
+    assert b.put(f"{API}/pos-items", json={"pos_item_name": "X", "menu_item_id": pizza.id}).status_code == 404
+    assert b.put(f"{API}/pos-items", json={"pos_item_name": "X", "lines": [{"inventory_item_id": cheese.id, "quantity": 1}]}).status_code == 404
+    assert b.put(f"{API}/items/{cheese.id}/conversion", json={"other_unit": "kg", "factor": 2}).status_code == 404

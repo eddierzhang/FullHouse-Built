@@ -82,13 +82,25 @@ def invoices(week: int) -> list[tuple[str, int, list[tuple]]]:
     return out
 
 
-def seed(db: Session, restaurant_id: str | None, suppliers: dict[str, str], today: date | None = None, scale: int = 1) -> dict:
+def seed(db: Session, restaurant_id: str | None, suppliers: dict[str, str], today: date | None = None, scale=1,
+         more_items: list[tuple] | None = None, more_lines: dict[str, list[tuple]] | None = None) -> dict:
     """Load the invoices for `restaurant_id`, matching through `suppliers` (name -> id), and build the digest.
 
-    `scale` multiplies every quantity: the public demo is a busier restaurant than the tests' fixture."""
+    `scale` multiplies quantities: the public demo is a busier restaurant than the tests' fixture. A number
+    scales every line alike; a function of the printed description gives each line its own multiplier, so the
+    demo can buy what its recipes say it uses. A scaled line is never less than one pack.
+
+    `more_items` (rows like ITEMS) and `more_lines` (supplier -> lines like those in `invoices`, each already
+    matched to the item of the same position in `more_items`... by name, see below) add weekly staples to every
+    week's invoice from that supplier: the public demo buys everything its recipes use, the fixture does not.
+    Each extra line is (description, qty, pack text, price, item name)."""
+    def times(description: str, qty: float) -> float:
+        factor = scale(description) if callable(scale) else scale
+        return qty * factor if factor == 1 else max(1, round(qty * factor))
+
     today = today or date.today()
     items = {}
-    for name, category, unit, pack_unit, pack_size in ITEMS:
+    for name, category, unit, pack_unit, pack_size in [*ITEMS, *(more_items or [])]:
         item = PriceItem(restaurant_id=restaurant_id, name=name, category=category, unit=unit, pack_unit=pack_unit,
                          pack_size=pack_size)
         db.add(item)
@@ -96,6 +108,11 @@ def seed(db: Session, restaurant_id: str | None, suppliers: dict[str, str], toda
     db.flush()
     for supplier_name, printed in ALIASES.items():
         for description, item_name in printed.items():
+            item = items[item_name]
+            db.add(ItemAlias(restaurant_id=restaurant_id, supplier_id=suppliers[supplier_name],
+                             description_key=engine.normalize(description), item_id=item.id, pack_size=item.pack_size))
+    for supplier_name, extra in (more_lines or {}).items():
+        for description, _qty, _pack, _price, item_name in extra:
             item = items[item_name]
             db.add(ItemAlias(restaurant_id=restaurant_id, supplier_id=suppliers[supplier_name],
                              description_key=engine.normalize(description), item_id=item.id, pack_size=item.pack_size))
@@ -111,9 +128,11 @@ def seed(db: Session, restaurant_id: str | None, suppliers: dict[str, str], toda
             # Each supplier delivers on its own day of the week; the latest round ended `lag` days ago.
             day = today - timedelta(days=(7 - week) * 7 + lag)
             supplier = db.get(Supplier, suppliers[supplier_name])
+            lines = [*lines, *[l[:4] for l in (more_lines or {}).get(supplier_name, [])]]
             rows = [
-                schemas.LineIn(description=l[0], qty=l[1] * scale, pack_text=l[2], unit_price=l[3],
-                               delivered_qty=l[4] * scale if len(l) > 4 else None)
+                schemas.LineIn(description=l[0], qty=times(l[0], l[1]), pack_text=l[2], unit_price=l[3],
+                               # A short delivery keeps its shortfall, scaled like the line.
+                               delivered_qty=max(0, times(l[0], l[1]) - times(l[0], l[1] - l[4])) if len(l) > 4 else None)
                 for l in lines
             ]
             _, asked = engine.ingest_invoice(db, restaurant_id, supplier, day, rows, source="billcom",

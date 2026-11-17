@@ -82,7 +82,28 @@ HISTORY_DAYS = 42
 #: other: about $21,000 a week in sales, food bought at about 30% of it, labor at about 31%.
 VOLUME = 5.0
 STOCK_SCALE = 5
+#: Invoice lines for things no recipe uses (napkins, wine) are scaled by this; everything a recipe uses is
+#: bought at what the recipes say was used, a little over (BUY_OVER), so purchases and usage tell one story.
 INVOICE_SCALE = 5
+BUY_OVER = 1.04
+#: printed invoice line -> (stock item, how much of the stock unit one pack holds, packs a week before scaling)
+BOUGHT_AS = {
+    "CHIX BRST BNLS 4/10#": ("Chicken Breast", 40, 3), "FLOUR AP 50#": ("Flour", 50, 4), "OLIVE OIL EV 4/1GAL": ("Olive Oil", 15.14, 1),
+    "TOMATO ROMA 25#": ("Tomatoes", 25, 6), "TOMATOES ROMA 25LB": ("Tomatoes", 25, 6), "ROMAINE 24CT": ("Romaine Lettuce", 24, 2),
+    "LETT ROMAINE 24CT": ("Romaine Lettuce", 24, 2), "MOZZ FRESH 6/1#": ("Mozzarella", 6, 5), "PARM REGG WHL 10#": ("Parmesan", 10, 1),
+    "CIABATTA LOAF 12CT": ("Ciabatta", 12, 1), "ESPRESSO BEANS 5#": ("Espresso Beans", 5, 1), "MASCARPONE 5# TUB": ("Mascarpone", 5, 1),
+    "GARLIC PEELED 5#": ("Garlic", 5, 1),
+}
+#: Staples the recipes use that the test fixture's invoices leave out. Bought every week, at a steady price.
+MORE_ITEMS = [
+    ("Ciabatta, 12 ct case", "food", "ct", "case", 12), ("Espresso beans, 5 lb bag", "dry", "lb", "bag", 5),
+    ("Mascarpone, 5 lb tub", "food", "lb", "tub", 5), ("Garlic, peeled, 5 lb bag", "food", "lb", "bag", 5),
+]
+MORE_LINES = {
+    "Sysco Foods": [("CIABATTA LOAF 12CT", 1, "CS", 43.20, "Ciabatta, 12 ct case"), ("ESPRESSO BEANS 5#", 1, "BG", 90.00, "Espresso beans, 5 lb bag")],
+    "Harbor Dairy Co.": [("MASCARPONE 5# TUB", 1, "EA", 47.50, "Mascarpone, 5 lb tub")],
+    "Green Valley Farms": [("GARLIC PEELED 5#", 1, "BG", 22.50, "Garlic, peeled, 5 lb bag")],
+}
 LABOR_SHARE = 0.31
 #: Same restaurant on every reset; only the dates move.
 RANDOM_SEED = 20260913
@@ -116,17 +137,19 @@ CUSTOMER_REQUESTS = [
 
 INVENTORY = [
     # name, unit, on hand, reorder at, reorder qty, unit cost, supplier (None = unassigned)
-    ("Flour", "lb", 62, 25, 50, 0.95, "Sysco Foods"),
-    ("Mozzarella", "lb", 16, 12, 30, 6.80, "Harbor Dairy Co."),
-    ("Tomatoes", "lb", 6, 15, 30, 2.90, "Green Valley Farms"),
+    # Unit costs are what the demo's invoices charge (a 25 lb case of tomatoes at $31.20 is $1.25 a lb), so
+    # stock value, plate cost and the variance report are in the same dollars as the invoices.
+    ("Flour", "lb", 62, 25, 50, 0.38, "Sysco Foods"),
+    ("Mozzarella", "lb", 16, 12, 30, 5.32, "Harbor Dairy Co."),
+    ("Tomatoes", "lb", 6, 15, 30, 1.25, "Green Valley Farms"),
     ("Basil", "bunch", 3, 8, 20, 2.40, "Green Valley Farms"),
-    ("Romaine Lettuce", "head", 9, 10, 30, 2.10, "Green Valley Farms"),
+    ("Romaine Lettuce", "head", 9, 10, 30, 1.17, "Green Valley Farms"),
     ("Parmesan", "lb", 7, 4, 10, 16.00, "Harbor Dairy Co."),
-    ("Chicken Breast", "lb", 11, 15, 40, 5.40, "Sysco Foods"),
+    ("Chicken Breast", "lb", 11, 15, 40, 2.19, "Sysco Foods"),
     ("Mascarpone", "lb", 5, 3, 8, 9.50, "Harbor Dairy Co."),
     ("Espresso Beans", "lb", 4, 2, 6, 18.00, "Sysco Foods"),
     ("Garlic", "lb", 3, 2, 5, 4.50, "Green Valley Farms"),
-    ("Olive Oil", "L", 8, 4, 12, 12.00, "Sysco Foods"),
+    ("Olive Oil", "L", 8, 4, 12, 6.34, "Sysco Foods"),
     ("Ciabatta", "loaf", 10, 12, 30, 3.60, None),
 ]
 
@@ -264,7 +287,21 @@ def reset_demo_data(db: Session, now: datetime | None = None) -> dict:
     # Eight weeks of supplier invoices, and this week's digest: the main event.
     from app.prices.demo import seed as seed_invoices
 
-    prices = seed_invoices(db, restaurant_id, suppliers, today, scale=INVOICE_SCALE)
+    # What a week uses of each ingredient, from the orders through the recipes: what the invoices then buy.
+    recipes = {name: recipe for name, _, _, _, _, recipe in MENU}
+    dish_names = {menu[name]: name for name in menu}
+    weekly_use: dict[str, float] = {}
+    for line in lines:
+        for ingredient, per_plate in recipes[dish_names[line["menu_item_id"]]]:
+            weekly_use[ingredient] = weekly_use.get(ingredient, 0.0) + per_plate * line["qty"] / ((HISTORY_DAYS + 1) / 7)
+
+    def bought(description: str) -> float:
+        if description not in BOUGHT_AS:
+            return INVOICE_SCALE
+        ingredient, per_pack, base_packs = BOUGHT_AS[description]
+        return weekly_use.get(ingredient, 0.0) * BUY_OVER / (per_pack * base_packs)
+
+    prices = seed_invoices(db, restaurant_id, suppliers, today, scale=bought, more_items=MORE_ITEMS, more_lines=MORE_LINES)
     # Two orders in flight: flour due tomorrow, and mozzarella that should have come yesterday.
     from app.restaurant.models import PurchaseOrder
 
@@ -380,8 +417,8 @@ WASTE = [
     (1, "Romaine Lettuce", 0.8, "prep", "outer leaves"),
 ]
 #: What last week's walk-in count found against what the ledger expected (before STOCK_SCALE).
-COUNT_FOUND = {"Mozzarella": -2.4, "Chicken Breast": -3.2, "Basil": -2.0, "Parmesan": -0.4, "Tomatoes": 0.4}
-STORY_DAYS = 14
+COUNT_FOUND = {"Mozzarella": -4.0, "Chicken Breast": -6.4, "Basil": -2.0, "Parmesan": -0.6, "Tomatoes": 0.4}
+STORY_DAYS = 28
 
 
 def _stock_story(db: Session, restaurant_id: str, now: datetime, today: date, inventory: dict, stocked: list, sold: dict) -> None:
@@ -472,7 +509,7 @@ ORDER_DAYS = {
     "Empire Wine & Spirits": ([2], "16:00", [0], 200, "orders@empirewine.example.com"),
 }
 #: supplier -> the owner's autopilot limits. Sysco's order is bigger than its limit, so it waits for a person.
-AUTOPILOT_LIMITS = {"Green Valley Farms": (1500, 4000), "Sysco Foods": (350, 1500)}
+AUTOPILOT_LIMITS = {"Green Valley Farms": (1500, 4000), "Sysco Foods": (750, 2500)}
 
 
 def _ordering(db: Session, restaurant_id: str, suppliers: dict, now: datetime, today: date) -> int:

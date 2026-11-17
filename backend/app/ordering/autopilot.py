@@ -142,11 +142,20 @@ def stock_state(db: Session, restaurant_id: str, today: date) -> tuple[bool, str
     return True, f"Sales are in through {last.strftime('%b %-d')}."
 
 
+def waiting_for(db: Session, restaurant_id: str, supplier_id: str) -> list[AutopilotDecision]:
+    """Orders for this supplier that passed and are waiting out their cancel window."""
+    return db.query(AutopilotDecision).filter(AutopilotDecision.restaurant_id == restaurant_id, AutopilotDecision.supplier_id == supplier_id,
+                                              AutopilotDecision.outcome == PASSED).all()
+
+
 def sent_this_week(db: Session, restaurant_id: str, supplier_id: str, now: datetime) -> float:
+    """What autopilot has committed to this supplier in the last seven days: orders sent, and orders that have
+    passed and are waiting to send. Counting only what has gone would let two orders through one weekly cap."""
     rows = db.query(PurchaseOrder.estimated_cost).filter(
         PurchaseOrder.restaurant_id == restaurant_id, PurchaseOrder.supplier_id == supplier_id, PurchaseOrder.autopilot.is_(True),
         PurchaseOrder.sent_at.isnot(None), PurchaseOrder.sent_at >= now - timedelta(days=7))
-    return round(sum(float(cost or 0) for (cost,) in rows), 2)
+    waiting = sum(float(d.total or 0) for d in waiting_for(db, restaurant_id, supplier_id))
+    return round(sum(float(cost or 0) for (cost,) in rows) + waiting, 2)
 
 
 def draft_of(db: Session, action: AgentAction, now: datetime, today: date) -> policy.Draft:
@@ -228,6 +237,8 @@ def draft_for(db: Session, restaurant_id: str, supplier: Supplier, today: date) 
         # A whole-supplier draft already waiting; a single-item reorder for the same supplier is a different thing.
         if held.get("supplier_id") == supplier.id and held.get("source") == "po_draft" and len(held.get("lines") or []) > 0:
             return None
+    if waiting_for(db, restaurant_id, supplier.id):
+        return None  # one order at a time: the last one has not gone yet
     lines = order_lines(db, restaurant_id, supplier, today)
     if not lines:
         return None
@@ -252,6 +263,8 @@ def draft_for(db: Session, restaurant_id: str, supplier: Supplier, today: date) 
     action = AgentAction(restaurant_id=restaurant_id, run_id=run.id, agent_definition_id=run.agent_definition_id, action_type="purchase_order", payload={
         "supplier_id": supplier.id, "supplier_name": supplier.name, "item_name": f"{len(lines)} items", "quantity": sum(l["qty"] for l in lines),
         "lines": lines, "expected_total": total, "note": rationale, "source": "po_draft", "expected_on": expected.isoformat(),
+        # Only an order drafted here, on the supplier's order day, is ever decided by the policy (see `decide`).
+        "drafted_by": AUTOPILOT,
         "cited_line_ids": [i for l in lines for i in l.get("cited_line_ids", [])][:40],
     })
     db.add(action)
@@ -295,6 +308,11 @@ def decide(db: Session, action: AgentAction, now: datetime | None = None, today:
     payload = action.payload or {}
     restaurant_id, supplier_id = action.restaurant_id, payload.get("supplier_id")
     if action.status != "pending" or action.action_type != "purchase_order" or not supplier_id or not payload.get("lines"):
+        return None
+    # Only the order this module drafted for the supplier's order day. An order the agent proposed because
+    # someone asked it to, or the weekly "usual order" draft, is a proposal for a person like any other: if
+    # those could go out by themselves, anyone who can talk to the agent could place an order.
+    if payload.get("drafted_by") != AUTOPILOT:
         return None
     row = policy_for(db, restaurant_id, supplier_id)
     if row is None or not row.enabled:

@@ -26,7 +26,7 @@ from app.restaurant import crud
 from app.restaurant.models import InventoryAdjustment, InventoryItem, MenuItem, RecipeItem, Restaurant, Supplier
 from app.sales.models import SalesItem
 from app.stock import ledger
-from app.stock.models import OPEN, POSTED, StockCount, StockCountLine, StockDaily, StorageArea
+from app.stock.models import OPEN, POSTED, PosItemMap, StockCount, StockCountLine, StockDaily, StorageArea, UnitConversion
 
 #: Why something was thrown away. The key is stored at the front of the movement's note.
 WASTE_REASONS = {
@@ -59,6 +59,41 @@ def _deplete_from(db: Session, restaurant: Restaurant, today: date) -> date:
     return today
 
 
+def sales_source(db: Session, restaurant_id: str) -> str:
+    """Where sales take stock off from: "pos" (the point of sale's lines, through this module) or "app" (orders
+    taken in FullHouse, which deduct as they are placed). Never both: the same sale in both would come off twice.
+
+    An owner can pin either. Left alone, it is the point of sale from the moment POS sales exist for a day since
+    tracking began, because that is the moment double counting would start."""
+    restaurant = db.get(Restaurant, restaurant_id)
+    settings = (restaurant.inventory_settings or {}) if restaurant else {}
+    if settings.get("sales_source") in ("pos", "app"):
+        return settings["sales_source"]
+    since = settings.get("deplete_from")
+    query = db.query(SalesItem.id).filter(SalesItem.restaurant_id == restaurant_id)
+    if since:
+        query = query.filter(SalesItem.date >= date.fromisoformat(since))
+    return "pos" if query.first() is not None else "app"
+
+
+def set_sales_source(db: Session, restaurant_id: str, source: str | None) -> str:
+    """Pin where sales come off from, or (None) go back to deciding by whether POS sales exist."""
+    restaurant = db.get(Restaurant, restaurant_id)
+    settings = dict(restaurant.inventory_settings or {})
+    if source is None:
+        settings.pop("sales_source", None)
+    else:
+        settings["sales_source"] = source
+    restaurant.inventory_settings = settings
+    db.add(restaurant)
+    db.flush()
+    return sales_source(db, restaurant_id)
+
+
+def pos_maps(db: Session, restaurant_id: str) -> dict[str, PosItemMap]:
+    return {m.pos_key: m for m in db.query(PosItemMap).filter(PosItemMap.restaurant_id == restaurant_id)}
+
+
 def dish_map(db: Session, restaurant_id: str) -> tuple[dict[str, str], dict[str, str]]:
     """POS item -> dish: by the confirmed recipe that names the POS item, and by the dish's name."""
     by_pos = {r.pos_item_id: r.menu_item_id for r in db.query(Recipe).filter(
@@ -84,7 +119,10 @@ def deplete(db: Session, restaurant_id: str, today: date | None = None) -> dict:
     if restaurant is None:
         return {"moved": 0, "sales": 0}
     since = _deplete_from(db, restaurant, today)
+    if sales_source(db, restaurant_id) != "pos":
+        return {"moved": 0, "sales": 0, "since": since}  # orders taken in FullHouse are the sales, and deduct as placed
     by_pos, by_name = dish_map(db, restaurant_id)
+    mapped = pos_maps(db, restaurant_id)
     recipes: dict[str, list[RecipeItem]] = {}
     for line in db.query(RecipeItem).join(MenuItem, MenuItem.id == RecipeItem.menu_item_id).filter(MenuItem.restaurant_id == restaurant_id):
         recipes.setdefault(line.menu_item_id, []).append(line)
@@ -99,17 +137,25 @@ def deplete(db: Session, restaurant_id: str, today: date | None = None) -> dict:
 
     moved = sales = 0
     for row in db.query(SalesItem).filter(SalesItem.restaurant_id == restaurant_id, SalesItem.date >= since).order_by(SalesItem.date):
-        menu_item_id = by_pos.get(row.pos_item_id) or by_name.get(row.pos_item_name.strip().lower())
-        lines = recipes.get(menu_item_id or "")
-        if not lines:
+        # What one sold uses: the restaurant's own mapping for this POS item first (another name for a dish, a
+        # modifier that uses an ingredient, or nothing), then the dish of the same name.
+        own = mapped.get(row.pos_item_name.strip().lower())
+        if own is not None and own.ignore:
+            continue
+        if own is not None and own.lines:
+            uses = [(l["inventory_item_id"], float(l["quantity"])) for l in own.lines]
+        else:
+            menu_item_id = (own.menu_item_id if own is not None else None) or by_pos.get(row.pos_item_id) or by_name.get(row.pos_item_name.strip().lower())
+            uses = [(l.inventory_item_id, l.quantity) for l in recipes.get(menu_item_id or "", [])]
+        if not uses:
             continue
         sales += 1
-        for line in lines:
-            item = items.get(line.inventory_item_id)
+        for inventory_item_id, per_one in uses:
+            item = items.get(inventory_item_id)
             if item is None:
                 continue
             usable = (item.yield_pct or 100.0) / 100.0
-            target = -round(row.qty * line.quantity / (usable if usable > 0 else 1.0), 6)
+            target = -round(row.qty * per_one / (usable if usable > 0 else 1.0), 6)
             base = _sale_key(row, item.id)
             done, times = already.get(base, [0.0, 0])
             difference = round(target - done, 6)
@@ -130,12 +176,16 @@ def unmapped(db: Session, restaurant_id: str) -> list[dict]:
         return []
     by_pos, by_name = dish_map(db, restaurant_id)
     with_recipe = {menu_item_id for (menu_item_id,) in db.query(RecipeItem.menu_item_id).distinct()}
+    mapped = pos_maps(db, restaurant_id)
     out = []
     rows = (db.query(SalesItem.pos_item_id, SalesItem.pos_item_name, func.sum(SalesItem.qty), func.sum(SalesItem.net))
             .filter(SalesItem.restaurant_id == restaurant_id, SalesItem.date >= date.fromisoformat(since))
             .group_by(SalesItem.pos_item_id, SalesItem.pos_item_name))
     for pos_item_id, name, qty, net in rows:
-        menu_item_id = by_pos.get(pos_item_id) or by_name.get(name.strip().lower())
+        own = mapped.get(name.strip().lower())
+        if own is not None and (own.ignore or own.lines):
+            continue
+        menu_item_id = (own.menu_item_id if own is not None else None) or by_pos.get(pos_item_id) or by_name.get(name.strip().lower())
         if menu_item_id is None:
             out.append({"pos_item_name": name, "qty": float(qty or 0), "net": round(float(net or 0), 2), "why": "no dish on the menu has this name"})
         elif menu_item_id not in with_recipe:
@@ -413,6 +463,45 @@ def run(db: Session, restaurant_id: str, today: date | None = None) -> dict:
     return result
 
 
+def needs_conversion(db: Session, restaurant_id: str) -> list[dict]:
+    """Stock items an invoice prices in a unit that doesn't convert to the unit they are counted in, so their
+    deliveries can't be booked from the invoice until someone says how the two relate."""
+    from app.prices.models import PriceItem
+    from app.prices.stock import units_factor
+
+    out = []
+    rows = (db.query(PriceItem, InventoryItem).join(InventoryItem, InventoryItem.id == PriceItem.inventory_item_id)
+            .filter(PriceItem.restaurant_id == restaurant_id, InventoryItem.restaurant_id == restaurant_id).order_by(InventoryItem.name))
+    for price_item, item in rows:
+        if units_factor(price_item, item) is None:
+            out.append({"inventory_item_id": item.id, "name": item.name, "unit": item.unit, "other_unit": price_item.unit.strip().lower(),
+                        "invoiced_as": price_item.name})
+    return out
+
+
+def conversions(db: Session, restaurant_id: str) -> list[dict]:
+    names = {i.id: (i.name, i.unit) for i in db.query(InventoryItem).filter(InventoryItem.restaurant_id == restaurant_id)}
+    return [{"inventory_item_id": c.inventory_item_id, "name": names.get(c.inventory_item_id, ("", ""))[0], "unit": names.get(c.inventory_item_id, ("", ""))[1],
+             "other_unit": c.unit, "factor": c.factor}
+            for c in db.query(UnitConversion).filter(UnitConversion.restaurant_id == restaurant_id).order_by(UnitConversion.unit)
+            if c.inventory_item_id in names]
+
+
+def set_conversion(db: Session, item: InventoryItem, other_unit: str, factor: float | None) -> None:
+    """One `other_unit` is `factor` of the item's own unit; None forgets it."""
+    unit = other_unit.strip().lower()
+    row = db.query(UnitConversion).filter(UnitConversion.restaurant_id == item.restaurant_id, UnitConversion.inventory_item_id == item.id,
+                                          UnitConversion.unit == unit).first()
+    if factor is None:
+        if row is not None:
+            db.delete(row)
+    elif row is None:
+        db.add(UnitConversion(restaurant_id=item.restaurant_id, inventory_item_id=item.id, unit=unit, factor=factor))
+    else:
+        row.factor = factor
+    db.flush()
+
+
 def status(db: Session, restaurant_id: str) -> dict:
     """Whether sales are coming off the shelf, since when, and when they last did."""
     restaurant = db.get(Restaurant, restaurant_id)
@@ -420,7 +509,9 @@ def status(db: Session, restaurant_id: str) -> dict:
     last = db.query(func.max(InventoryAdjustment.created_at)).filter(InventoryAdjustment.restaurant_id == restaurant_id,
                                                                     InventoryAdjustment.reason == "sale").scalar()
     last_sale_day = db.query(func.max(SalesItem.date)).filter(SalesItem.restaurant_id == restaurant_id).scalar()
-    return {"tracking_since": since, "last_depleted_at": last, "last_sales_day": last_sale_day, "out_of_balance": ledger.out_of_balance(db, restaurant_id)}
+    pinned = ((restaurant.inventory_settings or {}) if restaurant else {}).get("sales_source")
+    return {"tracking_since": since, "last_depleted_at": last, "last_sales_day": last_sale_day, "out_of_balance": ledger.out_of_balance(db, restaurant_id),
+            "sales_source": sales_source(db, restaurant_id), "sales_source_pinned": pinned in ("pos", "app")}
 
 
 def areas(db: Session, restaurant_id: str) -> list[StorageArea]:

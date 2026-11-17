@@ -93,6 +93,17 @@ def units_factor(item: PriceItem, stock: InventoryItem) -> float | None:
     for table in (MASS, VOLUME):
         if a in table and b in table:
             return table[a] / table[b]
+    # Units that don't convert by themselves (a pound of basil into bunches): the restaurant's own figure, if it gave one.
+    from sqlalchemy.orm import object_session
+
+    from app.stock.models import UnitConversion
+
+    session = object_session(stock)
+    if session is not None:
+        own = session.query(UnitConversion.factor).filter(UnitConversion.restaurant_id == stock.restaurant_id,
+                                                         UnitConversion.inventory_item_id == stock.id, UnitConversion.unit == a).first()
+        if own is not None and own[0] > 0:
+            return float(own[0])
     return None
 
 
