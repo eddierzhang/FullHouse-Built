@@ -7,12 +7,13 @@ Used only by seed scripts and tests. Nothing in the app calls it.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from app.margin_labor.models import PosItem
+from app.margin_labor.business import zone
+from app.margin_labor.models import ChannelPayout, ChannelTerms, PosItem, SalesOrder, SalesOrderLine
 from app.prices.engine import normalize
 from app.prices.models import Invoice, InvoiceLine, ItemAlias, PriceItem
 from app.recipes.models import CONFIRMED, Recipe, RecipeLine
@@ -100,3 +101,40 @@ def seed_kitchen(db: Session, restaurant_id: str, today: date, sales_days: int =
     if deliveries:
         seed_deliveries(db, restaurant_id, supplier, items, today - timedelta(days=today.weekday() + 1))
     return {"supplier": supplier, "items": items, "recipes": recipes, "invoice": invoice}
+
+
+#: platform -> (commission, processing, fixed fee an order, packaging an order)
+TERMS = {"DoorDash": ("0.25", "0.03", "0.30", "0.70"), "Uber Eats": ("0.30", "0.03", "2.00", "1.00")}
+
+
+def seed_orders(db: Session, restaurant_id: str, today: date, tz: str, days: int = 35, terms: bool = True) -> None:
+    """Order-level sales for the last `days` business dates, the same every day: two dine-in orders (two burgers and
+    a wings), three DoorDash orders (a burger at $13.00 and a wings at $12.00; two of the three have a payout row)
+    and one Uber Eats order (fries at $5.00, no payout rows). Fries lose 8.5 cents an order on Uber Eats."""
+    def order(day: date, external: str, channel: str, platform: str | None, lines: list[tuple[str, str, int, str]], covers: int | None) -> None:
+        opened = datetime.combine(day, time(18, 0), tzinfo=zone(tz)).astimezone(timezone.utc)
+        net = sum((Decimal(price) * qty for _i, _n, qty, price in lines), Decimal(0))
+        row = SalesOrder(restaurant_id=restaurant_id, connection_key="fixture", external_id=external, opened_at=opened, closed_at=opened + timedelta(minutes=40),
+                         business_date=day, channel=channel, platform=platform, covers=covers, gross=net, net=net, status="closed")
+        db.add(row)
+        db.flush()
+        for number, (pos_id, name, qty, price) in enumerate(lines, start=1):
+            db.add(SalesOrderLine(restaurant_id=restaurant_id, order_id=row.id, line_no=number, business_date=day, pos_item_id=pos_id, pos_item_name=name,
+                                  qty=Decimal(qty), net=Decimal(price) * qty))
+
+    for back in range(days, 0, -1):
+        day = today - timedelta(days=back)
+        for n in range(2):
+            order(day, f"IN-{day.isoformat()}-{n}", "dine_in", None, [("BURGER", "Burger", 2, "12.00"), ("WINGS", "Wings", 1, "11.00")], 2)
+        for n in range(3):
+            order(day, f"DD-{day.isoformat()}-{n}", "delivery_platform", "DoorDash", [("BURGER", "Burger", 1, "13.00"), ("WINGS", "Wings", 1, "12.00")], None)
+            if n < 2:
+                db.add(ChannelPayout(restaurant_id=restaurant_id, platform="DoorDash", external_order_id=f"DD-{day.isoformat()}-{n}", gross=Decimal("25.00"),
+                                     commission=Decimal("6.25"), fees=Decimal("0.75"), payout=Decimal("18.00"),
+                                     paid_at=datetime.combine(day + timedelta(days=2), time(12, 0), tzinfo=timezone.utc)))
+        order(day, f"UE-{day.isoformat()}", "delivery_platform", "Uber Eats", [("FRIES", "Fries", 1, "5.00")], None)
+    if terms:
+        for platform, (commission, processing, fixed, packaging) in TERMS.items():
+            db.add(ChannelTerms(restaurant_id=restaurant_id, platform=platform, commission_pct=Decimal(commission), processing_pct=Decimal(processing),
+                                fixed_fee_per_order=Decimal(fixed), packaging_cost_per_order=Decimal(packaging), effective_from=date(2000, 1, 1)))
+    db.flush()

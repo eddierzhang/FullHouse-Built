@@ -19,7 +19,24 @@ def build(db: Session, restaurant_id: str, user) -> list[dict]:
         card = _usage(db, restaurant_id)
         if card is not None:
             cards.append(card)
+    if flags.enabled(db, restaurant_id, flags.ML_CHANNELS):
+        card = _channels(db, restaurant_id)
+        if card is not None:
+            cards.append(card)
     return cards
+
+
+def _channels(db: Session, restaurant_id: str) -> dict | None:
+    from app.margin_labor import channels_read
+
+    out = channels_read.overview(db, restaurant_id)
+    if out["state"] == "setup":
+        return {"module": "channels", "state": "setup", "route": "channels", "missing": [s["key"] for s in out["setup"] if not s["done"]]}
+    if not out["header"]["items"]:
+        return None
+    top = next(i for i in out["items"] if i["finding"])
+    return {"module": "channels", "state": "live", "route": "channels", "items": out["header"]["items"], "platform": out["header"]["platform"],
+            "weekly_dollars": out["header"]["weekly_dollars"], "top": {"row_id": top["row_id"], "name": top["name"], "platform": top["platform"]}}
 
 
 def _usage(db: Session, restaurant_id: str) -> dict | None:

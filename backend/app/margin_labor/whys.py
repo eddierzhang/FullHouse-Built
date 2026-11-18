@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.margin_labor.models import DishCost, Finding, UsageVariance
+from app.margin_labor.models import ChannelItemMargin, DishCost, Finding, UsageVariance
 from app.platform import flags
 
 
@@ -24,10 +24,17 @@ def explain(db: Session, restaurant_id: str, table: str, row_id: str, figure: st
             return None
         item = db.get(PriceItem, row.canonical_item_id)
         return usage_read.why_row(db, row, price_points.base_unit(item)[0] if item is not None else "each")
+    if table == "channel_item_margins" and flags.enabled(db, restaurant_id, flags.ML_CHANNELS):
+        from app.margin_labor import channels_read
+
+        row = db.get(ChannelItemMargin, row_id)
+        return channels_read.why_row(db, row) if row is not None and row.restaurant_id == restaurant_id else None
     if table == "findings":
         row = db.get(Finding, row_id)
         if row is None or row.restaurant_id != restaurant_id:
             return None
+        if row.type == "channel_margin":
+            return explain(db, restaurant_id, "channel_item_margins", (row.basis or {}).get("row_id", ""), figure, user)
         if row.type in ("usage_variance", "usage_data_gap"):
             return explain(db, restaurant_id, "usage_variance", (row.basis or {}).get("row_id", ""), figure, user)
         return menu_costs_read.why_finding(db, row)

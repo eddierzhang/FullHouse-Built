@@ -2,6 +2,7 @@
 fresh each source is. Module pages (Menu costs, Usage, Ordering and prep, Labor, Channels) add their own routes
 as each phase lands. The tenant always comes from the session."""
 
+from datetime import date as _date
 from datetime import datetime, timedelta, timezone
 
 from decimal import Decimal
@@ -300,3 +301,88 @@ def dismiss_finding(finding_id: str, user: User = Depends(manager), db: Session 
         finding.status, finding.note = "dismissed", f"Dismissed by {user.email}."
     db.commit()
     return {"id": finding.id, "status": finding.status}
+
+
+# --- Module E: Channels -----------------------------------------------------------------------------
+
+
+@router.get("/channels")
+def channels_list(response: Response, if_none_match: str | None = Header(default=None), user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Items by channel and platform with the per-unit breakdown: price, fees, cost per plate, kept per item."""
+    from app.margin_labor import channels_read
+
+    restaurant_id = _module(db, user, flags.ML_CHANNELS)
+    out = channels_read.overview(db, restaurant_id)
+    statuses = [(i["finding"] or {}).get("proposal_status") for i in out["items"]]
+    if _etag(response, if_none_match, out["computed_at"], out["state"], out["stale"], out["window_end"], out["match_rate"], out["header"], statuses, out["terms"]):
+        return Response(status_code=304, headers={"ETag": response.headers["ETag"]})
+    return out
+
+
+class TermsIn(BaseModel):
+    platform: str = Field(min_length=1, max_length=40)
+    commission_pct: Decimal = Field(ge=0, lt=1, max_digits=8, decimal_places=6)
+    processing_pct: Decimal = Field(default=Decimal(0), ge=0, lt=1, max_digits=8, decimal_places=6)
+    fixed_fee_per_order: Decimal = Field(default=Decimal(0), ge=0, max_digits=12, decimal_places=4)
+    packaging_cost_per_order: Decimal = Field(default=Decimal(0), ge=0, max_digits=12, decimal_places=4)
+    effective_from: _date | None = None
+
+
+@router.put("/channels/terms")
+def channels_terms(body: TermsIn, user: User = Depends(manager), db: Session = Depends(get_db)) -> dict:
+    """A delivery platform's contract rates from a date on. They price every order with no payout row; the rates
+    before that date are kept for the orders they applied to."""
+    from app.margin_labor import channels, channels_read, menu_costs
+    from app.margin_labor.models import ChannelTerms
+
+    restaurant_id = _module(db, user, flags.ML_CHANNELS)
+    if body.commission_pct + body.processing_pct >= 1:
+        raise HTTPException(422, "Commission and processing together must be under 100%.")
+    today = menu_costs.load(db, restaurant_id).today
+    platform = body.platform.strip()
+    held = db.query(ChannelTerms).filter(ChannelTerms.restaurant_id == restaurant_id, ChannelTerms.platform == platform).order_by(ChannelTerms.effective_from).all()
+    # With no date, the first rates given for a platform cover its history; later ones start today.
+    start = body.effective_from or (today if held else _date(2000, 1, 1))
+    values = {"commission_pct": body.commission_pct, "processing_pct": body.processing_pct, "fixed_fee_per_order": body.fixed_fee_per_order,
+              "packaging_cost_per_order": body.packaging_cost_per_order}
+    same = next((t for t in held if t.effective_from == start), None)
+    if same is not None:
+        for name, value in values.items():
+            setattr(same, name, value)
+    else:
+        for earlier in held:
+            if earlier.effective_from < start and (earlier.effective_to is None or earlier.effective_to >= start):
+                earlier.effective_to = start - timedelta(days=1)
+        later = min((t.effective_from for t in held if t.effective_from > start), default=None)
+        db.add(ChannelTerms(restaurant_id=restaurant_id, platform=platform, effective_from=start, effective_to=None if later is None else later - timedelta(days=1), **values))
+    db.flush()
+    channels.run(db, restaurant_id)
+    db.commit()
+    terms = db.query(ChannelTerms).filter(ChannelTerms.restaurant_id == restaurant_id).all()
+    return {"terms": channels_read.terms_out(terms, today)}
+
+
+@router.post("/channels/{row_id}/reprice")
+def channels_reprice(row_id: str, user: User = Depends(manager), db: Session = Depends(get_db)) -> dict:
+    """Ask for a platform price for a flagged item. A proposal: a person approves it, then changes the price on the platform."""
+    from app.margin_labor import channels, menu_costs
+    from app.margin_labor.models import ChannelItemMargin, ChannelTerms, Finding
+
+    restaurant_id = _module(db, user, flags.ML_CHANNELS)
+    row = db.get(ChannelItemMargin, row_id)
+    if row is None or row.restaurant_id != restaurant_id:
+        raise HTTPException(404, "No such item.")
+    finding = db.query(Finding).filter(Finding.restaurant_id == restaurant_id, Finding.type == channels.FINDING, Finding.subject_id == f"{row.pos_item_id}|{row.platform}",
+                                       Finding.status == "open").first()
+    if finding is None:
+        raise HTTPException(409, "This item is not flagged on this platform.")
+    world = menu_costs.load(db, restaurant_id)
+    terms = db.query(ChannelTerms).filter(ChannelTerms.restaurant_id == restaurant_id).all()
+    action = channels.propose_reprice(db, world, row, finding, terms, row.window_end)
+    if action is None:
+        db.commit()
+        raise HTTPException(409, "No price to suggest: the platform's rates leave no room, the price is already high enough, "
+                                 "or three platform prices were already suggested this week.")
+    finding.proposal_id = action.id
+    db.commit()
+    return {"proposal_id": action.id, "suggested_price": action.payload.get("suggested_price")}

@@ -237,10 +237,16 @@ def _prep(payload: dict) -> Explanation:
     return Explanation(issue, change, know)
 
 
+#: Proposal kinds added by later modules: kind -> a function of the payload. Registered where the kind is defined.
+EXTRA: dict = {}
+
+
 def explain(action: AgentAction, db: Session | None = None) -> Explanation:
     """The three sentences for a proposal of any kind. Unknown kinds get the agent's note and an honest shrug."""
     payload = action.payload or {}
     kind = action.action_type
+    if kind in EXTRA:
+        return EXTRA[kind](payload)
     if kind in ("inventory_reorder", "purchase_order"):
         return _order_lines(payload) if payload.get("lines") else _order(db, payload)
     if kind == "shift_change":

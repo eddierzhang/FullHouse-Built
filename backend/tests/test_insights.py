@@ -55,7 +55,11 @@ def test_spend_splits_the_same_total_by_supplier_and_by_category(db):
 def test_stock_outlook_says_how_long_each_item_lasts_and_what_is_on_the_way(db):
     restaurant_id = _demo(db)
 
-    out = engine.stock_outlook(db, restaurant_id)
+    # The demo is seeded on the UTC date and the outlook defaults to the server's own: after midnight UTC on a
+    # server west of it they differ by a day, so the test names the date the demo used.
+    from datetime import datetime, timezone
+
+    out = engine.stock_outlook(db, restaurant_id, today=datetime.now(timezone.utc).date())
     by_name = {i["name"]: i for i in out["items"]}
 
     tomatoes = by_name["Tomatoes"]

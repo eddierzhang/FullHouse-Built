@@ -201,6 +201,10 @@ def derive(db: Session, payload: dict) -> None:
         menu_costs.recost(db, restaurant_id, recipe_ids=set(payload["recipe_ids"]) if payload.get("recipe_ids") is not None else None,
                           item_ids=set(payload["item_ids"]) if payload.get("item_ids") is not None else None,
                           trigger_event_id=payload.get("trigger_event_id"))
+    elif payload.get("job") == "channel_margins" and flags.enabled(db, restaurant_id, flags.ML_CHANNELS):
+        from app.margin_labor import channels
+
+        channels.run(db, restaurant_id)
     elif payload.get("job") == "usage_variance" and flags.enabled(db, restaurant_id, flags.ML_USAGE):
         from app.margin_labor import usage
 
@@ -266,6 +270,22 @@ def _queue_usage(db: Session, event: Event) -> None:
 for _type in ("price_point.created", "recipe.saved", "sales_items.synced", "intervals.rolled_up"):
     events.subscribe(_type)(_queue_usage)
 
+
+def _queue_channels(db: Session, event: Event) -> None:
+    """Orders, a payout report or a plate cost changed: work the channel margins out again."""
+    from app.platform import flags, jobs
+
+    if flags.enabled(db, event.restaurant_id, flags.ML_CHANNELS):
+        jobs.enqueue(db, "derive", f"derive:{event.restaurant_id}:channel_margins", {"restaurant_id": event.restaurant_id, "job": "channel_margins"},
+                     restaurant_id=event.restaurant_id)
+
+
+for _type in ("payouts.synced", "plate_cost.changed", "intervals.rolled_up"):
+    events.subscribe(_type)(_queue_channels)
+
+from app.margin_labor import proposals as _ml_proposals  # noqa: E402
+
+_ml_proposals.register()
 
 from app.margin_labor import triggers as _ml_triggers  # noqa: E402
 

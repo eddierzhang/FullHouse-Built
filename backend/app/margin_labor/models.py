@@ -388,3 +388,36 @@ class UsageVariance(_Row, Base):
     state: Mapped[str] = mapped_column(String(10), nullable=False)  # setup|learning|live
     basis: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     calc_version: Mapped[str] = mapped_column(String(12), nullable=False)
+
+
+# --- Module E: channel profitability -------------------------------------------------------------
+
+
+class ChannelItemMargin(_Row, Base):
+    """What one menu item keeps per unit on one channel (and platform) over a 28-day window, after commission,
+    fees, packaging and food cost. Rewritten by the `channel_margins` job."""
+
+    __tablename__ = "channel_item_margins"
+    __table_args__ = (UniqueConstraint("restaurant_id", "pos_item_id", "channel", "platform", "window_end", name="uq_channel_item_margins_row"),)
+
+    restaurant_id: Mapped[str] = _tenant("channel_item_margins")
+    pos_item_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    pos_item_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    channel: Mapped[str] = mapped_column(String(20), nullable=False)
+    #: The platform's name, or "" for a channel that has none: part of the key, where a null would not be.
+    platform: Mapped[str] = mapped_column(String(40), default="", nullable=False)
+    window_start: Mapped[date] = mapped_column(Date, nullable=False)
+    window_end: Mapped[date] = mapped_column(Date, nullable=False)
+    units: Mapped[Decimal] = mapped_column(Dec(), nullable=False)
+    unit_revenue: Mapped[Decimal] = mapped_column(Dec(), nullable=False)
+    commission_unit: Mapped[Decimal] = mapped_column(Dec(), nullable=False)
+    processing_unit: Mapped[Decimal] = mapped_column(Dec(), nullable=False)
+    fixed_unit: Mapped[Decimal] = mapped_column(Dec(), nullable=False)
+    #: Null when the item has no fully priced recipe: what it keeps is then not known.
+    plate_cost: Mapped[Decimal | None] = mapped_column(Dec(), nullable=True)
+    unit_contribution: Mapped[Decimal | None] = mapped_column(Dec(), nullable=True)
+    contribution_pct: Mapped[Decimal | None] = mapped_column(Dec(10, 6), nullable=True)
+    #: The share of this row's orders whose fees came from a payout report rather than the contract rates.
+    payout_match_rate: Mapped[Decimal | None] = mapped_column(Dec(8, 6), nullable=True)
+    basis: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    calc_version: Mapped[str] = mapped_column(String(12), nullable=False)
