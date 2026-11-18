@@ -17,7 +17,11 @@ services:
     envVars:
       - key: DEMO_MODE
         value: "true"
-      - key: LLM_PROVIDER
-        value: scripted
+      # The assistant answers by rule until a key is added in the Render dashboard (Environment). With LLM_API_KEY
+      # set it uses the model below; with ANTHROPIC_API_KEY it uses Claude. Keys are never kept in this file.
+      - key: LLM_API_KEY
+        sync: false
+      - key: LLM_MODEL
+        value: gemini-flash-lite-latest
       - key: DATABASE_URL
         value: sqlite:////tmp/fullhouse.db
