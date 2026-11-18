@@ -5188,3 +5188,5 @@ button.ml-bars-row { cursor: pointer; }
   .ml-prep-station { break-after: page; box-shadow: none; border: 0; }
   .ml-prep-table { font-size: 22px; }
 }
+.ml-inline { display: inline-flex; align-items: center; gap: 6px; margin: 0; }
+.ml-inline .input { min-height: 44px; }

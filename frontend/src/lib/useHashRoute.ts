@@ -33,6 +33,7 @@ export const ROUTES = [
   'usage',
   'channels',
   'ordering-prep',
+  'labor',
   'approvals',
   'runs',
   'agents',

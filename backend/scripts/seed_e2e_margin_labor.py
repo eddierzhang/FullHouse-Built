@@ -11,7 +11,7 @@ from app.auth.models import User  # noqa: E402
 from app.auth.security import hash_password  # noqa: E402
 from app.db.session import SessionLocal  # noqa: E402
 from app.demo import DEMO_PROFILE  # noqa: E402
-from app.margin_labor import channels, demand, fixtures, menu_costs, usage  # noqa: E402
+from app.margin_labor import channels, demand, fixtures, labor, menu_costs, usage  # noqa: E402
 from app.margin_labor import settings as ml_settings  # noqa: E402
 from app.platform import flags  # noqa: E402
 from app.restaurant.models import Restaurant  # noqa: E402
@@ -48,6 +48,20 @@ def seed() -> None:
         usage.run(db, restaurant.id)
         channels.run(db, restaurant.id)
         demand.forecast_items(db, restaurant.id)
+        db.commit()
+        # A third restaurant for Labor, with orders through the day and punches: its orders would change the kitchen's channel figures.
+        floor = Restaurant(**{**DEMO_PROFILE, "name": "Labor Test Kitchen"}, setup_completed_at=datetime.now(timezone.utc))
+        db.add(floor)
+        db.flush()
+        db.add(User(email="labor@example.com", name="Labor Owner", password_hash=hash_password(PASSWORD), restaurant_id=floor.id))
+        db.add(User(email="labor-staff@example.com", name="Labor Staff", password_hash=hash_password(PASSWORD), restaurant_id=floor.id, role="member"))
+        for flag in (flags.V2_CONNECT, flags.ML_LABOR):
+            flags.set_flag(db, floor.id, flag, True)
+        db.commit()
+        service = labor.Service(db, floor.id)
+        fixtures.seed_service(db, floor.id, service.today, service.conf.timezone)
+        db.commit()
+        labor.forecast_labor(db, floor.id)
         db.commit()
         print("Seeded the Margin & Labor test kitchen")
     finally:

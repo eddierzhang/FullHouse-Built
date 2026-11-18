@@ -712,3 +712,146 @@ export function GroupedBars({ rows, series, unit, format, onPick }: { rows: Grou
     </div>
   )
 }
+
+
+export type RangeBar = { date: string; low: number; expected: number; high: number; marker?: number | null; chips?: string[] }
+
+/**
+ * Expected volume for each day as a bar from zero, with a whisker for the Likely range and a diamond for last
+ * week's actual. Anything known about the day (a holiday, an event) is written under it.
+ */
+export function RangeBars({ bars, unit, markerLabel, height = 260 }: { bars: RangeBar[]; unit: string; markerLabel: string; height?: number }) {
+  const [hover, setHover] = useState<number | null>(null)
+  const [ref, W] = useElementWidth<HTMLDivElement>()
+  const pad = { top: 20, right: 16, bottom: 56, left: 56 }
+  const innerW = W - pad.left - pad.right
+  const innerH = height - pad.top - pad.bottom
+  if (bars.length === 0) return <div ref={ref} />
+  const max = niceMax(Math.max(1, ...bars.flatMap((b) => [b.high, b.marker ?? 0])))
+  const slot = innerW / bars.length
+  const barW = Math.min(56, slot * 0.55)
+  const y = (v: number) => pad.top + innerH - (v / max) * innerH
+  const whole = (v: number) => Math.round(v).toLocaleString('en-US')
+  return (
+    <div className="chart" ref={ref}>
+      <svg width={W} height={height} viewBox={`0 0 ${W} ${height}`} role="img" aria-label={`Expected ${unit} for each day with the likely range, and ${markerLabel.toLowerCase()}`}>
+        {[0, 0.5, 1].map((f) => (
+          <g key={f}>
+            <line className="chart-grid" x1={pad.left} x2={W - pad.right} y1={y(max * f)} y2={y(max * f)} />
+            <text className="chart-axis" x={pad.left - 8} y={y(max * f) + 4} textAnchor="end">
+              {whole(max * f)}
+            </text>
+          </g>
+        ))}
+        <text className="chart-axis" transform={`translate(14 ${pad.top + innerH / 2}) rotate(-90)`} textAnchor="middle">
+          {unit}
+        </text>
+        {bars.map((b, i) => {
+          const cx = pad.left + slot * i + slot / 2
+          return (
+            <g key={b.date} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
+              <rect x={cx - slot / 2} y={pad.top} width={slot} height={innerH} fill="transparent" />
+              <rect x={cx - barW / 2} y={y(b.expected)} width={barW} height={Math.max(1, y(0) - y(b.expected))} rx={3} fill="var(--chart-1)" opacity={0.85} />
+              <line x1={cx} x2={cx} y1={y(b.high)} y2={y(b.low)} stroke="var(--ink)" strokeWidth={2} />
+              <line x1={cx - 7} x2={cx + 7} y1={y(b.high)} y2={y(b.high)} stroke="var(--ink)" strokeWidth={2} />
+              <line x1={cx - 7} x2={cx + 7} y1={y(b.low)} y2={y(b.low)} stroke="var(--ink)" strokeWidth={2} />
+              {b.marker != null && <path d={`M${cx + barW / 2 + 8},${y(b.marker) - 6} l6,6 l-6,6 l-6,-6 z`} fill="var(--surface)" stroke="var(--ink)" strokeWidth={1.5} />}
+              <text className="chart-label" x={cx} y={y(b.high) - 6} textAnchor="middle">
+                {whole(b.expected)}
+              </text>
+              <text className="chart-axis" x={cx} y={height - 38} textAnchor="middle">
+                {dayLabel(b.date).split(' ')[0]}
+              </text>
+              {(b.chips ?? []).slice(0, 1).map((chip) => (
+                <text key={chip} className="chart-axis ml-driver" x={cx} y={height - 22} textAnchor="middle">
+                  {chip.length > 16 ? `${chip.slice(0, 15)}…` : chip}
+                </text>
+              ))}
+            </g>
+          )
+        })}
+        <text className="chart-axis" x={pad.left + innerW / 2} y={height - 4} textAnchor="middle">
+          Day
+        </text>
+      </svg>
+      <div className="ml-coverage-key">
+        <span><span className="ml-key-fill" style={{ opacity: 0.85 }} /> Expected</span>
+        <span><span className="ml-key-solid" /> Likely range</span>
+        <span>
+          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+            <path d="M7,1 l5,6 l-5,6 l-5,-6 z" fill="var(--surface)" stroke="var(--ink)" strokeWidth="1.5" />
+          </svg>{' '}
+          {markerLabel}
+        </span>
+      </div>
+      {hover !== null && (
+        <div className="tooltip" style={{ left: `${((pad.left + slot * hover + slot / 2) / W) * 100}%` }}>
+          <div className="tooltip-title">{dayLabel(bars[hover].date)}</div>
+          <div className="tooltip-row">Expected {whole(bars[hover].expected)} {unit}</div>
+          <div className="tooltip-row">Likely range {whole(bars[hover].low)} to {whole(bars[hover].high)}</div>
+          {bars[hover].marker != null && <div className="tooltip-row">{markerLabel} {whole(bars[hover].marker as number)}</div>}
+          {(bars[hover].chips ?? []).map((c) => (
+            <div key={c} className="tooltip-row">{c}</div>
+          ))}
+          <div className="tooltip-row">Source: forecast and point-of-sale orders</div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** How often each rate was seen, with the standard in use as a labelled line across it. */
+export function Histogram({ bins, line, unit, height = 220 }: { bins: { from: number; to: number; count: number }[]; line?: { value: number; label: string }; unit: string; height?: number }) {
+  const [ref, W] = useElementWidth<HTMLDivElement>()
+  const pad = { top: 26, right: 20, bottom: 44, left: 52 }
+  const innerW = W - pad.left - pad.right
+  const innerH = height - pad.top - pad.bottom
+  if (bins.length === 0) return <div ref={ref}><p className="muted">No punches to show yet.</p></div>
+  const low = Math.min(bins[0].from, line?.value ?? bins[0].from)
+  const high = Math.max(bins[bins.length - 1].to, line?.value ?? 0)
+  const span = high - low || 1
+  const max = niceMax(Math.max(1, ...bins.map((b) => b.count)))
+  const x = (v: number) => pad.left + (bins.length === 1 && span === 1 && high === low ? innerW / 2 : ((v - low) / span) * innerW)
+  const y = (v: number) => pad.top + innerH - (v / max) * innerH
+  return (
+    <div className="chart" ref={ref}>
+      <svg width={W} height={height} viewBox={`0 0 ${W} ${height}`} role="img" aria-label={`How often each rate was observed, in ${unit}${line ? `, with ${line.label} marked` : ''}`}>
+        {[0, 0.5, 1].map((f) => (
+          <g key={f}>
+            <line className="chart-grid" x1={pad.left} x2={W - pad.right} y1={y(max * f)} y2={y(max * f)} />
+            <text className="chart-axis" x={pad.left - 8} y={y(max * f) + 4} textAnchor="end">
+              {Math.round(max * f)}
+            </text>
+          </g>
+        ))}
+        <text className="chart-axis" transform={`translate(14 ${pad.top + innerH / 2}) rotate(-90)`} textAnchor="middle">
+          half hours
+        </text>
+        {bins.map((b) => {
+          const left = b.to === b.from ? x(b.from) - 14 : x(b.from) + 1
+          const width = b.to === b.from ? 28 : Math.max(2, x(b.to) - x(b.from) - 2)
+          return (
+            <g key={`${b.from}-${b.to}`}>
+              <rect x={left} y={y(b.count)} width={width} height={Math.max(0, y(0) - y(b.count))} fill="var(--chart-1)" opacity={0.85}>
+                <title>{`${b.from} to ${b.to} ${unit}: ${b.count} half hours. Source: punches and orders`}</title>
+              </rect>
+            </g>
+          )
+        })}
+        <text className="chart-axis" x={pad.left} y={height - 24}>{low.toFixed(1)}</text>
+        <text className="chart-axis" x={W - pad.right} y={height - 24} textAnchor="end">{high.toFixed(1)}</text>
+        {line && (
+          <g>
+            <line x1={x(line.value)} x2={x(line.value)} y1={pad.top - 8} y2={pad.top + innerH} stroke="var(--ink)" strokeWidth={2} strokeDasharray="5 4" />
+            <text className="chart-label" x={Math.min(W - pad.right - 4, Math.max(pad.left + 4, x(line.value)))} y={pad.top - 12} textAnchor="middle">
+              {line.label}
+            </text>
+          </g>
+        )}
+        <text className="chart-axis" x={pad.left + innerW / 2} y={height - 6} textAnchor="middle">
+          {unit}
+        </text>
+      </svg>
+    </div>
+  )
+}

@@ -343,3 +343,60 @@ export const saveDeliveryDay = (body: { supplier_id: string; order_cutoff_weekda
 export const removeDeliveryDay = (id: string) => send<{ schedules: DeliveryDay[] }>('DELETE', `${BASE}/ordering/schedules/${id}`)
 export const fetchPrep = (day: string) => get<PrepSheet>(`${BASE}/prep/${day}`)
 export const proposePrep = (day: string) => send<{ proposal_id: string; made: boolean }>('POST', `${BASE}/prep/${day}/propose`)
+
+// --- Module D: Labor ---------------------------------------------------------------------------------
+
+export type LaborDay = { date: string; low: number | null; expected: number | null; high: number | null; last_week: number | null; drivers: string[]; net_expected: number | null }
+export type LaborStep = { start: string; label: string; need: number; need_if_busy: number; scheduled: number; units: number }
+export type LaborRoleWeek = { role_key: string; name: string; hours_p50: number; hours_p90: number; peak: number; peak_at: string | null; by_day: { date: string; hours_p50: number; hours_p90: number }[] }
+export type LaborWeek = {
+  state: ModuleState
+  setup: { key: string; done: boolean; count: number; of?: number }[]
+  weeks_of_data: number
+  primary: 'covers' | 'orders'
+  week_of: string
+  today: string
+  computed_at: string | null
+  stale: boolean
+  last_order_date: string | null
+  target_labor_pct: string | null
+  days: LaborDay[]
+  roles: LaborRoleWeek[]
+  totals: { hours_p50: number; hours_p90: number; expected: number; low: number; high: number; net_expected: number; days_forecast: number } | null
+  intervals: Record<string, Record<string, LaborStep[]>>
+  horizon_end: string
+  schedule: Schedule | null
+}
+export type StandardRow = {
+  role_key: string
+  name: string
+  driver_metric: string
+  units_per_labor_hour: string | null
+  min_on_floor: number
+  open_lead_minutes: number
+  close_lag_minutes: number
+  source: 'learned' | 'manual' | null
+  learned: { units_per_labor_hour: string; sample_size: number; effective_from: string } | null
+  observed_intervals: number
+  punch_weeks: number
+  needed_intervals: number
+  histogram: { from: number; to: number; count: number }[]
+}
+export type Standards = {
+  state: ModuleState
+  weeks_of_data: number
+  today: string
+  computed_at: string | null
+  primary: string
+  roles: StandardRow[]
+  accuracy: { dayparts: { daypart: string; wape: number }[]; coverage: number | null; target: number; calibration_factor: number | null; stage: string | null }
+}
+export type StandardBody = { role_key: string; units_per_labor_hour: string; min_on_floor: number; open_lead_minutes: number; close_lag_minutes: number }
+export type StandardPreview = { role_key: string; days: { date: string; before: number; after: number }[]; week_before: number; week_after: number; top: { date: string; before: number; after: number } }
+export const fetchLaborWeek = (weekOf: string) => get<LaborWeek>(`${BASE}/labor/weeks/${weekOf}`)
+export const fetchStandards = () => get<Standards>(`${BASE}/labor/standards`)
+export const previewStandard = (body: StandardBody) => send<StandardPreview>('POST', `${BASE}/labor/standards/preview`, body)
+export const saveStandard = (body: StandardBody) => send<Standards>('PUT', `${BASE}/labor/standards`, body)
+export const resetStandard = (roleKey: string) => send<Standards>('DELETE', `${BASE}/labor/standards/${roleKey}`)
+/** Filled in by the schedule (phase 6). */
+export type Schedule = Record<string, unknown>

@@ -82,4 +82,14 @@ One line per decision made where `docs/SPEC-margin-labor.md` was silent, or wher
 | 2026-11-17 | One prep sheet per business date across the old and new prep jobs; the cap is the date, not the older two-a-week | Ground rule 9's cap for `prep_sheet` |
 | 2026-11-17 | Prepped items are confirmed sub-recipes; all sit on one station, "Kitchen"; shelf life shows "Not set" | The app has no stations, and sub-recipes carry no shelf life yet |
 | 2026-11-17 | The existing order-line table gained two optional columns, and the draft writer stores them | The spec's `po_lines.suggested_qty` and `basis` |
+| 2026-11-17 | The two-week trend counts every day with sales, holidays included; only closures are left out of it | Leaving a few days out of a two-week mean tilts it by their weekday. Holidays and closures are still left out of the weekday medians and percentiles |
+| 2026-11-17 | A recompute is skipped only when the newest run had the same inputs | Inputs that change and change back must be worked out again |
+| 2026-11-17 | Each role's units are forecast as their own series (the role's driver and filter) and split by that series' own shape | A filter by POS category cannot be rebuilt from forecasts by channel |
+| 2026-11-17 | Dayparts are morning (to 11), lunch (11 to 3), afternoon (3 to 5), dinner (5 to 10) and late | The spec uses dayparts without defining them |
+| 2026-11-17 | Within an interval, Expected stays the day's share and the range is held around it | Re-sorting the three values would stop the intervals summing to the day |
+| 2026-11-17 | A role driven by covers follows orders when the POS gives no guest counts | Covers are never estimated |
+| 2026-11-17 | Labor hours in a half hour are the minutes clocked in it, so a rate is units per hour actually worked | "Heads" in the spec's formula, made exact for shifts that start mid-interval |
+| 2026-11-17 | Roles come from the staff list and from punches; a learned standard starts with a minimum on floor of 1 | The spec has no source for roles or a default floor |
+| 2026-11-17 | The cold-start entry of expected covers by daypart (under 4 weeks) is not built: the page shows the setup checklist | The spec's Setup state covers under 4 weeks; the owner-entry path is left for later and is listed in the report |
+| 2026-11-17 | The labor browser tests run in a third seeded restaurant | Its orders through the day would change the kitchen's channel figures |
 
