@@ -20,7 +20,7 @@ const STEPS: { title: string; body: string }[] = [
     body: "A new menu price, an order sized to the forecast, a prep sheet, a message to a rep, next week’s schedule. Each comes with its dollars a week and the working behind every number.",
   },
   {
-    title: "You decide, and you send",
+    title: "You decide, and you ask",
     body: "Approve, edit or dismiss, with ten seconds to undo. Nothing reaches a supplier, your staff, your point of sale or a delivery app unless a person sends it.",
   },
 ];
@@ -250,7 +250,7 @@ export function LandingPage({ options }: Props) {
                 make, an order bigger than the week needs. Its AI agent, the
                 Assistant Manager, reads the invoices, watches stock and sales,
                 and drafts the orders, messages and schedules. You decide and
-                send.
+                ask.
               </p>
               {actions}
               <p className="landing-note">
