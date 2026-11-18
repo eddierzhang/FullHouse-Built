@@ -452,7 +452,7 @@ export function InvoicesPage({ app }: { app: AppContext }) {
               <>
                 {!onboarding && (
                   <div className="pi-card-l1">
-                    <h1 className="pi-h1">Invoices</h1>
+                    <h2 className="pi-h1">Invoices</h2>
                     {mode === 'idle' && app.canManage && (
                       <button type="button" className="pi-btn-o" onClick={() => setMode('choose')}>
                         Add invoice

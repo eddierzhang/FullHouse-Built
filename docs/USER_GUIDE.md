@@ -4,19 +4,19 @@ For owners, admins, staff and bookkeepers. The same steps are in the app under *
 
 ## Getting around
 
-The sidebar starts with Today, Recommendations and Profit & forecast, then one section for each part of the
-business: **Inventory** (Inventory, Suppliers), **Invoices & prices** (Invoices, Digest), **Staffing** (Schedule &
-staff), **Customers** (Customer requests) and **Menu**. Then
-**Records** (History & undo), **Agent** (Assistant Manager, Agent activity) and **Restaurant** (Profile, then Help last).
+The sidebar starts with Today, Recommendations and Profit & forecast, then one entry for each part of the
+business: **Inventory**, **Suppliers & ordering**, **Invoices & prices**, **Labor and staffing**, **Customer
+requests** and **Menu**. Then **History & undo**, the **Agent** (Assistant Manager, Agent activity) and
+**Restaurant** (Profile, then Help last).
 
-Several entries hold more than one thing:
+Each entry holds more than one thing:
 
 - **Inventory** has tabs under its title: Stock, and with counting switched on, Count and Variance & waste.
-- **Suppliers** has tabs: Suppliers, and with deliveries switched on, Deliveries.
-- **Invoices** is one page, top to bottom: add an invoice and the invoices read so far, the questions to answer,
-  other documents, the items the invoices were matched to, and the conversation with the agent.
-- **Menu** is one page: menu costs and usage (when switched on), the dishes, recipes and prep sheets, with links at
-  the top to jump to each.
+- **Suppliers & ordering** has tabs: Suppliers, and where switched on, Deliveries, Ordering and prep, and Autopilot.
+- **Invoices & prices** is one page, top to bottom: this week's findings (the digest), adding an invoice and the
+  invoices read so far, the questions to answer, other documents, the items the invoices were matched to, and the
+  conversation with the agent. Links at the top jump to each.
+- **Menu** is one page: menu costs and usage (when switched on), the dishes, recipes and prep sheets.
 - **Labor and staffing** is one page: the labor forecast and draft schedule (when switched on), then the team and
   their shifts.
 

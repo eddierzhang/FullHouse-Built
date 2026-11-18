@@ -43,7 +43,6 @@ import { PrepSheetPage } from '../pages/PrepSheetPage'
 import { PurchaseOrderPage } from '../pages/PurchaseOrderPage'
 import { RecipePage } from '../pages/RecipePage'
 import { CustomersPage } from '../pages/CustomersPage'
-import { DigestPage } from '../pages/DigestPage'
 import { LaborPage } from '../ml/LaborPage'
 import { MenuCostsPage } from '../ml/MenuCostsPage'
 import { OrderingPage } from '../ml/OrderingPage'
@@ -101,14 +100,13 @@ const NAV: { label: string | null; items: NavItem[] }[] = [
     label: 'Inventory',
     items: [
       { route: 'inventory', label: 'Inventory', icon: 'inventory' },
-      { route: 'suppliers', label: 'Suppliers', icon: 'suppliers' },
+      { route: 'suppliers', label: 'Suppliers & ordering', icon: 'suppliers' },
     ],
   },
   {
     label: 'Invoices & prices',
     items: [
-      { route: 'invoices', label: 'Invoices', icon: 'suppliers' },
-      { route: 'digest', label: 'Digest', icon: 'profit' },
+      { route: 'invoices', label: 'Invoices & prices', icon: 'suppliers' },
     ],
   },
   {
@@ -161,11 +159,10 @@ const INSIGHTS_GROUP: { label: string; items: NavItem[] } = {
 }
 
 /** Pages that are tabs of another page (SectionTabs): the sidebar marks their section as the current page. */
-const SECTION_OF: Partial<Record<Route, Route>> = { count: 'inventory', variance: 'inventory', receive: 'suppliers', questions: 'invoices', items: 'invoices', thread: 'invoices', documents: 'invoices', 'menu-costs': 'menu', usage: 'menu', recipes: 'menu', prep: 'menu', channels: 'menu', labor: 'staff' }
+const SECTION_OF: Partial<Record<Route, Route>> = { count: 'inventory', variance: 'inventory', receive: 'suppliers', autopilot: 'suppliers', 'ordering-prep': 'suppliers', digest: 'invoices', questions: 'invoices', items: 'invoices', thread: 'invoices', documents: 'invoices', 'menu-costs': 'menu', usage: 'menu', recipes: 'menu', prep: 'menu', channels: 'menu', labor: 'staff' }
 
 /** The Margin & Labor Engine's pages, each behind its own flag, with the spec's labels. */
 const MARGIN_LABOR: { flag: string; item: NavItem }[] = [
-  { flag: 'ml_ordering', item: { route: 'ordering-prep', label: 'Ordering and prep', icon: 'suppliers' } },
 ]
 
 /** Words people type for a page that its name doesn't contain. */
@@ -433,7 +430,7 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
   const page = (() => {
     switch (route) {
       case 'digest':
-        return <DigestPage app={app} />
+        return <InvoiceHubPage app={app} section={route} />
       case 'menu-costs':
         return readHashParam() ? <MenuCostsPage app={app} /> : <MenuSectionsPage app={app} at={route} />
       case 'usage':
@@ -518,7 +515,6 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
   // draws and what search offers.
   const extra = (label: string | null): NavItem[] => {
     const more: NavItem[] = []
-    if (label === 'Inventory' && flags.v3_autopilot) more.push({ route: 'autopilot', label: 'Ordering autopilot', icon: 'play' })
     if (label === 'Restaurant' && flags.v2_calendar) more.push({ route: 'calendar', label: 'Calendar', icon: 'clock' })
     if (label === 'Restaurant' && flags.v2_connect) more.push({ route: 'connect', label: 'Connections', icon: 'suppliers' })
     return more
@@ -549,6 +545,7 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
     )
   // The sections of the Invoices page, by name.
   commandPages.push(
+    { label: 'Digest', href: '#digest', group: 'Invoices', icon: 'profit', keywords: PAGE_KEYWORDS.digest },
     { label: 'Questions', href: '#questions', group: 'Invoices', icon: 'approvals', keywords: PAGE_KEYWORDS.questions },
     { label: 'Items', href: '#items', group: 'Invoices', icon: 'inventory', keywords: PAGE_KEYWORDS.items },
     { label: 'Conversation', href: '#thread', group: 'Invoices', icon: 'chat', keywords: PAGE_KEYWORDS.thread },
@@ -560,6 +557,8 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
   if (flags.v2_documents) commandPages.push({ label: 'Recipes', href: '#recipes', group: 'Menu', icon: 'menu', keywords: PAGE_KEYWORDS.recipes })
   if (flags.v2_orders) commandPages.push({ label: 'Prep sheets', href: '#prep', group: 'Menu', icon: 'inventory', keywords: PAGE_KEYWORDS.prep })
   if (flags.ml_labor) commandPages.push({ label: 'Labor', href: '#labor', group: 'Staffing', icon: 'staff', keywords: PAGE_KEYWORDS.labor })
+  if (flags.ml_ordering) commandPages.push({ label: 'Ordering and prep', href: '#ordering-prep', group: 'Inventory', icon: 'suppliers', keywords: PAGE_KEYWORDS['ordering-prep'] })
+  if (flags.v3_autopilot && app.canManage) commandPages.push({ label: 'Ordering autopilot', href: '#autopilot', group: 'Inventory', icon: 'play', keywords: PAGE_KEYWORDS.autopilot })
   if (flags.v3_receiving) commandPages.push({ label: 'Deliveries', href: '#receive', group: 'Inventory', icon: 'suppliers', keywords: PAGE_KEYWORDS.receive })
   const navLink = (item: NavItem) => {
     const count = counts[item.route]

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { SectionTabs } from '../components/SectionTabs'
 import { approveAction, rejectAction } from '../api/client'
 import type { AppContext } from '../app/context'
 import { readHashParam } from '../lib/useHashRoute'
@@ -57,6 +58,7 @@ function OrderingList({ app }: { app: AppContext }) {
     return (
       <main className="page ml-page">
         <HeaderSentence title={TITLE} sentence={orderingSentence(data)} state="setup" />
+        <SectionTabs app={app} section="suppliers" />
         <SetupChecklist title="Before orders can be drafted" steps={steps} />
         {editor}
       </main>
@@ -122,6 +124,7 @@ function OrderingList({ app }: { app: AppContext }) {
           </button>
         )}
       </HeaderSentence>
+      <SectionTabs app={app} section="suppliers" />
       {data.stale && data.last_sales_date && <StateBanner kind="stale" text={`Sales were last imported ${dayLabel(data.last_sales_date)}. Import a newer export.`} action={{ label: 'Open connections', href: '#connect' }} />}
       <TileRow>
         <StatTile value={String(tiles.waiting.value)} label="Orders waiting" compare={`${tiles.waiting.lines} lines to order`} />

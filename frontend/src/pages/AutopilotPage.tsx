@@ -18,6 +18,7 @@ import {
 } from '../api/ordering'
 import type { AppContext } from '../app/context'
 import { Icon } from '../components/Icon'
+import { SectionTabs } from '../components/SectionTabs'
 import { Empty, Freshness, Loaded } from '../components/PageState'
 import { money, qty, relativeTime, shortDate } from '../lib/format'
 import { useLoad } from '../lib/useLoad'
@@ -430,6 +431,7 @@ export function AutopilotPage({ app }: { app: AppContext }) {
           )}
         </div>
       </div>
+      <SectionTabs app={app} section="suppliers" />
 
       <Loaded load={load} what="autopilot" placeholderHeight={300}>
         {(data) => (

@@ -138,8 +138,7 @@ export function DigestPage({ app }: { app: AppContext }) {
   )
 
   return (
-    <main className="pi">
-      <div className="pi-page">
+    <section className="pi-section" id="sec-digest" aria-label="This week">
         <Loaded load={digest} what="the digest" placeholderHeight={160}>
           {(d) => (
             <>
@@ -160,9 +159,9 @@ export function DigestPage({ app }: { app: AppContext }) {
                     )}
                   </p>
                 )}
-                <h1 className="pi-headline">
+                <h2 className="pi-headline">
                   <Money value={d.total} />
-                </h1>
+                </h2>
                 <p className="pi-sub">
                   at stake this week, across {d.item_count} {d.item_count === 1 ? 'item' : 'items'}, {d.supplier_count}{' '}
                   {d.supplier_count === 1 ? 'supplier' : 'suppliers'}
@@ -210,7 +209,6 @@ export function DigestPage({ app }: { app: AppContext }) {
             </>
           )}
         </Loaded>
-      </div>
-    </main>
+    </section>
   )
 }

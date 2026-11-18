@@ -13,16 +13,17 @@ test.beforeEach(async ({ page }) => {
 
 test('the digest opens on the dollars at stake, in three fixed sections, and "Not useful" hides a card', async ({ page }) => {
   await page.goto('/#digest')
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText(/^\$[\d,]+\.\d\d$/)
+  await expect(page.locator('#sec-digest .pi-headline')).toHaveText(/^\$[\d,]+\.\d\d$/)
   await expect(page.getByText(/at stake this week, across \d+ items?, \d+ suppliers?/)).toBeVisible()
 
-  const headings = page.getByRole('heading', { level: 2 })
+  const headings = page.locator('#sec-digest section').getByRole('heading', { level: 2 })
   await expect(headings.nth(0)).toContainText('Switch supplier')
   await expect(headings.nth(1)).toContainText('Price went up')
   await expect(headings.nth(2)).toContainText('Owed to you')
 
   // An item can sit in two sections (cheaper elsewhere, and up at its supplier); hiding it clears both.
-  const section = page.locator('section', { has: page.getByRole('heading', { level: 2, name: 'Switch supplier' }) })
+  // The innermost section with that heading: the digest itself is a section of the page.
+  const section = page.locator('section', { has: page.getByRole('heading', { level: 2, name: 'Switch supplier' }) }).last()
   const name = (await section.getByRole('article').first().getAttribute('aria-label'))!
   const card = section.getByRole('article', { name, exact: true })
   await card.getByRole('button', { name: 'Not useful' }).click()
@@ -40,7 +41,7 @@ test('the questions page is a count and the cards; answering one removes it', as
   const before = Number((await heading.innerText()).split(' ')[0])
   expect(before).toBeGreaterThanOrEqual(1)
 
-  const first = page.getByRole('article').first()
+  const first = page.getByRole('region', { name: 'Questions' }).getByRole('article').first()
   await expect(first).toContainText(/Is this/)
   await expect(first).toContainText(/on this invoice/)
   const option = first.getByRole('button').first()
@@ -88,21 +89,21 @@ test('"Draft message" on a price rise opens the editor; Discard returns to the d
 
   await page.getByRole('button', { name: 'Discard' }).click()
   await expect(page.getByText('Draft discarded')).toBeVisible()
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText(/^\$[\d,]+\.\d\d$/)
+  await expect(page.locator('#sec-digest .pi-headline')).toHaveText(/^\$[\d,]+\.\d\d$/)
 })
 
 test('the price pages sit in the sidebar beside the dashboards, each with its own controls', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('heading', { level: 1, name: /^Good/ })).toBeVisible()
   const group = page.getByRole('navigation', { name: 'Invoices & prices' })
-  // Invoices holds the invoices, the questions, the items and the conversation in one page; the digest reports on them.
-  await expect(group.getByRole('link')).toHaveText([/Invoices/, /Digest/])
+  // One entry holds the week's findings, the invoices, the questions, the items and the conversation.
+  await expect(group.getByRole('link')).toHaveText([/Invoices & prices/])
   // The dashboards keep the Assistant Manager's controls.
   await expect(page.getByRole('button', { name: 'New task' })).toBeVisible()
   await expect(page.getByPlaceholder('Ask about prices, invoices, or suppliers')).toHaveCount(0)
   // The price pages have the agent's field where New task was.
-  await group.getByRole('link', { name: /Digest/ }).click()
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText(/^\$[\d,]+\.\d\d$/)
+  await group.getByRole('link', { name: /Invoices & prices/ }).click()
+  await expect(page.locator('#sec-digest .pi-headline')).toHaveText(/^\$[\d,]+\.\d\d$/)
   await expect(page.getByRole('button', { name: 'New task' })).toHaveCount(0)
   await expect(page.getByPlaceholder('Ask about prices, invoices, or suppliers').first()).toBeVisible()
 })
@@ -135,9 +136,9 @@ test('the queue answers from the keyboard', async ({ page }) => {
   const before = Number((await heading.innerText()).split(' ')[0])
   expect(before).toBeGreaterThanOrEqual(2)
 
-  const firstText = await page.getByRole('article').first().getAttribute('aria-label')
+  const firstText = await page.getByRole('region', { name: 'Questions' }).getByRole('article').first().getAttribute('aria-label')
   await page.keyboard.press('Escape')
-  await expect(page.getByRole('article').first()).not.toHaveAttribute('aria-label', firstText!)
+  await expect(page.getByRole('region', { name: 'Questions' }).getByRole('article').first()).not.toHaveAttribute('aria-label', firstText!)
   await expect(heading).toHaveText(`${before} questions`)
 
   await page.keyboard.press('Enter')

@@ -5282,3 +5282,10 @@ button.ml-bars-row { cursor: pointer; }
 .top-findings-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .top-findings-dollars { flex: none; display: flex; flex-direction: column; align-items: flex-end; font-variant-numeric: tabular-nums; }
 .top-findings-dollars .strong { font-size: 18px; }
+
+/* Invoices & prices: the page's own heading and its jump links, which are buttons here. */
+.pi-hub-head { display: flex; flex-direction: column; gap: 14px; }
+.pi-hub-head .jump-links { margin: 0; }
+.jump-links button { padding: 6px 12px; border: 1px solid var(--border-strong); border-radius: 999px; font: inherit; font-size: 13px; font-weight: 600; color: var(--text); background: var(--surface); cursor: pointer; }
+.jump-links button:hover { border-color: var(--brand); }
+.pi-hub-head + .pi-section { padding-top: 0; border-top: 0; }

@@ -3,7 +3,7 @@ import { useHashRoute } from '../lib/useHashRoute'
 
 /**
  * The pages that share one sidebar entry, as tabs under the page header: Inventory holds stock, counting and
- * variance and waste; Suppliers holds the supplier list and deliveries. Each tab is a link, so every page keeps
+ * variance and waste; Suppliers & ordering holds the supplier list, deliveries, ordering and prep, and the autopilot. Each tab is a link, so every page keeps
  * its own address. Nothing is drawn when a section has only one page switched on.
  */
 export function SectionTabs({ app, section }: { app: AppContext; section: 'inventory' | 'suppliers' }) {
@@ -18,11 +18,13 @@ export function SectionTabs({ app, section }: { app: AppContext; section: 'inven
       : [
           { route: 'suppliers', label: 'Suppliers', on: true },
           { route: 'receive', label: 'Deliveries', on: app.flags.v3_receiving === true },
+          { route: 'ordering-prep', label: 'Ordering and prep', on: app.flags.ml_ordering === true },
+          { route: 'autopilot', label: 'Autopilot', on: app.flags.v3_autopilot === true && app.canManage },
         ]
   const shown = tabs.filter((tab) => tab.on)
   if (shown.length < 2) return null
   return (
-    <nav className="tabs" aria-label={section === 'inventory' ? 'Inventory pages' : 'Supplier pages'}>
+    <nav className="tabs" aria-label={section === 'inventory' ? 'Inventory pages' : 'Supplier and ordering pages'}>
       {shown.map((tab) => (
         <a key={tab.route} className="tab tab-link" href={`#${tab.route}`} aria-current={route === tab.route ? 'page' : undefined}>
           {tab.label}
