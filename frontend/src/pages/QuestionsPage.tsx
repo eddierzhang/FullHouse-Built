@@ -19,6 +19,7 @@ function inField(target: EventTarget | null): boolean {
  * From the keyboard: Enter answers the first card with its first option,
  * 1-3 pick that option, Esc skips it to the back of the queue.
  */
+/** A section of the Invoices page: what the reader could not settle on its own, one card each. */
 export function QuestionsPage({ app }: { app: AppContext }) {
   const questions = useLoad(listQuestions, [])
   const [gone, setGone] = useState<Set<string>>(new Set())
@@ -32,6 +33,7 @@ export function QuestionsPage({ app }: { app: AppContext }) {
     window.setTimeout(() => {
       setGone((g) => new Set(g).add(id))
       app.refresh()
+      window.dispatchEvent(new Event('fullhouse:question-answered')) // the conversation below shows it resolved
     }, 240)
   }
 
@@ -64,14 +66,13 @@ export function QuestionsPage({ app }: { app: AppContext }) {
   }, [first])
 
   return (
-    <main className="pi">
-      <div className="pi-page">
+    <section className="pi-section" id="sec-questions" aria-label="Questions">
         <Loaded load={questions} what="the questions" placeholderHeight={200}>
           {() => (
             <>
-              <h1 className="pi-h1" aria-live="polite">
+              <h2 className="pi-h1" aria-live="polite">
                 {open.length} {open.length === 1 ? 'question' : 'questions'}
-              </h1>
+              </h2>
               {open.length === 0 && <p className="pi-secondary">Nothing to answer this week.</p>}
               {open.length > 0 && <p className="pi-label pi-desktop-only">Enter answers yes · 1–3 pick · Esc skips</p>}
               <div className="pi-stack" aria-label="Questions">
@@ -88,7 +89,6 @@ export function QuestionsPage({ app }: { app: AppContext }) {
             </>
           )}
         </Loaded>
-      </div>
-    </main>
+    </section>
   )
 }

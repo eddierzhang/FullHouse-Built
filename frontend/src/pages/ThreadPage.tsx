@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react'
-import { type QuestionAnswer, type ThreadMessage, answerQuestion, discardDraft, fetchThread } from '../api/client'
+import { type ThreadMessage, discardDraft, fetchThread } from '../api/client'
 import type { AppContext } from '../app/context'
-import { Icon } from '../components/Icon'
 import { Loaded } from '../components/PageState'
-import { AgentMessage, QuestionCard, SourceChips, messageTime } from '../components/prices'
+import { AgentMessage, SourceChips, messageTime } from '../components/prices'
 import { useLoad } from '../lib/useLoad'
 
 /** How often to look again while the agent is still answering. */
@@ -68,7 +67,7 @@ function DraftInThread({ message, app, onChanged }: { message: ThreadMessage; ap
  * One conversation: the agent's questions, your questions, its answers, the
  * drafts it wrote, and the sources behind each. Oldest first.
  */
-export function ThreadPage({ app }: { app: AppContext }) {
+export function ThreadPage({ app, active = false }: { app: AppContext; active?: boolean }) {
   const thread = useLoad(fetchThread, [])
   const pending = thread.data?.some((m) => m.status === 'pending') ?? false
 
@@ -78,28 +77,21 @@ export function ThreadPage({ app }: { app: AppContext }) {
     return () => window.clearInterval(timer)
   }, [pending, thread.reload]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Newest at the bottom, where the field is.
+  // Newest at the bottom, where the field is: the conversation is the last section of the Invoices page.
   useEffect(() => {
-    if (thread.status === 'ready') window.scrollTo({ top: document.body.scrollHeight })
-  }, [thread.status, thread.data?.length])
+    if (active && thread.status === 'ready') window.scrollTo({ top: document.body.scrollHeight })
+  }, [active, thread.status, thread.data?.length])
 
-  const answer = async (id: string, body: QuestionAnswer) => {
-    await answerQuestion(id, body)
-    window.setTimeout(() => {
-      void thread.reload()
-      app.refresh()
-    }, 240)
-  }
+  // A question answered in the Questions section above shows as resolved here.
+  useEffect(() => {
+    const onAnswered = () => void thread.reload()
+    window.addEventListener('fullhouse:question-answered', onAnswered)
+    return () => window.removeEventListener('fullhouse:question-answered', onAnswered)
+  }, [thread.reload]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <main className="pi">
-      <div className="pi-page">
-        <a className="pi-back" href="#digest">
-          <span style={{ display: 'inline-flex', transform: 'rotate(180deg)' }}>
-            <Icon name="arrowRight" size={16} />
-          </span>
-          Digest
-        </a>
+    <section className="pi-section" id="sec-thread" aria-label="Conversation">
+        <h2 className="pi-h1">Conversation</h2>
         <Loaded load={thread} what="the conversation" placeholderHeight={200}>
           {(messages) =>
             messages.length === 0 ? (
@@ -116,7 +108,13 @@ export function ThreadPage({ app }: { app: AppContext }) {
                     <div key={m.id} className="pi-agent">
                       <p className="pi-label">{messageTime(m.created_at)}</p>
                       {m.question.status === 'open' ? (
-                        <QuestionCard question={m.question} onAnswer={(body) => answer(m.question!.id, body)} />
+                        // The card itself is in the Questions section of this page: one place to answer.
+                        <>
+                          <p>{m.text || m.question.text}</p>
+                          <p className="pi-label">
+                            Open. <a href="#questions">Answer it above</a>
+                          </p>
+                        </>
                       ) : (
                         <>
                           <p>{m.text || m.question.text}</p>
@@ -143,7 +141,6 @@ export function ThreadPage({ app }: { app: AppContext }) {
             )
           }
         </Loaded>
-      </div>
-    </main>
+    </section>
   )
 }

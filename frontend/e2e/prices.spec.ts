@@ -35,7 +35,7 @@ test('the digest opens on the dollars at stake, in three fixed sections, and "No
 
 test('the questions page is a count and the cards; answering one removes it', async ({ page }) => {
   await page.goto('/#questions')
-  const heading = page.getByRole('heading', { level: 1 })
+  const heading = page.getByRole('region', { name: 'Questions' }).getByRole('heading', { level: 2 })
   await expect(heading).toHaveText(/^\d+ questions?$/)
   const before = Number((await heading.innerText()).split(' ')[0])
   expect(before).toBeGreaterThanOrEqual(1)
@@ -95,8 +95,8 @@ test('the price pages sit in the sidebar beside the dashboards, each with its ow
   await page.goto('/')
   await expect(page.getByRole('heading', { level: 1, name: /^Good/ })).toBeVisible()
   const group = page.getByRole('navigation', { name: 'Invoices & prices' })
-  // In the order an invoice moves through: read, asked about, kept by item, reported on, talked over.
-  await expect(group.getByRole('link')).toHaveText([/Invoices/, /Questions/, /Items/, /Digest/, /Conversation/])
+  // Invoices holds the invoices, the questions, the items and the conversation in one page; the digest reports on them.
+  await expect(group.getByRole('link')).toHaveText([/Invoices/, /Digest/])
   // The dashboards keep the Assistant Manager's controls.
   await expect(page.getByRole('button', { name: 'New task' })).toBeVisible()
   await expect(page.getByPlaceholder('Ask about prices, invoices, or suppliers')).toHaveCount(0)
@@ -130,7 +130,7 @@ test('a PDF is read into lines before anything is saved', async ({ page }) => {
 
 test('the queue answers from the keyboard', async ({ page }) => {
   await page.goto('/#questions')
-  const heading = page.getByRole('heading', { level: 1 })
+  const heading = page.getByRole('region', { name: 'Questions' }).getByRole('heading', { level: 2 })
   await expect(heading).toHaveText(/^\d+ questions?$/)
   const before = Number((await heading.innerText()).split(' ')[0])
   expect(before).toBeGreaterThanOrEqual(2)
@@ -163,7 +163,7 @@ test('the inventory page shows what the invoices paid, and the item page says wh
 
 test('Items says what its numbers mean: last price per pack, the eight-week change with its share, and a summary line', async ({ page }) => {
   await page.goto('/#items')
-  await expect(page.getByRole('heading', { level: 1, name: 'Items' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 2, name: 'Items' })).toBeVisible()
   await expect(page.getByText(/The figure on the right is the change per pack/)).toBeVisible()
   await expect(page.getByLabel('Items summary')).toContainText(/^\d+ items? matched from your invoices\./)
   const rows = page.getByRole('listitem')

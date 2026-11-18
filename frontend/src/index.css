@@ -5224,3 +5224,10 @@ button.ml-bars-row { cursor: pointer; }
 /* Section tabs as links (Inventory: Stock, Count, Variance & waste; Suppliers: Suppliers, Deliveries). */
 .tab-link { display: inline-flex; align-items: center; text-decoration: none; white-space: nowrap; }
 .tab-link[aria-current='page'] { border-bottom-color: var(--brand); color: var(--text); }
+
+/* The Invoices page: its sections (questions, other documents, items, conversation) one under another. */
+.pi-section { display: flex; flex-direction: column; gap: 28px; scroll-margin-top: 80px; }
+.pi-section + .pi-section { padding-top: 28px; border-top: 1px solid var(--border); }
+.pi-docs-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.pi-docs-head > div:first-child { flex: 1 1 260px; }
+.pi-section .card { font-size: 14px; line-height: 1.45; }

@@ -444,8 +444,7 @@ export function InvoicesPage({ app }: { app: AppContext }) {
   const source: InvoiceSource = mode === 'billcom' ? 'billcom' : photo ? 'photo' : readFrom === 'pdf' ? 'pdf' : parsed && pasted ? 'email' : 'typed'
 
   return (
-    <main className="pi">
-      <div className="pi-page">
+    <section className="pi-section" id="sec-invoices" aria-label="Invoices">
         <Loaded load={status} what="your invoices" placeholderHeight={200}>
           {(s) => {
             const onboarding = s.invoice_count === 0 && !first && !summary
@@ -629,7 +628,6 @@ export function InvoicesPage({ app }: { app: AppContext }) {
             )
           }}
         </Loaded>
-      </div>
-    </main>
+    </section>
   )
 }

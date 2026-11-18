@@ -36,8 +36,8 @@ import { announceDataChanged } from '../lib/useLoad'
 import { PRICE_ROUTES, type Route, readHashParam, useHashRoute } from '../lib/useHashRoute'
 import { AgentsPage } from '../pages/AgentsPage'
 import { CalendarPage } from '../pages/CalendarPage'
+import { InvoiceHubPage } from '../pages/InvoiceHubPage'
 import { ConnectPage } from '../pages/ConnectPage'
-import { DocumentsPage } from '../pages/DocumentsPage'
 import { PrepSheetPage, PrepSheetsPage } from '../pages/PrepSheetPage'
 import { PurchaseOrderPage } from '../pages/PurchaseOrderPage'
 import { RecipePage } from '../pages/RecipePage'
@@ -50,11 +50,7 @@ import { OrderingPage } from '../ml/OrderingPage'
 import { ChannelsPage } from '../ml/ChannelsPage'
 import { UsagePage } from '../ml/UsagePage'
 import { DraftPage } from '../pages/DraftPage'
-import { InvoicesPage } from '../pages/InvoicesPage'
 import { ItemPage } from '../pages/ItemPage'
-import { ItemsPage } from '../pages/ItemsPage'
-import { QuestionsPage } from '../pages/QuestionsPage'
-import { ThreadPage } from '../pages/ThreadPage'
 import { HelpPage } from '../pages/HelpPage'
 import { AutopilotPage } from '../pages/AutopilotPage'
 import { CountPage } from '../pages/CountPage'
@@ -114,10 +110,7 @@ const NAV: { label: string | null; items: NavItem[] }[] = [
     label: 'Invoices & prices',
     items: [
       { route: 'invoices', label: 'Invoices', icon: 'suppliers' },
-      { route: 'questions', label: 'Questions', icon: 'approvals' },
-      { route: 'items', label: 'Items', icon: 'inventory' },
       { route: 'digest', label: 'Digest', icon: 'profit' },
-      { route: 'thread', label: 'Conversation', icon: 'chat' },
     ],
   },
   {
@@ -173,7 +166,7 @@ const INSIGHTS_GROUP: { label: string; items: NavItem[] } = {
 }
 
 /** Pages that are tabs of another page (SectionTabs): the sidebar marks their section as the current page. */
-const SECTION_OF: Partial<Record<Route, Route>> = { count: 'inventory', variance: 'inventory', receive: 'suppliers' }
+const SECTION_OF: Partial<Record<Route, Route>> = { count: 'inventory', variance: 'inventory', receive: 'suppliers', questions: 'invoices', items: 'invoices', thread: 'invoices', documents: 'invoices' }
 
 /** The Margin & Labor Engine's pages, each behind its own flag, with the spec's labels. */
 const MARGIN_LABOR: { flag: string; item: NavItem }[] = [
@@ -439,7 +432,7 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
   const lowStock = inventory.filter((i) => i.quantity_on_hand <= i.reorder_threshold).length
   const openQuestions = questions.filter((q) => q.status === 'open').length
   const counts: Partial<Record<Route, { value: number; attention: boolean }>> = {
-    questions: { value: openQuestions, attention: openQuestions > 0 },
+    invoices: { value: openQuestions, attention: openQuestions > 0 }, // questions are answered on the Invoices page
     approvals: { value: pendingActions.length, attention: pendingActions.length > 0 },
     inventory: { value: lowStock, attention: lowStock > 0 },
   }
@@ -461,17 +454,17 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
       case 'labor':
         return <LaborPage app={app} />
       case 'items':
-        return <ItemsPage app={app} />
+        return <InvoiceHubPage app={app} section={route} />
       case 'item':
         return <ItemPage app={app} />
       case 'questions':
-        return <QuestionsPage app={app} />
+        return <InvoiceHubPage app={app} section={route} />
       case 'thread':
-        return <ThreadPage app={app} />
+        return <InvoiceHubPage app={app} section={route} />
       case 'draft':
         return <DraftPage app={app} />
       case 'invoices':
-        return <InvoicesPage app={app} />
+        return <InvoiceHubPage app={app} section={route} />
       case 'approvals':
         return <ApprovalsPage app={app} />
       case 'runs':
@@ -491,7 +484,7 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
       case 'connect':
         return <ConnectPage app={app} user={user} />
       case 'documents':
-        return <DocumentsPage app={app} />
+        return <InvoiceHubPage app={app} section={route} />
       case 'recipes':
         return <RecipesPage app={app} />
       case 'recipe':
@@ -537,7 +530,6 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
     if (label === 'Inventory' && flags.v3_autopilot) more.push({ route: 'autopilot', label: 'Ordering autopilot', icon: 'play' })
     if (label === 'Restaurant' && flags.v2_calendar) more.push({ route: 'calendar', label: 'Calendar', icon: 'clock' })
     if (label === 'Restaurant' && flags.v2_connect) more.push({ route: 'connect', label: 'Connections', icon: 'suppliers' })
-    if (label === 'Invoices & prices' && flags.v2_documents) more.push({ route: 'documents', label: 'Documents', icon: 'clock' })
     if (label === 'Menu' && flags.v2_documents) more.push({ route: 'recipes', label: 'Recipes', icon: 'menu' })
     if (label === 'Menu' && flags.v2_orders) more.push({ route: 'prep', label: 'Prep sheets', icon: 'inventory' })
     return more
@@ -563,6 +555,13 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
       { label: 'Count stock', href: '#count', group: 'Inventory', icon: 'check', keywords: PAGE_KEYWORDS.count },
       { label: 'Variance & waste', href: '#variance', group: 'Inventory', icon: 'trend', keywords: PAGE_KEYWORDS.variance },
     )
+  // The sections of the Invoices page, by name.
+  commandPages.push(
+    { label: 'Questions', href: '#questions', group: 'Invoices', icon: 'approvals', keywords: PAGE_KEYWORDS.questions },
+    { label: 'Items', href: '#items', group: 'Invoices', icon: 'inventory', keywords: PAGE_KEYWORDS.items },
+    { label: 'Conversation', href: '#thread', group: 'Invoices', icon: 'chat', keywords: PAGE_KEYWORDS.thread },
+  )
+  if (flags.v2_documents) commandPages.push({ label: 'Documents', href: '#documents', group: 'Invoices', icon: 'clock', keywords: PAGE_KEYWORDS.documents })
   if (flags.v3_receiving) commandPages.push({ label: 'Deliveries', href: '#receive', group: 'Inventory', icon: 'suppliers', keywords: PAGE_KEYWORDS.receive })
   const navLink = (item: NavItem) => {
     const count = counts[item.route]

@@ -47,10 +47,9 @@ function summary(rows: PriceItem[]) {
 export function ItemsPage(_: { app: AppContext }) {
   const items = useLoad(listPriceItems, [])
   return (
-    <main className="pi">
-      <div className="pi-page">
+    <section className="pi-section" id="sec-items" aria-label="Items">
         <div>
-          <h1 className="pi-h1">Items</h1>
+          <h2 className="pi-h1">Items</h2>
           <p className="pi-secondary pi-intro">
             Every item the invoices have been matched to, with the price you last paid per pack and how that price moved over the
             last eight weeks at the same supplier. The figure on the right is the change per pack: <span className="pi-up">red is up</span>
@@ -98,7 +97,6 @@ export function ItemsPage(_: { app: AppContext }) {
             )
           }
         </Loaded>
-      </div>
-    </main>
+    </section>
   )
 }

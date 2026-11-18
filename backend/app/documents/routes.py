@@ -55,7 +55,8 @@ def _out(document: Document) -> DocumentOut:
     summary = {k: v for k, v in extracted.items() if k in ("supplier", "supplier_guess", "effective_date", "date_guess", "name", "title", "issuer",
                                                            "expires_on", "issued_on", "asset_name", "proposed", "unmatched", "low_confidence",
                                                            "classification", "error", "reader", "reference", "total")}
-    summary["lines"] = len(extracted.get("lines") or [])
+    lines = extracted.get("lines") or []
+    summary["lines"] = lines if isinstance(lines, int) else len(lines)  # some readers store the count, some the lines
     return DocumentOut(
         id=document.id, doc_type=document.doc_type, type_confidence=document.type_confidence, filename=document.filename,
         media_type=document.media_type, source=document.source, status=document.status, confidence=document.confidence,

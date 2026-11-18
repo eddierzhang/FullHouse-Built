@@ -66,11 +66,11 @@ export function DocumentsPage({ app }: { app: AppContext }) {
   }
 
   return (
-    <main className="page">
-      <div className="page-header">
+    <section className="pi-section" id="sec-documents" aria-label="Other documents">
+      <div className="pi-docs-head">
         <div>
-          <h1 className="page-title">Documents</h1>
-          <p className="page-subtitle">Invoices, price lists, recipe cards, permits and warranties. Each is read for what it is and turned into something to check.</p>
+          <h2 className="pi-h1">Other documents</h2>
+          <p className="pi-secondary">Price lists, recipe cards, permits and warranties. Each is read for what it is and turned into something to check.</p>
         </div>
         <label className="field" style={{ width: 180 }}>
           <span className="field-label">It is a…</span>
@@ -146,6 +146,6 @@ export function DocumentsPage({ app }: { app: AppContext }) {
           )
         }
       </Loaded>
-    </main>
+    </section>
   )
 }
