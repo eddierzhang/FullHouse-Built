@@ -107,20 +107,20 @@ test.describe('navigation', () => {
     await expect(nav.getByRole('link', { name: /^Help/ })).toBeVisible()
     const labels = await nav.getByRole('link').allInnerTexts()
     const names = labels.map((l) => l.replace(/\d+$/, '').trim())
-    // The day's check-in first, then a section each for stock, staffing, customers, invoices and prices, the menu,
+    // The day's check-in first, then a section each for stock, invoices and prices, staffing, customers, the menu,
     // the agent, the records and the restaurant.
     expect(names).toEqual([
       'Today',
       'Recommendations',
       'Inventory',
       'Suppliers',
-      'Schedule & staff',
-      'Customer requests',
       'Invoices',
       'Questions',
       'Items',
       'Digest',
       'Conversation',
+      'Schedule & staff',
+      'Customer requests',
       'Menu',
       'Assistant Manager',
       'Agent activity',

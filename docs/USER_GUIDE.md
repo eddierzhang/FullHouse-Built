@@ -5,8 +5,8 @@ For owners, admins, staff and bookkeepers. The same steps are in the app under *
 ## Getting around
 
 The sidebar starts with Today and Recommendations, then one section for each part of the business: **Inventory**
-(Inventory, Suppliers), **Staffing** (Schedule & staff), **Customers** (Customer requests), **Invoices & prices** in
-the order an invoice moves through it (Invoices, Questions, Items, Digest, Conversation), and **Menu**. Then **Agent**
+(Inventory, Suppliers), **Invoices & prices** in the order an invoice moves through it (Invoices, Questions, Items,
+Digest, Conversation), **Staffing** (Schedule & staff), **Customers** (Customer requests), and **Menu**. Then **Agent**
 (Assistant Manager, Agent activity), **Records** (Profit & forecast, History & undo) and **Restaurant** (Profile,
 Help). On a phone, Today, Inventory, Schedule and Recommendations are the bottom bar, and everything else is behind
 **More**.
