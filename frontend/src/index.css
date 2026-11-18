@@ -1736,6 +1736,7 @@ code {
   }
 
   .landing-band {
+    width: auto; /* with side margins, a full-width band ran 16px off a phone's screen */
     margin: 0 16px 40px;
     padding: 48px 20px;
     border-radius: 20px;
@@ -5206,3 +5207,7 @@ button.ml-bars-row { cursor: pointer; }
 .ml-today { max-width: 640px; }
 .ml-today .ml-tiles { grid-template-columns: 1fr; }
 @media (min-width: 560px) { .ml-today .ml-tiles { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); } }
+
+/* Landing page: four steps sit in one row on a wide screen, two by two below that, and stack on a phone. */
+@media (min-width: 1100px) { .landing-steps { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (min-width: 721px) and (max-width: 1099px) { .landing-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

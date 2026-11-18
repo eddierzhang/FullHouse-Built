@@ -9,15 +9,19 @@ type Props = {
 const STEPS: { title: string; body: string }[] = [
   {
     title: "An AI agent reads what you already have",
-    body: "Supplier invoices from Bill.com, a forwarded email, a phone photo or a PDF, and sales from your point of sale. Every invoice line is matched to one item, so a case from one supplier compares with a case from another.",
+    body: "Supplier invoices from Bill.com, a forwarded email, a phone photo or a PDF. Sales, time punches and delivery payouts from your point of sale or a spreadsheet export. Nothing has to be counted or typed in twice.",
   },
   {
-    title: "It finds where the money goes",
-    body: "A price that crept up. A short delivery nobody claimed. A dish that now costs too much to make. An order bigger than the week needs. Each one comes with its dollars a week and the invoices behind it.",
+    title: "It works out what each thing costs you",
+    body: "What every dish costs to make at this week’s prices. Which ingredients are bought faster than recipes use them. What each item keeps on each delivery app. How many people each hour of the week needs.",
+  },
+  {
+    title: "It drafts what to do about it",
+    body: "A new menu price, an order sized to the forecast, a prep sheet, a message to a rep, next week’s schedule. Each comes with its dollars a week and the working behind every number.",
   },
   {
     title: "You decide, and you send",
-    body: "The AI agent drafts the order, the message to the rep, the new price and the schedule. You approve, edit or dismiss. Nothing reaches a supplier, your staff or your point of sale unless you send it.",
+    body: "Approve, edit or dismiss, with ten seconds to undo. Nothing reaches a supplier, your staff, your point of sale or a delivery app unless a person sends it.",
   },
 ];
 
@@ -25,51 +29,74 @@ const AREAS: { icon: IconName; title: string; body: string }[] = [
   {
     icon: "profit",
     title: "One list of what to fix",
-    body: "A weekly digest ranked by dollars: switch supplier, price went up, owed to you. The dollars at stake this week sit in one number at the top.",
+    body: "A weekly digest ranked by dollars: switch supplier, price went up, owed to you, dishes over target. The dollars at stake sit in one number at the top.",
   },
   {
     icon: "suppliers",
     title: "Supplier prices, watched",
-    body: "Eight weeks of per-case prices by supplier, with the invoice lines as printed. A price challenge or credit claim is drafted for you to send.",
-  },
-  {
-    icon: "inventory",
-    title: "Stock and ordering",
-    body: "Stock follows deliveries and sales. Orders are drafted from what you sell and what is on hand, in whole cases, before each supplier’s cutoff.",
+    body: "Eight weeks of per-case prices by supplier, with the invoice lines as printed. A price challenge or a credit claim is drafted for you to send.",
   },
   {
     icon: "menu",
-    title: "What each dish costs",
-    body: "Recipes are costed from your latest invoices. When an ingredient rises, you see which dishes pass your food cost target and the price that would fix it.",
+    title: "Menu costs",
+    body: "Every dish is recosted the moment an ingredient price changes. You see which ones pass your food cost target, what that costs a week, and the price that would fix it.",
+  },
+  {
+    icon: "trend",
+    title: "Usage, without counting",
+    body: "What recipes say was used against what was bought, ingredient by ingredient. The gap is ranked in dollars a week, with three checks to find its cause.",
+  },
+  {
+    icon: "inventory",
+    title: "Ordering and prep",
+    body: "Orders drafted from the sales forecast, in whole cases, before each supplier’s cutoff. A prep sheet each morning with a par for every item, ready to print.",
   },
   {
     icon: "staff",
-    title: "The schedule and labor",
-    body: "A draft schedule built from how busy each hour is expected to be, checked against the rules you set. You edit it and publish it.",
+    title: "Labor and the schedule",
+    body: "People needed by the half hour, from expected sales and your own standards. A draft schedule checked against the rules you set, then cut or extend suggestions during service.",
   },
   {
-    icon: "approvals",
-    title: "Inside your limits",
-    body: "The AI agent proposes; people approve. It cannot place an order, change a price or publish a schedule on its own. An order goes out by itself only if you switch autopilot on for that supplier, inside limits you set, with time to stop it.",
+    icon: "store",
+    title: "Delivery channels",
+    body: "What each item keeps on each delivery app after commission, fees, packaging and food cost, and the price at which it stops losing money.",
+  },
+  {
+    icon: "clock",
+    title: "Stock, deliveries and waste",
+    body: "Stock follows deliveries and sales. Check a delivery in against its order, log waste in three taps, and count a shelf from your phone when you want to.",
+  },
+  {
+    icon: "chat",
+    title: "Ask, don’t browse",
+    body: "“What did I pay for kale last month.” “Which supplier is cheapest on paper goods.” Two sentences back, with the invoices it used.",
   },
 ];
 
 const ASSURANCES: { title: string; body: string }[] = [
   {
+    title: "A person always sends",
+    body: "The AI agent proposes; people approve. It cannot place an order, change a price, publish a schedule or message your staff on its own.",
+  },
+  {
+    title: "Every number shows its working",
+    body: "Click any figure to see the formula, each input and the invoice or recipe it came from. With too little data, it says so instead of guessing.",
+  },
+  {
     title: "Your restaurant only",
     body: "Each restaurant’s data is kept apart. Nobody outside your team can see or change it.",
   },
   {
-    title: "A bookkeeper can help",
-    body: "Invite your bookkeeper to answer the agent’s questions across every client they keep. You see the questions as resolved.",
+    title: "Wages stay private",
+    body: "Hourly rates are seen only by owners and managers. Everyone else sees hours, never a rate or a cost.",
   },
   {
-    title: "Two-step sign-in",
-    body: "Owners and admins sign in with a password and a code from their phone.",
+    title: "Your rules, not ours",
+    body: "Labor rules, targets and limits are yours to set, and nothing is enforced until you confirm it. FullHouse gives no legal advice.",
   },
   {
     title: "Yours to take away",
-    body: "Download everything your restaurant keeps here as spreadsheet files, whenever you like.",
+    body: "Download everything your restaurant keeps here as spreadsheet files, whenever you like. Owners sign in with a password and a code from their phone.",
   },
 ];
 
@@ -193,7 +220,7 @@ export function LandingPage({ options }: Props) {
               {actions}
               <p className="landing-note">
                 {options?.demo
-                  ? "The demo is a sample bistro with eight weeks of invoices from four suppliers. It resets every day, so try anything."
+                  ? "The demo is a sample bistro with eight weeks of invoices, stock and orders. It resets every day, so try anything."
                   : closed
                     ? "Joining your restaurant’s team? Ask the owner or a manager for an invite link."
                     : canSignUp
@@ -264,8 +291,8 @@ export function LandingPage({ options }: Props) {
           </h2>
           <p>
             {canSignUp
-              ? "Connect Bill.com, forward an invoice, or snap a photo of one. The first list of what to fix comes the Monday after."
-              : "Sign in to see this week’s digest."}
+              ? "Connect Bill.com, forward an invoice, or snap a photo of one. The first list of what to fix comes the Monday after; costs, ordering and labor switch on as their data arrives."
+              : "Sign in to see what needs your attention this week."}
           </p>
           {actions}
         </section>
