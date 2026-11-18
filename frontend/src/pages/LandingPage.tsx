@@ -8,7 +8,7 @@ type Props = {
 
 const STEPS: { title: string; body: string }[] = [
   {
-    title: "It reads what you already have",
+    title: "An AI agent reads what you already have",
     body: "Supplier invoices from Bill.com, a forwarded email, a phone photo or a PDF, and sales from your point of sale. Every invoice line is matched to one item, so a case from one supplier compares with a case from another.",
   },
   {
@@ -17,7 +17,7 @@ const STEPS: { title: string; body: string }[] = [
   },
   {
     title: "You decide, and you send",
-    body: "It drafts the order, the message to the rep, the new price and the schedule. You approve, edit or dismiss. Nothing reaches a supplier, your staff or your point of sale unless you send it.",
+    body: "The AI agent drafts the order, the message to the rep, the new price and the schedule. You approve, edit or dismiss. Nothing reaches a supplier, your staff or your point of sale unless you send it.",
   },
 ];
 
@@ -50,7 +50,7 @@ const AREAS: { icon: IconName; title: string; body: string }[] = [
   {
     icon: "approvals",
     title: "Inside your limits",
-    body: "The agent proposes; people approve. An order goes out by itself only if you switch autopilot on for that supplier, inside limits you set, with time to stop it.",
+    body: "The AI agent proposes; people approve. It cannot place an order, change a price or publish a schedule on its own. An order goes out by itself only if you switch autopilot on for that supplier, inside limits you set, with time to stop it.",
   },
 ];
 
@@ -185,8 +185,10 @@ export function LandingPage({ options }: Props) {
                 FullHouse keeps your invoices, stock, orders, menu costs and
                 schedule together, and each week shows where money is slipping
                 away: a supplier price that rose, a dish that costs too much to
-                make, an order bigger than the week needs. An agent does the
-                reading and the drafting. You decide and send.
+                make, an order bigger than the week needs. Its AI agent, the
+                Assistant Manager, reads the invoices, watches stock and sales,
+                and drafts the orders, messages and schedules. You decide and
+                send.
               </p>
               {actions}
               <p className="landing-note">
