@@ -6,7 +6,7 @@ import { useLoad } from '../lib/useLoad'
 import { type DishRow, fetchMenuCosts, type MenuCosts, requestReprice } from './api'
 import { Scatter, SortedBars, Sparkline } from './charts'
 import { DishCostPage } from './DishCostPage'
-import { dayLabel, dollars, percent, timeLabel } from './format'
+import { dayLabel, dollars, percent, timeLabel, useRestaurantClock } from './format'
 import {
   HeaderSentence,
   LoadFailed,
@@ -49,6 +49,7 @@ export function headerSentence(data: MenuCosts): string {
 }
 
 export function MenuCostsPage({ app }: { app: AppContext }) {
+  useRestaurantClock(app.restaurant.timezone)
   // "#menu-costs/abc" is one dish; "#menu-costs" is the list.
   const [param, setParam] = useState(readHashParam)
   useEffect(() => {

@@ -104,4 +104,16 @@ One line per decision made where `docs/SPEC-margin-labor.md` was silent, or wher
 | 2026-11-17 | Publish is the button on the Labor page; approving the proposal in Recommendations does the same. PDF is the browser's print of the week | One action, two doors. The spec asks for PDF and CSV exports |
 | 2026-11-17 | Only the owner confirms labor rules; a manager edits schedules | Spec 14: the owner confirms `labor_rules` for their location |
 | 2026-11-17 | One schedule per week, whose version rises with each regenerate | "Draft v2" in the spec's sketch, and one proposal a week |
+| 2026-11-17 | People on now come from today's punches when there are any, else from the schedule | Punches arrive by import, not live; the schedule is what is known during service |
+| 2026-11-17 | A suggested time is on the quarter hour, at least 30 minutes ahead | The spec's example: at 7:15, cut at 7:45 |
+| 2026-11-17 | Accepting a cut or an extension moves that shift's end on the schedule; a call-in changes nothing | "Record the manager's decision", and the people-on figures should follow it. Nobody is messaged |
+| 2026-11-17 | An expired suggestion is not a dismissal: the next run may suggest again | The spec's hour of quiet is for a dismissal |
+| 2026-11-17 | The "push notification" is the app's own notification (the bell), for owners and managers only | The app has no push channel; ground rule 7 forbids messaging staff |
+| 2026-11-17 | Suggestions, savings and labor cost go only to owners and managers | A saving is hours times one person's rate |
+| 2026-11-17 | The 25% accuracy gate uses the average miss of the current daypart over the last 4 weeks | Spec 8.6 |
+| 2026-11-17 | The Today sentence adds the counts: "Running 12.0% below forecast. 96 covers so far, 109 expected." | Every header sentence carries a number; "On forecast." alone has none |
+| 2026-11-17 | `ALLOW_TIME_TRAVEL` (off by default) lets Today be read as of a given moment | A service in progress has to be testable at any hour; a moment with no offset is on the restaurant's clock |
+| 2026-11-17 | The week being planned is the Monday after today; on a Monday, next Monday | This week is already under way |
+| 2026-11-17 | Every time on the new pages is shown on the restaurant's clock, not the browser's | Spec 10.5; found when a test machine in another time zone showed 4:45 for 7:45 |
+| 2026-11-17 | Schedule generation reads its inputs, releases the database, solves, then writes | On SQLite the solve otherwise held the write lock for up to 30 seconds and every other request waited |
 

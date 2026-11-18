@@ -294,7 +294,8 @@ export function ProposalCard({ title, sentence, impact, note, primary, onDismiss
 /** A suggestion during service: one sentence, the saving, two buttons, and when it expires. Built for one hand. */
 export function SuggestionCard({ sentence, saving, reason, expires, onAccept, onDismiss, onWhy, busy }: {
   sentence: string
-  saving: number | string
+  /** Dollars saved, for a cut; left out for an extension or a call-in. */
+  saving?: number | string | null
   reason?: string
   /** "7:35 pm" */
   expires: string
@@ -307,7 +308,8 @@ export function SuggestionCard({ sentence, saving, reason, expires, onAccept, on
     <article className="card ml-suggestion" aria-label="Suggestion">
       <p className="ml-suggestion-sentence">{sentence}</p>
       <p className="ml-suggestion-detail">
-        Saves about {dollars(saving)}.{reason ? ` ${reason}` : ''}
+        {saving != null ? `Saves about ${dollars(saving)}.` : ''}
+        {reason ? ` ${reason}` : ''}
         <span className="ml-suggestion-expires">Expires {expires}</span>
       </p>
       <div className="ml-suggestion-actions">

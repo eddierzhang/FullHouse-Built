@@ -3,7 +3,7 @@ the other suites. Layered on seed_e2e.py; skipped on the fresh site, which must 
 
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -64,7 +64,9 @@ def seed() -> None:
         db.commit()
         labor.forecast_labor(db, floor.id)
         db.commit()
-        fixtures.seed_team(db, floor.id)
+        team = fixtures.seed_team(db, floor.id)
+        # This week is published and under way, for the Today page; next week is left for the schedule tests to generate.
+        fixtures.seed_week_schedule(db, floor.id, team, service.today - timedelta(days=service.today.weekday()), service.conf.timezone)
         db.add(LaborRules(restaurant_id=floor.id, weekly_overtime_hours=40, daily_overtime_hours=8, min_rest_hours=10, min_shift_hours=4, max_shift_hours=8, max_hours_per_day=10,
                           max_consecutive_days=6, break_after_hours=6, break_minutes=30, min_paid_hours=3, advance_notice_days=14, allow_on_call=False,
                           confirmed_by="labor@example.com", confirmed_at=datetime.now(timezone.utc)))

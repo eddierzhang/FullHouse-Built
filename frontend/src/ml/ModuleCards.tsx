@@ -2,7 +2,7 @@ import type { AppContext } from '../app/context'
 import { useLoad } from '../lib/useLoad'
 import { fetchModuleCards, ML_FLAGS, type ModuleCard } from './api'
 import { Sparkline } from './charts'
-import { dayLabel, dollars, percent } from './format'
+import { dayLabel, dollars, percent, useRestaurantClock } from './format'
 
 type Shown = { key: string; title: string; sentence: string; number?: string; trend?: (number | null)[]; trendLabel?: string; href: string; button: string }
 
@@ -71,6 +71,7 @@ function words(card: ModuleCard): Shown | null {
 
 /** The Margin & Labor cards on the Digest: at most one per module that is on. Renders nothing when none is. */
 export function ModuleCards({ app }: { app: AppContext }) {
+  useRestaurantClock(app.restaurant.timezone)
   const on = ML_FLAGS.some((flag) => app.flags[flag])
   const load = useLoad(() => (on ? fetchModuleCards() : Promise.resolve([] as ModuleCard[])), [on])
   const cards = (load.data ?? []).map(words).filter((c): c is Shown => c !== null)

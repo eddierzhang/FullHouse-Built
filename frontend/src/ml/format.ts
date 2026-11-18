@@ -21,15 +21,24 @@ export function percent(value: number | string, isFraction = true): string {
   return `${tenths < 0 ? '−' : ''}${(Math.abs(tenths) / 10).toFixed(1)}%` // a true minus sign, as dollars use
 }
 
-/** "Tue Nov 17", from a business date (YYYY-MM-DD) or a timestamp. Never a raw timestamp. */
-export function dayLabel(iso: string): string {
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(`${iso}T12:00:00`) : new Date(iso)
-  return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).replace(',', '')
+let clock: string | undefined
+
+/** Times are shown on the restaurant's clock, wherever the person reading is. Each page sets it from the restaurant. */
+export function useRestaurantClock(timeZone: string | null | undefined): void {
+  clock = timeZone || undefined
 }
 
-/** "7:15 pm" or "19:15", by the restaurant's setting. */
+/** "Tue Nov 17", from a business date (YYYY-MM-DD) or a timestamp. Never a raw timestamp. */
+export function dayLabel(iso: string): string {
+  const plain = /^\d{4}-\d{2}-\d{2}$/.test(iso)
+  const date = plain ? new Date(`${iso}T12:00:00`) : new Date(iso)
+  // A business date is already the restaurant's day; a moment is placed on the restaurant's clock.
+  return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: plain ? undefined : clock }).replace(',', '')
+}
+
+/** "7:15 pm" or "19:15", by the restaurant's setting, on the restaurant's clock. */
 export function timeLabel(iso: string, hour12 = true): string {
-  return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12 }).toLowerCase()
+  return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12, timeZone: clock }).toLowerCase()
 }
 
 /** A forecast is always said as a range: "140 to 190 covers, most likely 165". */

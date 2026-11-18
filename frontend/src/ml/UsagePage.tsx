@@ -4,7 +4,7 @@ import { readHashParam } from '../lib/useHashRoute'
 import { useLoad } from '../lib/useLoad'
 import { dismissFinding, fetchUsage, fetchUsageItem, setUsageTracking, type Usage, type UsageChecks, type UsageDetail, type UsageItem } from './api'
 import { CoverageBar, GapLines, SortedBars, Sparkline } from './charts'
-import { amount, dayLabel, dollars, percent, timeLabel } from './format'
+import { amount, dayLabel, dollars, percent, timeLabel, useRestaurantClock } from './format'
 import { HeaderSentence, LoadFailed, SetupChecklist, type SetupStep, SidePanel, Skeleton, StateBanner, StatTile, StatusWord, TileRow, useDeferred, useRowLimit, useWhy, ViewAsTable, type Why, takeHashParam } from './ui'
 
 const TITLE = 'Usage'
@@ -17,6 +17,7 @@ export function usageSentence(data: Usage): string {
 }
 
 export function UsagePage({ app }: { app: AppContext }) {
+  useRestaurantClock(app.restaurant.timezone)
   const [param, setParam] = useState(readHashParam)
   useEffect(() => {
     const onChange = () => setParam(readHashParam())

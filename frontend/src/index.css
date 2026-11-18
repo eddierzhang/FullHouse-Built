@@ -5203,3 +5203,6 @@ button.ml-bars-row { cursor: pointer; }
 .ml-timeline-bar { position: absolute; top: 2px; height: 46px; margin: 0; overflow: hidden; }
 .ml-timeline-handle { position: absolute; top: 2px; width: 14px; height: 46px; margin-left: -7px; cursor: ew-resize; touch-action: none; border-right: 4px solid var(--ink); border-radius: 0 6px 6px 0; }
 @media print { .ml-grid-tools, .ml-figure, .ml-tiles, .ml-tabs { display: none !important; } }
+.ml-today { max-width: 640px; }
+.ml-today .ml-tiles { grid-template-columns: 1fr; }
+@media (min-width: 560px) { .ml-today .ml-tiles { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); } }

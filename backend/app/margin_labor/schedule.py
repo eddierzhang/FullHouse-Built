@@ -126,25 +126,32 @@ def generate(db: Session, restaurant_id: str, week_of: date, now: datetime | Non
     around them. One draft, and one `schedule_draft` proposal, per week."""
     week_of -= timedelta(days=week_of.weekday())
     labor.forecast_labor(db, restaurant_id, now)
+    db.commit()
+    # Read everything the solver needs, then let go of the database: the solve takes up to 30 seconds, and nothing
+    # else should wait on it.
     service = labor.Service(db, restaurant_id, now)
     days = week_days(week_of)
+    schedule = db.query(Schedule).filter(Schedule.restaurant_id == restaurant_id, Schedule.week_of == week_of).first()
+    held = db.query(ScheduleShift).filter(ScheduleShift.schedule_id == schedule.id).all() if schedule is not None else []
+    locked = [as_spec(service, s) for s in held if s.locked]
+    team = Team(db, service, week_of)
+    rules = rules_for(db, restaurant_id)
+    needs = needs_for(db, service, days)
+    db.commit()
+    import uuid
+
+    draft = scheduling.generate(needs, team.people, rules, locked, seconds, new_id=lambda: uuid.uuid4().hex)
+
     schedule = db.query(Schedule).filter(Schedule.restaurant_id == restaurant_id, Schedule.week_of == week_of).first()
     if schedule is None:
         schedule = Schedule(restaurant_id=restaurant_id, week_of=week_of, version=0)
         db.add(schedule)
         db.flush()
-    held = db.query(ScheduleShift).filter(ScheduleShift.schedule_id == schedule.id).all()
-    locked = [as_spec(service, s) for s in held if s.locked]
-    for shift in held:
-        if not shift.locked:
-            db.delete(shift)
-    db.flush()
-    team = Team(db, service, week_of)
-    rules = rules_for(db, restaurant_id)
-    import uuid
-
-    draft = scheduling.generate(needs_for(db, service, days), team.people, rules, locked, seconds, new_id=lambda: uuid.uuid4().hex)
     kept = {s.id for s in locked}
+    for shift in db.query(ScheduleShift).filter(ScheduleShift.schedule_id == schedule.id).all():
+        if shift.id not in kept:
+            db.delete(shift)  # everything that was not locked when the solve began is replaced
+    db.flush()
     for spec in draft.shifts:
         if spec.id in kept:
             continue

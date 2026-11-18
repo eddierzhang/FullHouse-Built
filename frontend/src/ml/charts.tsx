@@ -863,3 +863,73 @@ export function Histogram({ bins, line, unit, height = 220 }: { bins: { from: nu
     </div>
   )
 }
+
+
+export type PacePoint = { time: string; low: number; expected: number; high: number; actual: number | null; revised: number | null }
+
+/**
+ * The day so far, counted up: what has come in (solid), the forecast made this morning (band), and the revised
+ * forecast for the rest of the day (dashed), with a line at Now.
+ */
+export function PaceChart({ points, now, unit, labelOf, height = 240 }: { points: PacePoint[]; now: number; unit: string; labelOf: (iso: string) => string; height?: number }) {
+  const [ref, W] = useElementWidth<HTMLDivElement>()
+  const pad = { top: 24, right: 16, bottom: 40, left: 48 }
+  const innerW = W - pad.left - pad.right
+  const innerH = height - pad.top - pad.bottom
+  const n = points.length
+  if (n === 0) return <div ref={ref} />
+  const max = niceMax(Math.max(1, ...points.flatMap((p) => [p.high, p.actual ?? 0, p.revised ?? 0])))
+  const x = (i: number) => pad.left + (n <= 1 ? innerW / 2 : (i / (n - 1)) * innerW)
+  const y = (v: number) => pad.top + innerH - (v / max) * innerH
+  const band = `${points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.high).toFixed(1)}`).join(' ')} ${[...points].reverse().map((p, i) => `L${x(n - 1 - i).toFixed(1)},${y(p.low).toFixed(1)}`).join(' ')} Z`
+  const line = (pick: (p: PacePoint) => number | null, from = 0) => {
+    let d = ''
+    points.forEach((p, i) => {
+      const v = pick(p)
+      if (i >= from && v != null) d += `${d ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)} `
+    })
+    return d
+  }
+  const lastActual = now > 0 ? points[Math.min(now, n) - 1] : null
+  const bridge = lastActual && lastActual.actual != null && now < n && points[now].revised != null ? `M${x(now - 1).toFixed(1)},${y(lastActual.actual).toFixed(1)} L${x(now).toFixed(1)},${y(points[now].revised as number).toFixed(1)}` : ''
+  const nowX = now <= 0 ? x(0) : now >= n ? x(n - 1) : (x(now - 1) + x(now)) / 2
+  return (
+    <div className="chart" ref={ref}>
+      <svg width={W} height={height} viewBox={`0 0 ${W} ${height}`} role="img" aria-label={`${unit} so far today against the forecast, counted up through the day`}>
+        {[0, 0.5, 1].map((f) => (
+          <g key={f}>
+            <line className="chart-grid" x1={pad.left} x2={W - pad.right} y1={y(max * f)} y2={y(max * f)} />
+            <text className="chart-axis" x={pad.left - 8} y={y(max * f) + 4} textAnchor="end">
+              {Math.round(max * f).toLocaleString('en-US')}
+            </text>
+          </g>
+        ))}
+        <text className="chart-axis" transform={`translate(12 ${pad.top + innerH / 2}) rotate(-90)`} textAnchor="middle">
+          {unit}, counted up
+        </text>
+        <path d={band} fill="var(--chart-1)" opacity={0.16} />
+        <path d={`${bridge} ${line((p) => p.revised, now)}`} fill="none" stroke="var(--ink)" strokeWidth={2} strokeDasharray="6 4" />
+        <path d={line((p) => p.actual)} fill="none" stroke="var(--ink)" strokeWidth={2.5} />
+        <line x1={nowX} x2={nowX} y1={pad.top - 6} y2={pad.top + innerH} stroke="var(--ink)" strokeWidth={1} strokeDasharray="3 3" />
+        <text className="chart-label" x={nowX} y={pad.top - 10} textAnchor="middle">
+          Now
+        </text>
+        {points.map((p, i) =>
+          i % Math.max(1, Math.ceil(n / 5)) === 0 ? (
+            <text key={p.time} className="chart-axis" x={x(i)} y={height - 20} textAnchor="middle">
+              {labelOf(p.time)}
+            </text>
+          ) : null,
+        )}
+        <text className="chart-axis" x={pad.left + innerW / 2} y={height - 4} textAnchor="middle">
+          Time of day
+        </text>
+      </svg>
+      <div className="ml-coverage-key">
+        <span><span className="ml-key-solid" /> Actual</span>
+        <span><span className="ml-key-fill" /> Forecast this morning</span>
+        <span><span className="ml-key-dash" /> Revised</span>
+      </div>
+    </div>
+  )
+}

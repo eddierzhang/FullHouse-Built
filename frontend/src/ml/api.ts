@@ -437,3 +437,40 @@ export const publishSchedule = (scheduleId: string, confirm: boolean) => send<{ 
 export const scheduleCsvUrl = (scheduleId: string) => `${BASE}/labor/schedules/${scheduleId}/export.csv`
 export const fetchLaborRules = () => get<LaborRulesBody>(`${BASE}/labor/rules`)
 export const saveLaborRules = (body: LaborRulesBody) => send<LaborRulesBody>('PUT', `${BASE}/labor/rules`, body)
+
+// --- Module D: Labor, today --------------------------------------------------------------------------
+
+export type LaborSuggestion = {
+  id: string
+  kind: 'cut' | 'extend' | 'call_in'
+  role_key: string
+  role: string
+  suggested_time: string
+  expires_at: string
+  savings_estimate: string | null
+  reason: { why: 'closest_to_overtime' | 'longest_on_shift' | 'ends_soonest' | 'flex'; person: string }
+}
+export type LaborToday = {
+  state: ModuleState
+  today: string
+  now: string
+  primary: 'covers' | 'orders'
+  weeks_of_data: number
+  setup: { key: string; done: boolean; count: number; of?: number }[]
+  stale: boolean
+  open_now: boolean
+  wage_access: boolean
+  pace: { elapsed_share: number; pace: number | null; multiplier: number; adjusted: boolean } | null
+  so_far: { actual: number; expected: number } | null
+  day: { expected: number; revised: number; net_so_far: number } | null
+  people: { role_key: string; name: string; on: number; needed: number; needed_if_busy: number }[]
+  chart: { points: { start: string; low: number; expected: number; high: number; actual: number | null; revised: number | null }[]; now_index: number } | null
+  coverage: Record<string, { label: string; need: number; need_if_busy: number; scheduled: number }[]>
+  suggestion: LaborSuggestion | null
+  suggestions_on: boolean
+  suggestions_why: 'on' | 'learning' | 'early' | 'accuracy'
+  labor_so_far?: { cost: string; net: string; pct: string | null }
+}
+const asOf = (at?: string | null) => (at ? `?at=${encodeURIComponent(at)}` : '')
+export const fetchLaborToday = (at?: string | null) => get<LaborToday>(`${BASE}/labor/today${asOf(at)}`)
+export const decideAdjustment = (id: string, decision: 'accept' | 'dismiss', at?: string | null) => send<{ id: string; status: string }>('POST', `${BASE}/labor/adjustments/${id}/${decision}${asOf(at)}`)

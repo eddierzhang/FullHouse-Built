@@ -5,7 +5,7 @@ import { readHashParam } from '../lib/useHashRoute'
 import { useLoad } from '../lib/useLoad'
 import { correctLine, type DeliveryDay, draftOrder, fetchOrdering, fetchPrep, type OrderDraft, type Ordering, type OrderLine, proposePrep, removeDeliveryDay, saveDeliveryDay, setLineQty } from './api'
 import { ForecastChart, StepLines } from './charts'
-import { amount, dayLabel, dollars, percent, timeLabel } from './format'
+import { amount, dayLabel, dollars, percent, timeLabel, useRestaurantClock } from './format'
 import { ConfidenceLabel, HeaderSentence, LoadFailed, SetupChecklist, type SetupStep, SidePanel, Skeleton, StateBanner, StatTile, StatusWord, TileRow, useDeferred, useWhy, ViewAsTable, type Why } from './ui'
 
 const TITLE = 'Ordering and prep'
@@ -23,6 +23,7 @@ export function orderingSentence(data: Ordering): string {
 }
 
 export function OrderingPage({ app }: { app: AppContext }) {
+  useRestaurantClock(app.restaurant.timezone)
   const [param, setParam] = useState(readHashParam)
   useEffect(() => {
     const onChange = () => setParam(readHashParam())

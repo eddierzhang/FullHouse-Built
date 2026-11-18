@@ -974,13 +974,20 @@ def labor_team_save(staff_id: str, body: TeamMemberIn, user: User = Depends(mana
 # --- Module D: Labor (today) -------------------------------------------------------------------------
 
 
-def _as_of(at: datetime | None) -> datetime | None:
-    """The moment to read Today as of: now, unless the site allows a given moment (browser tests, demos)."""
+def _as_of(at: datetime | None, db: Session | None = None, restaurant_id: str | None = None) -> datetime | None:
+    """The moment to read Today as of: now, unless the site allows a given moment (browser tests, demos). A moment
+    with no offset is on the restaurant's own clock."""
     from app.config import settings
 
     if at is None or not settings.allow_time_travel:
         return None
-    return at if at.tzinfo else at.replace(tzinfo=timezone.utc)
+    if at.tzinfo is not None:
+        return at
+    from app.margin_labor import settings as ml_settings
+    from app.margin_labor.business import zone
+
+    tz = zone(ml_settings.for_restaurant(db, restaurant_id).timezone) if db is not None and restaurant_id else timezone.utc
+    return at.replace(tzinfo=tz).astimezone(timezone.utc)
 
 
 @router.get("/labor/today")
@@ -989,7 +996,8 @@ def labor_today(at: datetime | None = None, user: User = Depends(current_user), 
     the open suggestion (for owners and managers)."""
     from app.margin_labor import intraday
 
-    return intraday.today(db, _module(db, user, flags.ML_LABOR), user, _as_of(at))
+    restaurant_id = _module(db, user, flags.ML_LABOR)
+    return intraday.today(db, restaurant_id, user, _as_of(at, db, restaurant_id))
 
 
 def _decide(db: Session, user: User, adjustment_id: str, decision: str, at: datetime | None) -> dict:
@@ -997,7 +1005,7 @@ def _decide(db: Session, user: User, adjustment_id: str, decision: str, at: date
 
     restaurant_id = _module(db, user, flags.ML_LABOR)
     try:
-        row = intraday.decide(db, restaurant_id, adjustment_id, decision, user.email, _as_of(at))
+        row = intraday.decide(db, restaurant_id, adjustment_id, decision, user.email, _as_of(at, db, restaurant_id))
     except LookupError as err:
         raise HTTPException(404, str(err)) from err
     except ValueError as err:

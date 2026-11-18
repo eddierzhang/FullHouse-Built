@@ -4,8 +4,9 @@ import { readHashParam } from '../lib/useHashRoute'
 import { useLoad } from '../lib/useLoad'
 import { fetchLaborWeek, fetchStandards, type LaborWeek, previewStandard, resetStandard, saveStandard, type StandardPreview, type StandardRow, type Standards } from './api'
 import { CoverageChart, Histogram, RangeBars, SortedBars } from './charts'
-import { dayLabel, dollars, percent, timeLabel } from './format'
+import { dayLabel, dollars, percent, timeLabel, useRestaurantClock } from './format'
 import { SchedulePanel } from './SchedulePanel'
+import { TodayPage } from './TodayPage'
 import { ConfidenceLabel, HeaderSentence, LoadFailed, SetupChecklist, type SetupStep, SidePanel, Skeleton, StateBanner, StatTile, StatusWord, TileRow, useWhy, ViewAsTable, type Why } from './ui'
 
 const hr = (hours: number) => `${(Math.round(hours * 10) / 10).toLocaleString('en-US')} hr`
@@ -14,6 +15,7 @@ const WEEKDAY = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString(
 const DRIVERS: Record<string, string> = { covers: 'Covers', orders: 'Orders', items: 'Items', net: 'Sales', none: 'Fixed blocks' }
 
 export function LaborPage({ app }: { app: AppContext }) {
+  useRestaurantClock(app.restaurant.timezone)
   const [param, setParam] = useState(readHashParam)
   useEffect(() => {
     const onChange = () => setParam(readHashParam())
@@ -21,6 +23,7 @@ export function LaborPage({ app }: { app: AppContext }) {
     return () => window.removeEventListener('hashchange', onChange)
   }, [])
   if (param === 'standards') return <StandardsPage app={app} />
+  if (param === 'today') return <TodayPage app={app} />
   return <WeekPage app={app} weekOf={param.startsWith('week/') ? param.slice(5) : 'next'} />
 }
 
@@ -106,6 +109,9 @@ function WeekPage({ app, weekOf }: { app: AppContext; weekOf: string }) {
     <main className={`page ml-page${data.stale ? ' ml-stale' : ''}`}>
       <HeaderSentence title={title} sentence={weekSentence(data)} updated={updated} state={data.state}>
         <ConfidenceLabel weeks={data.weeks_of_data} needed={8} />
+        <a className="btn btn-secondary btn-sm" href="#labor/today">
+          Today
+        </a>
         <a className="btn btn-secondary btn-sm" href="#labor/standards">
           Standards
         </a>

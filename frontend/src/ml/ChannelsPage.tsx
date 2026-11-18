@@ -4,7 +4,7 @@ import type { AppContext } from '../app/context'
 import { useLoad } from '../lib/useLoad'
 import { type ChannelItem, type Channels, type ChannelTermsRow, fetchChannels, requestChannelReprice, saveChannelTerms } from './api'
 import { GroupedBars, Waterfall } from './charts'
-import { dayLabel, dollars, percent, timeLabel } from './format'
+import { dayLabel, dollars, percent, timeLabel, useRestaurantClock } from './format'
 import { HeaderSentence, LoadFailed, ProposalCard, SetupChecklist, type SetupStep, SidePanel, Skeleton, StateBanner, StatTile, StatusWord, TileRow, useDeferred, useRowLimit, useWhy, ViewAsTable, type Why, takeHashParam } from './ui'
 
 const TITLE = 'Channels'
@@ -23,6 +23,7 @@ export function channelsSentence(data: Channels): string {
 }
 
 export function ChannelsPage({ app }: { app: AppContext }) {
+  useRestaurantClock(app.restaurant.timezone)
   const load = useLoad(fetchChannels, [])
   const why = useWhy()
   const deferred = useDeferred()

@@ -25,6 +25,8 @@ const env = {
   // Owners sign in with a password alone here; e2e/mfa.spec.ts turns two-step on for its own account.
   REQUIRE_MFA: 'false',
   FRONTEND_ORIGIN: process.env.E2E_WEB_ORIGIN ?? 'http://127.0.0.1:5174',
+  // The Labor Today page can be read as of a given moment, so a service in progress can be tested at any hour.
+  ALLOW_TIME_TRAVEL: 'true',
   PYTHONUNBUFFERED: '1',
 }
 

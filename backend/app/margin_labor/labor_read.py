@@ -15,8 +15,8 @@ STALE_ORDER_DAYS = 3
 
 
 def default_week(today: date) -> date:
-    """The week being planned: the Monday after today (today, on a Monday)."""
-    return today + timedelta(days=(7 - today.weekday()) % 7)
+    """The week being planned: the Monday after today. On a Monday that is next Monday; this week is already under way."""
+    return today + timedelta(days=7 - today.weekday())
 
 
 def _ensure(db: Session, restaurant_id: str, now: datetime | None):

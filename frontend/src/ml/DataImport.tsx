@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { AppContext } from '../app/context'
 import { useLoad } from '../lib/useLoad'
 import { fetchDataStatus, type ImportKind, importData, type ImportResult } from './api'
-import { dayLabel } from './format'
+import { dayLabel, useRestaurantClock } from './format'
 import { StateBanner } from './ui'
 
 const FILES: { kind: ImportKind; label: string; needs: string }[] = [
@@ -17,6 +17,7 @@ const FILES: { kind: ImportKind; label: string; needs: string }[] = [
  * any of the modules is on.
  */
 export function DataImport({ app }: { app: AppContext }) {
+  useRestaurantClock(app.restaurant.timezone)
   const status = useLoad(fetchDataStatus, [])
   const [busy, setBusy] = useState<ImportKind | null>(null)
   const [result, setResult] = useState<ImportResult | null>(null)
