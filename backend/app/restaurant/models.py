@@ -17,7 +17,9 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
-from app.db.types import UTCDateTime
+from decimal import Decimal
+
+from app.db.types import Dec, UTCDateTime
 
 
 def _uuid() -> str:
@@ -161,6 +163,11 @@ class PurchaseOrderLine(Base):
     #: Packs ordered, and the pack's name; `units` is the quantity in the item's unit.
     qty: Mapped[float] = mapped_column(Float, nullable=False)
     unit: Mapped[str] = mapped_column(String(32), nullable=False)
+    # --- Margin & Labor Engine, Module C. Optional; older code does not read them. ---
+    #: The packs FullHouse suggested, kept beside what a person ordered.
+    suggested_qty: Mapped[Decimal | None] = mapped_column(Dec(), nullable=True)
+    #: What the suggestion rested on: the forecast run, the delivery period, the stock estimate, the pack rounding.
+    basis: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     units: Mapped[float | None] = mapped_column(Float, nullable=True)
     unit_price_expected: Mapped[float | None] = mapped_column(Float, nullable=True)
     received_qty: Mapped[float | None] = mapped_column(Float, nullable=True)

@@ -13,7 +13,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.margin_labor.business import zone
-from app.margin_labor.models import ChannelPayout, ChannelTerms, PosItem, SalesOrder, SalesOrderLine
+from app.margin_labor.models import ChannelPayout, ChannelTerms, PosItem, SalesOrder, SalesOrderLine, SupplierSchedule
 from app.prices.engine import normalize
 from app.prices.models import Invoice, InvoiceLine, ItemAlias, PriceItem
 from app.recipes.models import CONFIRMED, Recipe, RecipeLine
@@ -137,4 +137,12 @@ def seed_orders(db: Session, restaurant_id: str, today: date, tz: str, days: int
         for platform, (commission, processing, fixed, packaging) in TERMS.items():
             db.add(ChannelTerms(restaurant_id=restaurant_id, platform=platform, commission_pct=Decimal(commission), processing_pct=Decimal(processing),
                                 fixed_fee_per_order=Decimal(fixed), packaging_cost_per_order=Decimal(packaging), effective_from=date(2000, 1, 1)))
+    db.flush()
+
+
+def seed_schedule(db: Session, restaurant_id: str, supplier_id: str, minimum: str | None = None) -> None:
+    """The supplier delivers on Thursdays (order in by Wednesday 14:00) and Mondays (by Sunday 14:00)."""
+    for cutoff, delivery in ((2, 3), (6, 0)):
+        db.add(SupplierSchedule(restaurant_id=restaurant_id, supplier_id=supplier_id, order_cutoff_weekday=cutoff, order_cutoff_time="14:00", delivery_weekday=delivery,
+                                minimum_order_amount=None if minimum is None else Decimal(minimum)))
     db.flush()

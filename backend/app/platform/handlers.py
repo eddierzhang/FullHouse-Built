@@ -201,6 +201,15 @@ def derive(db: Session, payload: dict) -> None:
         menu_costs.recost(db, restaurant_id, recipe_ids=set(payload["recipe_ids"]) if payload.get("recipe_ids") is not None else None,
                           item_ids=set(payload["item_ids"]) if payload.get("item_ids") is not None else None,
                           trigger_event_id=payload.get("trigger_event_id"))
+    elif payload.get("job") in ("forecast_daily", "order_draft", "prep_sheet") and flags.enabled(db, restaurant_id, flags.ML_ORDERING):
+        from app.margin_labor import demand, ordering
+
+        if payload["job"] == "forecast_daily":
+            demand.forecast_items(db, restaurant_id)
+        elif payload["job"] == "order_draft":
+            ordering.draft(db, restaurant_id, payload["supplier_id"])
+        else:
+            ordering.prep_sheet(db, restaurant_id, date.fromisoformat(payload["business_date"]))
     elif payload.get("job") == "channel_margins" and flags.enabled(db, restaurant_id, flags.ML_CHANNELS):
         from app.margin_labor import channels
 

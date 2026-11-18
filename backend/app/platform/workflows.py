@@ -144,9 +144,15 @@ def tick() -> int:
 
     db = SessionLocal()
     try:
-        return run_due(db)
+        queued = run_due(db)
     except Exception:
         logger.exception("workflow tick failed")
-        return 0
+        queued = 0
+    try:
+        # The Margin & Labor Engine's timed work rides the same minute tick; it adds no workflow rows.
+        from app.margin_labor import clock
+
+        queued += clock.tick(db)
     finally:
         db.close()
+    return queued

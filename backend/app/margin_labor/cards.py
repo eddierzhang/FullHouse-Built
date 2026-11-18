@@ -23,7 +23,24 @@ def build(db: Session, restaurant_id: str, user) -> list[dict]:
         card = _channels(db, restaurant_id)
         if card is not None:
             cards.append(card)
+    if flags.enabled(db, restaurant_id, flags.ML_ORDERING):
+        card = _ordering(db, restaurant_id)
+        if card is not None:
+            cards.append(card)
     return cards
+
+
+def _ordering(db: Session, restaurant_id: str) -> dict | None:
+    from app.margin_labor import ordering_read
+
+    out = ordering_read.overview(db, restaurant_id)
+    if out["state"] == "setup":
+        return {"module": "ordering", "state": "setup", "route": "ordering-prep", "missing": [s["key"] for s in out["setup"] if not s["done"]]}
+    if not out["drafts"]:
+        return None
+    first = out["drafts"][0]
+    return {"module": "ordering", "state": "live", "route": "ordering-prep", "orders": len(out["drafts"]), "total": first["total"], "supplier": first["supplier"],
+            "cutoff_at": first["cutoff_at"], "proposal_id": first["proposal_id"]}
 
 
 def _channels(db: Session, restaurant_id: str) -> dict | None:

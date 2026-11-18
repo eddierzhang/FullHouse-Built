@@ -386,3 +386,228 @@ def channels_reprice(row_id: str, user: User = Depends(manager), db: Session = D
     finding.proposal_id = action.id
     db.commit()
     return {"proposal_id": action.id, "suggested_price": action.payload.get("suggested_price")}
+
+
+# --- Forecast core and Module C: Ordering and prep ------------------------------------------------------
+
+
+@router.get("/ordering/drafts")
+def ordering_overview(user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """Open purchase order drafts with their lines and basis, the next cutoff, the demand chart and the average miss."""
+    from app.margin_labor import ordering_read
+
+    return ordering_read.overview(db, _module(db, user, flags.ML_ORDERING))
+
+
+class DraftIn(BaseModel):
+    supplier_id: str = Field(min_length=1, max_length=32)
+
+
+@router.post("/ordering/drafts")
+def ordering_draft(body: DraftIn, user: User = Depends(manager), db: Session = Depends(get_db)) -> dict:
+    """Draft the order for a supplier's next delivery now, rather than four hours before its cutoff. Asking twice
+    returns the draft already made. A person reviews, edits and sends."""
+    from app.margin_labor import ordering
+
+    restaurant_id = _module(db, user, flags.ML_ORDERING)
+    action, why_not = ordering.draft(db, restaurant_id, body.supplier_id, lead_hours=None)
+    db.commit()
+    if action is None:
+        reasons = {"no_schedule": "This supplier has no delivery schedule.", "no_forecast": "There are under 4 weeks of item sales to forecast from.",
+                   "nothing_to_order": "No ingredient in a confirmed recipe was last delivered by this supplier.",
+                   "cap": "Three order drafts were already made this week; this one is held."}
+        raise HTTPException(409, reasons.get(why_not, "No draft was made."))
+    return {"proposal_id": action.id, "status": action.status, "made": why_not == "created"}
+
+
+class CorrectionIn(BaseModel):
+    kind: str = Field(pattern="^(out|plenty)$")
+
+
+def _ordering_change(db: Session, restaurant_id: str, change) -> dict:
+    try:
+        action = change()
+    except LookupError as err:
+        raise HTTPException(404, str(err)) from err
+    except ValueError as err:
+        raise HTTPException(409, str(err)) from err
+    db.commit()
+    return {"proposal_id": action.id, "total": action.payload.get("total"), "under_minimum": action.payload.get("under_minimum")}
+
+
+@router.post("/ordering/lines/{line_ref}/correction")
+def ordering_correction(line_ref: str, body: CorrectionIn, user: User = Depends(manager), db: Session = Depends(get_db)) -> dict:
+    """"We're out" sets the stock estimate to 0. "We have plenty" sets the line to 0 and the estimate to the need.
+    A correction, not a count."""
+    from app.margin_labor import ordering
+
+    restaurant_id = _module(db, user, flags.ML_ORDERING)
+    return _ordering_change(db, restaurant_id, lambda: ordering.correct_line(db, restaurant_id, line_ref, body.kind))
+
+
+class LineQtyIn(BaseModel):
+    qty: int = Field(ge=0, le=10_000)
+
+
+@router.put("/ordering/lines/{line_ref}")
+def ordering_line(line_ref: str, body: LineQtyIn, user: User = Depends(manager), db: Session = Depends(get_db)) -> dict:
+    """Set a line's packs. Ordering fewer than suggested raises the stock estimate by the difference."""
+    from app.margin_labor import ordering
+
+    restaurant_id = _module(db, user, flags.ML_ORDERING)
+    return _ordering_change(db, restaurant_id, lambda: ordering.set_line_qty(db, restaurant_id, line_ref, body.qty))
+
+
+class ScheduleIn(BaseModel):
+    supplier_id: str = Field(min_length=1, max_length=32)
+    order_cutoff_weekday: int = Field(ge=0, le=6)
+    order_cutoff_time: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    delivery_weekday: int = Field(ge=0, le=6)
+    minimum_order_amount: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=4)
+
+
+@router.put("/ordering/schedules")
+def ordering_schedule(body: ScheduleIn, user: User = Depends(manager), db: Session = Depends(get_db)) -> dict:
+    """One delivery day of a supplier: when its order must be in, and the smallest order they take."""
+    from app.margin_labor import ordering_read
+    from app.margin_labor.models import SupplierSchedule
+    from app.restaurant.models import Supplier
+
+    restaurant_id = _module(db, user, flags.ML_ORDERING)
+    supplier = db.get(Supplier, body.supplier_id)
+    if supplier is None or supplier.restaurant_id != restaurant_id:
+        raise HTTPException(404, "No such supplier.")
+    row = db.query(SupplierSchedule).filter(SupplierSchedule.restaurant_id == restaurant_id, SupplierSchedule.supplier_id == supplier.id,
+                                            SupplierSchedule.delivery_weekday == body.delivery_weekday).first()
+    if row is None:
+        row = SupplierSchedule(restaurant_id=restaurant_id, supplier_id=supplier.id, delivery_weekday=body.delivery_weekday, order_cutoff_weekday=body.order_cutoff_weekday)
+        db.add(row)
+    row.order_cutoff_weekday, row.order_cutoff_time, row.minimum_order_amount = body.order_cutoff_weekday, body.order_cutoff_time, body.minimum_order_amount
+    db.commit()
+    return {"schedules": ordering_read.schedules_out(db, restaurant_id)}
+
+
+@router.delete("/ordering/schedules/{schedule_id}")
+def ordering_schedule_remove(schedule_id: str, user: User = Depends(manager), db: Session = Depends(get_db)) -> dict:
+    from app.margin_labor import ordering_read
+    from app.margin_labor.models import SupplierSchedule
+
+    restaurant_id = _module(db, user, flags.ML_ORDERING)
+    row = db.get(SupplierSchedule, schedule_id)
+    if row is None or row.restaurant_id != restaurant_id:
+        raise HTTPException(404, "No such delivery day.")
+    db.delete(row)
+    db.commit()
+    return {"schedules": ordering_read.schedules_out(db, restaurant_id)}
+
+
+@router.get("/prep/{business_date}")
+def prep_for(business_date: _date, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """The prep sheet for a date: each prepped item with its par, batch size and shelf life. "On hand" and "Prep" are
+    filled in on paper; FullHouse does not record them."""
+    from app.agents.models import AgentAction
+    from app.margin_labor import demand, menu_costs, ordering
+
+    restaurant_id = _module(db, user, flags.ML_ORDERING)
+    world = menu_costs.load(db, restaurant_id)
+    made = demand.forecast_items(db, restaurant_id)
+    db.commit()
+    lines = ordering.prep_lines(db, world, business_date) if made["state"] == "live" else []
+    proposal = next((a for a in db.query(AgentAction).filter(AgentAction.restaurant_id == restaurant_id, AgentAction.action_type == "prep_sheet")
+                     if (a.payload or {}).get("date") == business_date.isoformat()), None)
+    return {"state": made["state"], "date": business_date, "today": world.today, "lines": lines,
+            "proposal": None if proposal is None else {"id": proposal.id, "status": proposal.status}}
+
+
+@router.post("/prep/{business_date}/propose")
+def prep_propose(business_date: _date, user: User = Depends(manager), db: Session = Depends(get_db)) -> dict:
+    """Propose the day's prep sheet now, rather than at 04:30. One per business date."""
+    from app.margin_labor import ordering
+
+    restaurant_id = _module(db, user, flags.ML_ORDERING)
+    action, why_not = ordering.prep_sheet(db, restaurant_id, business_date)
+    db.commit()
+    if action is None:
+        raise HTTPException(409, "No prep sheet: there is no forecast yet, or no dish uses a prepped item.")
+    return {"proposal_id": action.id, "status": action.status, "made": why_not == "created"}
+
+
+@router.get("/forecast/daily")
+def forecast_daily(metric: str = "items", start: _date | None = None, end: _date | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """The daily forecast with its range and the drivers applied, and what happened on the days that have passed."""
+    from app.margin_labor.models import ForecastInterval, IntervalActual
+    from app.sales.models import SalesItem
+
+    restaurant_id = _scope(db, user)
+    if metric not in ("items", "orders", "covers", "net"):
+        raise HTTPException(422, "The metric is items, orders, covers or net.")
+    rows = db.query(ForecastInterval).filter(ForecastInterval.restaurant_id == restaurant_id, ForecastInterval.grain == "day", ForecastInterval.metric == metric,
+                                             ForecastInterval.channel == "all", ForecastInterval.kind == "weekly")
+    if start:
+        rows = rows.filter(ForecastInterval.business_date >= start)
+    if end:
+        rows = rows.filter(ForecastInterval.business_date <= end)
+    rows = rows.order_by(ForecastInterval.business_date).limit(120).all()
+    days = [r.business_date for r in rows]
+    actuals: dict = {}
+    if days and metric == "items":
+        actuals = dict(db.query(SalesItem.date, func.sum(SalesItem.qty)).filter(SalesItem.restaurant_id == restaurant_id, SalesItem.date.in_(days)).group_by(SalesItem.date))
+    elif days:
+        column = {"orders": IntervalActual.orders, "covers": IntervalActual.covers, "net": IntervalActual.net}[metric]
+        actuals = dict(db.query(IntervalActual.business_date, func.sum(column)).filter(IntervalActual.restaurant_id == restaurant_id, IntervalActual.business_date.in_(days)).group_by(IntervalActual.business_date))
+    return {"metric": metric, "days": [{"date": r.business_date, "p10": r.p10, "p50": r.p50, "p90": r.p90, "drivers_applied": r.drivers_applied,
+                                        "actual": None if actuals.get(r.business_date) is None else float(actuals[r.business_date])} for r in rows]}
+
+
+class DriverIn(BaseModel):
+    date: _date
+    kind: str = Field(pattern="^(local_event|promo|closure|holiday)$")
+    name: str = Field(min_length=1, max_length=120)
+    size: str | None = Field(default=None, pattern="^(small|medium|large)$")
+    promo_type: str | None = Field(default=None, max_length=60)
+    expected_multiplier: float | None = Field(default=None, ge=0.6, le=1.6)
+
+
+@router.get("/drivers")
+def drivers_list(user: User = Depends(current_user), db: Session = Depends(get_db)) -> list[dict]:
+    """Events, promotions and closures the owner has entered, newest first."""
+    from app.margin_labor.models import DemandDriver
+
+    restaurant_id = _scope(db, user)
+    rows = db.query(DemandDriver).filter(DemandDriver.restaurant_id == restaurant_id).order_by(DemandDriver.date.desc()).limit(200)
+    return [{"id": r.id, "date": r.date, "kind": r.kind, "name": r.name, "payload": r.payload, "source": r.source} for r in rows]
+
+
+@router.post("/drivers")
+def drivers_add(body: DriverIn, user: User = Depends(manager), db: Session = Depends(get_db)) -> dict:
+    """Add an event, a promotion, a closure or a holiday the calendar lacks. Adding the same one twice changes nothing."""
+    from app.margin_labor.models import DemandDriver
+    from app.platform import events
+
+    restaurant_id = _scope(db, user)
+    payload = {k: v for k, v in (("size", body.size), ("type", body.promo_type), ("expected_multiplier", body.expected_multiplier)) if v is not None}
+    row = db.query(DemandDriver).filter(DemandDriver.restaurant_id == restaurant_id, DemandDriver.date == body.date, DemandDriver.slot == -1,
+                                        DemandDriver.kind == body.kind, DemandDriver.name == body.name.strip()).first()
+    if row is None:
+        row = DemandDriver(restaurant_id=restaurant_id, date=body.date, slot=-1, kind=body.kind, name=body.name.strip(), source="owner")
+        db.add(row)
+    row.payload = payload
+    db.flush()
+    events.emit(db, restaurant_id, "drivers.updated", "demand_drivers", row.id, {"date": body.date.isoformat(), "kind": body.kind})
+    db.commit()
+    return {"id": row.id, "date": row.date, "kind": row.kind, "name": row.name, "payload": row.payload}
+
+
+@router.delete("/drivers/{driver_id}")
+def drivers_remove(driver_id: str, user: User = Depends(manager), db: Session = Depends(get_db)) -> dict:
+    from app.margin_labor.models import DemandDriver
+    from app.platform import events
+
+    restaurant_id = _scope(db, user)
+    row = db.get(DemandDriver, driver_id)
+    if row is None or row.restaurant_id != restaurant_id:
+        raise HTTPException(404, "No such entry.")
+    db.delete(row)
+    events.emit(db, restaurant_id, "drivers.updated", "demand_drivers", driver_id, {"removed": True})
+    db.commit()
+    return {"removed": driver_id}

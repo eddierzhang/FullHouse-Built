@@ -29,6 +29,10 @@ def explain(db: Session, restaurant_id: str, table: str, row_id: str, figure: st
 
         row = db.get(ChannelItemMargin, row_id)
         return channels_read.why_row(db, row) if row is not None and row.restaurant_id == restaurant_id else None
+    if table == "order_lines" and flags.enabled(db, restaurant_id, flags.ML_ORDERING):
+        from app.margin_labor import ordering_read
+
+        return ordering_read.why_line(db, restaurant_id, row_id)
     if table == "findings":
         row = db.get(Finding, row_id)
         if row is None or row.restaurant_id != restaurant_id:

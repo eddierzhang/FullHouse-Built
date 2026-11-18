@@ -421,3 +421,44 @@ class ChannelItemMargin(_Row, Base):
     payout_match_rate: Mapped[Decimal | None] = mapped_column(Dec(8, 6), nullable=True)
     basis: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     calc_version: Mapped[str] = mapped_column(String(12), nullable=False)
+
+
+# --- Forecast core and Module C: ordering and prep --------------------------------------------------
+
+
+class ItemForecast(_Row, Base):
+    """Expected daily quantity of one POS item, with the Likely range. Written by `forecast_daily` for the days ahead;
+    a day that has passed keeps the forecast it was given. The older `forecasts` table is left as it is."""
+
+    __tablename__ = "item_forecasts"
+    __table_args__ = (UniqueConstraint("restaurant_id", "pos_item_id", "business_date", name="uq_item_forecasts_day"),)
+
+    restaurant_id: Mapped[str] = _tenant("item_forecasts")
+    pos_item_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    pos_item_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    business_date: Mapped[date] = mapped_column(Date, nullable=False)
+    p10: Mapped[float] = mapped_column(Float, nullable=False)
+    p50: Mapped[float] = mapped_column(Float, nullable=False)
+    p90: Mapped[float] = mapped_column(Float, nullable=False)
+    #: "item": forecast on its own. "category_share": under 5 a day, so its share of the category's forecast.
+    method: Mapped[str] = mapped_column(String(16), default="item", nullable=False)
+    stage: Mapped[str] = mapped_column(String(12), nullable=False)
+    drivers_applied: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    run_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+
+class StockEstimate(_Row, Base):
+    """A running estimate of what is on hand for one ingredient, kept with no counts: deliveries in, recipe usage
+    out. A person's correction ("We're out", "We have plenty", an edited order quantity) resets where it starts from."""
+
+    __tablename__ = "stock_estimates"
+    __table_args__ = (UniqueConstraint("restaurant_id", "canonical_item_id", name="uq_stock_estimates_item"),)
+
+    restaurant_id: Mapped[str] = _tenant("stock_estimates")
+    canonical_item_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    #: In the ingredient's base unit, as of the start of `as_of`.
+    est_on_hand: Mapped[Decimal] = mapped_column(Dec(14, 4), nullable=False)
+    as_of: Mapped[date] = mapped_column(Date, nullable=False)
+    last_correction_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    #: {"anchor_date", "anchor_qty", "anchor_kind": start|out|plenty|edit}: the estimate is replayed forward from here.
+    basis: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)

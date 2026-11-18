@@ -97,6 +97,13 @@ def place(
     return order
 
 
+def _exact(value):
+    """A suggested quantity as a decimal, or None."""
+    from decimal import Decimal
+
+    return None if value is None else Decimal(str(value))
+
+
 def draft_with_lines(
     db: Session, restaurant_id: str, supplier: Supplier, lines: list[dict], *, note: str | None = None, action_id: str | None = None,
     expected_on: date | None = None, today: date | None = None,
@@ -125,6 +132,7 @@ def draft_with_lines(
             inventory_item_id=line.get("inventory_item_id"), description=str(line.get("description") or "")[:200] or "Item",
             qty=qty, unit=str(line.get("unit") or "case")[:32], units=line.get("units"),
             unit_price_expected=float(line["unit_price_expected"]) if line.get("unit_price_expected") is not None else None,
+            suggested_qty=_exact(line.get("suggested_qty")), basis=line.get("basis"),
         ))
     db.flush()
     return order
