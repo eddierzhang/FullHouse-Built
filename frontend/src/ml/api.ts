@@ -366,6 +366,7 @@ export type LaborWeek = {
   intervals: Record<string, Record<string, LaborStep[]>>
   horizon_end: string
   schedule: Schedule | null
+  wage_access?: boolean
 }
 export type StandardRow = {
   role_key: string
@@ -398,5 +399,41 @@ export const fetchStandards = () => get<Standards>(`${BASE}/labor/standards`)
 export const previewStandard = (body: StandardBody) => send<StandardPreview>('POST', `${BASE}/labor/standards/preview`, body)
 export const saveStandard = (body: StandardBody) => send<Standards>('PUT', `${BASE}/labor/standards`, body)
 export const resetStandard = (roleKey: string) => send<Standards>('DELETE', `${BASE}/labor/standards/${roleKey}`)
-/** Filled in by the schedule (phase 6). */
-export type Schedule = Record<string, unknown>
+export type ScheduleShift = { id: string; staff_id: string | null; role_key: string; date: string; start: number; end: number; kind: 'regular' | 'flex'; locked: boolean; note: string; paid_minutes: number }
+export type Schedule = {
+  id: string
+  week_of: string
+  status: 'draft' | 'published'
+  version: number
+  generated_at: string | null
+  published_at: string | null
+  proposal_id: string | null
+  hours_total: string
+  open_shifts: number
+  understaffed_intervals: number
+  overtime: string[]
+  hours_by_person: Record<string, number>
+  violations: { shift_id: string; person: string; rule: string }[]
+  unset_rules: string[]
+  people: { id: string; name: string; roles: string[] }[]
+  shifts: ScheduleShift[]
+  wage_access: boolean
+  /** Only with wage access. */
+  cost_total?: string | null
+  net_expected?: string
+  uncosted_shifts?: number
+  labor_pct?: string | null
+  cost_by_day?: { date: string; cost: string; net_low: number | null; net_expected: number | null; net_high: number | null }[]
+}
+export type PublishWarning = { kind: 'notice'; days: number; rule: number } | { kind: 'open_shifts'; count: number } | { kind: 'rule'; shift_id: string; person: string; rule: string }
+export type LaborRulesBody = Record<string, number | boolean | string | null>
+export type ShiftBody = { schedule_id: string; date?: string; start?: number; end?: number; role_key?: string; staff_id?: string | null; unassign?: boolean; locked?: boolean; note?: string }
+export const generateSchedule = (weekOf: string) => send<{ job_id: string }>('POST', `${BASE}/labor/weeks/${weekOf}/generate`)
+export const fetchJob = (jobId: string) => get<{ status: 'queued' | 'running' | 'done' | 'failed'; error: string | null }>(`${BASE}/jobs/${jobId}`)
+export const addShift = (body: ShiftBody) => send<Schedule>('POST', `${BASE}/labor/shifts`, body)
+export const editShift = (shiftId: string, body: ShiftBody) => send<Schedule>('PATCH', `${BASE}/labor/shifts/${shiftId}`, body)
+export const removeShift = (shiftId: string, scheduleId: string) => send<Schedule>('DELETE', `${BASE}/labor/shifts/${shiftId}?schedule_id=${scheduleId}`)
+export const publishSchedule = (scheduleId: string, confirm: boolean) => send<{ published: boolean; warnings: PublishWarning[]; schedule: Schedule }>('POST', `${BASE}/labor/schedules/${scheduleId}/publish`, { confirm })
+export const scheduleCsvUrl = (scheduleId: string) => `${BASE}/labor/schedules/${scheduleId}/export.csv`
+export const fetchLaborRules = () => get<LaborRulesBody>(`${BASE}/labor/rules`)
+export const saveLaborRules = (body: LaborRulesBody) => send<LaborRulesBody>('PUT', `${BASE}/labor/rules`, body)

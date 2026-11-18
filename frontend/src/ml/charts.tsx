@@ -720,14 +720,14 @@ export type RangeBar = { date: string; low: number; expected: number; high: numb
  * Expected volume for each day as a bar from zero, with a whisker for the Likely range and a diamond for last
  * week's actual. Anything known about the day (a holiday, an event) is written under it.
  */
-export function RangeBars({ bars, unit, markerLabel, height = 260 }: { bars: RangeBar[]; unit: string; markerLabel: string; height?: number }) {
+export function RangeBars({ bars, unit, markerLabel, height = 260, target, hideMarker }: { bars: RangeBar[]; unit: string; markerLabel: string; height?: number; target?: { value: number; label: string }; hideMarker?: boolean }) {
   const [hover, setHover] = useState<number | null>(null)
   const [ref, W] = useElementWidth<HTMLDivElement>()
   const pad = { top: 20, right: 16, bottom: 56, left: 56 }
   const innerW = W - pad.left - pad.right
   const innerH = height - pad.top - pad.bottom
   if (bars.length === 0) return <div ref={ref} />
-  const max = niceMax(Math.max(1, ...bars.flatMap((b) => [b.high, b.marker ?? 0])))
+  const max = niceMax(Math.max(1, target?.value ?? 0, ...bars.flatMap((b) => [b.high, b.marker ?? 0])))
   const slot = innerW / bars.length
   const barW = Math.min(56, slot * 0.55)
   const y = (v: number) => pad.top + innerH - (v / max) * innerH
@@ -770,6 +770,14 @@ export function RangeBars({ bars, unit, markerLabel, height = 260 }: { bars: Ran
             </g>
           )
         })}
+        {target && (
+          <g>
+            <line x1={pad.left} x2={W - pad.right} y1={y(target.value)} y2={y(target.value)} stroke="var(--ink)" strokeWidth={1.5} strokeDasharray="6 4" />
+            <text className="chart-label" x={W - pad.right} y={y(target.value) - 6} textAnchor="end">
+              {target.label} {whole(target.value)}
+            </text>
+          </g>
+        )}
         <text className="chart-axis" x={pad.left + innerW / 2} y={height - 4} textAnchor="middle">
           Day
         </text>
@@ -777,7 +785,7 @@ export function RangeBars({ bars, unit, markerLabel, height = 260 }: { bars: Ran
       <div className="ml-coverage-key">
         <span><span className="ml-key-fill" style={{ opacity: 0.85 }} /> Expected</span>
         <span><span className="ml-key-solid" /> Likely range</span>
-        <span>
+        <span hidden={hideMarker}>
           <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
             <path d="M7,1 l5,6 l-5,6 l-5,-6 z" fill="var(--surface)" stroke="var(--ink)" strokeWidth="1.5" />
           </svg>{' '}

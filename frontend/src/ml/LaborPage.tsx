@@ -4,7 +4,8 @@ import { readHashParam } from '../lib/useHashRoute'
 import { useLoad } from '../lib/useLoad'
 import { fetchLaborWeek, fetchStandards, type LaborWeek, previewStandard, resetStandard, saveStandard, type StandardPreview, type StandardRow, type Standards } from './api'
 import { CoverageChart, Histogram, RangeBars, SortedBars } from './charts'
-import { dayLabel, percent, timeLabel } from './format'
+import { dayLabel, dollars, percent, timeLabel } from './format'
+import { SchedulePanel } from './SchedulePanel'
 import { ConfidenceLabel, HeaderSentence, LoadFailed, SetupChecklist, type SetupStep, SidePanel, Skeleton, StateBanner, StatTile, StatusWord, TileRow, useWhy, ViewAsTable, type Why } from './ui'
 
 const hr = (hours: number) => `${(Math.round(hours * 10) / 10).toLocaleString('en-US')} hr`
@@ -28,14 +29,26 @@ export function weekSentence(data: LaborWeek): string {
     const done = data.setup.filter((s) => s.done).length
     return `${done} of ${data.setup.length} setup steps are done.`
   }
-  return `Week of ${dayLabel(data.week_of).split(' ').slice(1).join(' ')} needs about ${whole(data.totals.hours_p50)} hours at expected sales, ${whole(data.totals.hours_p90)} if busy.`
+  const s = data.schedule
+  const week = dayLabel(data.week_of).split(' ').slice(1).join(' ')
+  if (s) {
+    const kind = s.status === 'published' ? 'Published' : 'Draft'
+    const hours = `${whole(Number(s.hours_total))} hours`
+    if (s.cost_total != null && s.labor_pct != null) {
+      const target = data.target_labor_pct ? ` Target ${percent(data.target_labor_pct)}.` : ''
+      return `${kind} for ${week}: ${hours}, ${dollars(s.cost_total)}, ${percent(s.labor_pct)} of expected sales.${target}`
+    }
+    return `${kind} for ${week}: ${hours} scheduled, ${whole(data.totals.hours_p50)} needed.`
+  }
+  return `Week of ${week} needs about ${whole(data.totals.hours_p50)} hours at expected sales, ${whole(data.totals.hours_p90)} if busy.`
 }
 
-function WeekPage({ weekOf }: { app: AppContext; weekOf: string }) {
+function WeekPage({ app, weekOf }: { app: AppContext; weekOf: string }) {
   const load = useLoad(() => fetchLaborWeek(weekOf), [weekOf])
   const why = useWhy()
   const [role, setRole] = useState<string | null>(null)
   const [day, setDay] = useState<string | null>(null)
+  const [tab, setTab] = useState<'demand' | 'cost'>('demand')
   const data = load.data
   const title = 'Labor'
   if (load.status === 'loading') return <main className="page ml-page"><Skeleton title={title} /></main>
@@ -64,6 +77,23 @@ function WeekPage({ weekOf }: { app: AppContext; weekOf: string }) {
   const shownDay = day ?? busiest?.date ?? data.days[0]?.date
   const steps = (shownRole && shownDay && data.intervals[shownDay]?.[shownRole]) || []
   const roleName = data.roles.find((r) => r.role_key === shownRole)?.name ?? ''
+  const sched = data.schedule
+  const costDays = (sched?.cost_by_day ?? [])
+    .filter((d) => d.net_expected && d.net_low && d.net_high && Number(d.cost) > 0)
+    .map((d) => ({ date: d.date, expected: (Number(d.cost) / (d.net_expected as number)) * 100, low: (Number(d.cost) / (d.net_high as number)) * 100, high: (Number(d.cost) / (d.net_low as number)) * 100 }))
+  const costliest = [...costDays].sort((a, b) => b.expected - a.expected)[0]
+  const costWhy = (): Why => ({
+    result: `${percent(sched?.labor_pct ?? 0)} of expected sales`,
+    formula: 'Labor % = total shift cost / expected sales. Shift cost = paid hours x hourly rate, with the role median for an unknown rate',
+    inputs: [
+      { label: 'Total shift cost', value: dollars(sched?.cost_total ?? 0) },
+      { label: 'Expected sales', value: dollars(sched?.net_expected ?? 0) },
+      { label: 'Paid hours', value: hr(Number(sched?.hours_total ?? 0)) },
+    ],
+    dataBasis: `${data.weeks_of_data} weeks of orders, and the rates on the team list`,
+    freshness: updated ? `Computed ${updated}.` : 'Not computed yet.',
+    fix: { label: 'Open standards', href: '#labor/standards' },
+  })
   const hoursWhy = (): Why => ({
     result: `${hr(totals.hours_p50)} needed`,
     formula: 'People needed each half hour = expected units / (standard x 0.5), rounded up, and never under the minimum on floor',
@@ -83,13 +113,43 @@ function WeekPage({ weekOf }: { app: AppContext; weekOf: string }) {
       {data.stale && data.last_order_date && <StateBanner kind="stale" text={`Orders were last imported ${dayLabel(data.last_order_date)}. Import a newer export.`} action={{ label: 'Open connections', href: '#connect' }} />}
       {data.state === 'learning' && <StateBanner kind="learning" text={`Estimate. ${data.weeks_of_data} weeks of data; needs 8.`} />}
       {totals.days_forecast < 7 && <StateBanner kind="learning" text={`${totals.days_forecast} of 7 days are forecast. The forecast reaches ${dayLabel(data.horizon_end)}.`} />}
-      <TileRow>
-        <StatTile value={hr(totals.hours_p50)} label="Hours needed" compare={`${hr(totals.hours_p90)} if busy`} onWhy={() => why.show(hoursWhy())} />
-        <StatTile value={whole(totals.expected)} label={`Expected ${unit}`} compare={`likely ${whole(totals.low)} to ${whole(totals.high)} for the week`} />
-        {peakRole && peakRole.peak_at && <StatTile value={String(peakRole.peak)} label="Peak people" compare={`${peakRole.name}, ${dayLabel(peakRole.peak_at)} ${timeLabel(peakRole.peak_at)}`} />}
-      </TileRow>
+      {sched ? (
+        <TileRow>
+          <StatTile value={hr(Number(sched.hours_total))} label="Scheduled hours" compare={`${hr(totals.hours_p50)} needed, ${hr(totals.hours_p90)} if busy`} onWhy={() => why.show(hoursWhy())} />
+          {sched.labor_pct != null && sched.cost_total != null ? (
+            <StatTile value={percent(sched.labor_pct)} label="Labor %" compare={data.target_labor_pct ? `target ${percent(data.target_labor_pct)}` : `${dollars(sched.cost_total)} of ${dollars(sched.net_expected ?? 0)} expected sales`} onWhy={() => why.show(costWhy())} />
+          ) : (
+            <StatTile value={whole(totals.expected)} label={`Expected ${unit}`} compare={`likely ${whole(totals.low)} to ${whole(totals.high)} for the week`} />
+          )}
+          <StatTile value={String(sched.open_shifts)} label="Open shifts" compare={`${sched.understaffed_intervals} half hours understaffed`} tone={sched.open_shifts || sched.understaffed_intervals ? 'bad' : 'good'} />
+        </TileRow>
+      ) : (
+        <TileRow>
+          <StatTile value={hr(totals.hours_p50)} label="Hours needed" compare={`${hr(totals.hours_p90)} if busy`} onWhy={() => why.show(hoursWhy())} />
+          <StatTile value={whole(totals.expected)} label={`Expected ${unit}`} compare={`likely ${whole(totals.low)} to ${whole(totals.high)} for the week`} />
+          {peakRole && peakRole.peak_at && <StatTile value={String(peakRole.peak)} label="Peak people" compare={`${peakRole.name}, ${dayLabel(peakRole.peak_at)} ${timeLabel(peakRole.peak_at)}`} />}
+        </TileRow>
+      )}
+      {costDays.length > 0 && (
+        <div className="ml-tabs" role="tablist" aria-label="Chart">
+          <button role="tab" aria-selected={tab === 'demand'} className={`ml-tab${tab === 'demand' ? ' active' : ''}`} onClick={() => setTab('demand')}>
+            Demand
+          </button>
+          <button role="tab" aria-selected={tab === 'cost'} className={`ml-tab${tab === 'cost' ? ' active' : ''}`} onClick={() => setTab('cost')}>
+            Cost
+          </button>
+        </div>
+      )}
 
-      {known.length > 0 && busiest && (
+      {tab === 'cost' && costDays.length > 0 ? (
+        <ViewAsTable
+          title={`${WEEKDAY(costliest.date)} has the highest labor share, ${costliest.expected.toFixed(1)}% of expected sales`}
+          summary="Labor cost as a share of expected sales for each day, with the range the likely sales give."
+          chart={<RangeBars bars={costDays} unit="labor, % of expected sales" markerLabel="Not shown" target={data.target_labor_pct ? { value: Number(data.target_labor_pct) * 100, label: 'Target' } : undefined} hideMarker />}
+          columns={['Day', 'Labor %', 'Range']}
+          rows={costDays.map((d) => [dayLabel(d.date), `${d.expected.toFixed(1)}%`, `${d.low.toFixed(1)}% to ${d.high.toFixed(1)}%`])}
+        />
+      ) : known.length > 0 && busiest ? (
         <ViewAsTable
           title={`${WEEKDAY(busiest.date)} is the busiest day, about ${whole(busiest.expected ?? 0)} ${unit}`}
           summary={`Expected ${unit} for each day of the week with the likely range, and last week's actual where the day has closed.`}
@@ -97,7 +157,9 @@ function WeekPage({ weekOf }: { app: AppContext; weekOf: string }) {
           columns={['Day', 'Expected', 'Likely range', 'Last week', 'Known']}
           rows={known.map((d) => [dayLabel(d.date), whole(d.expected ?? 0), `${whole(d.low ?? 0)} to ${whole(d.high ?? 0)}`, d.last_week == null ? 'Not yet' : whole(d.last_week), d.drivers.join(', ') || 'Nothing'])}
         />
-      )}
+      ) : null}
+
+      <SchedulePanel app={app} week={data} onChanged={() => void load.reload()} />
 
       <section className="card" aria-label="People needed by role">
         <div className="table-wrap">

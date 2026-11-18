@@ -92,4 +92,16 @@ One line per decision made where `docs/SPEC-margin-labor.md` was silent, or wher
 | 2026-11-17 | Roles come from the staff list and from punches; a learned standard starts with a minimum on floor of 1 | The spec has no source for roles or a default floor |
 | 2026-11-17 | The cold-start entry of expected covers by daypart (under 4 weeks) is not built: the page shows the setup checklist | The spec's Setup state covers under 4 weeks; the owner-entry path is left for later and is listed in the report |
 | 2026-11-17 | The labor browser tests run in a third seeded restaurant | Its orders through the day would change the kitchen's channel figures |
+| 2026-11-17 | `ortools` 9.15 added to the backend requirements | The spec names OR-Tools CP-SAT for schedule generation |
+| 2026-11-17 | Schedules live in new `schedules` and `schedule_shifts` tables; the older `shifts` table and the Schedule & staff page are untouched, and publishing copies nothing into them. This replaces the earlier line about extending `staff` and `shifts` | The older table cannot hold an open shift, a lock or a version, and writing a published week into it would overwrite shifts entered by hand. Additive only |
+| 2026-11-17 | What scheduling knows about a person is a new `employee_profiles` row beside the existing `staff` row | Additive only |
+| 2026-11-17 | Hourly rates are their own table, left out of the audit log's values; a change is recorded as an event naming the person and who changed it, not the rate | Two ground rules meet here: every change is audited with before and after, and a wage never appears in a log. The history page is open to the whole team, so the rate stays out. Flagged for Eddie |
+| 2026-11-17 | With no rule set, candidate shifts run 4 to 8 hours | Stage 1 needs a shortest and a longest shift to build candidates; the draft still lists both rules as unset |
+| 2026-11-17 | A person with no availability on file is available at any time; with any on file, only inside it | The spec does not say what no availability means |
+| 2026-11-17 | Days in a row are counted inside the week being scheduled | The week before is not carried over yet; listed in the report |
+| 2026-11-17 | Cost and labor % go only to owners and managers; everyone else sees hours | Stricter than "totals only", and simpler to hold to |
+| 2026-11-17 | A hand edit that breaks a rule is allowed and shown as a warning, on the page and before publishing | A manager decides; the generator itself never breaks a hard constraint |
+| 2026-11-17 | Publish is the button on the Labor page; approving the proposal in Recommendations does the same. PDF is the browser's print of the week | One action, two doors. The spec asks for PDF and CSV exports |
+| 2026-11-17 | Only the owner confirms labor rules; a manager edits schedules | Spec 14: the owner confirms `labor_rules` for their location |
+| 2026-11-17 | One schedule per week, whose version rises with each regenerate | "Draft v2" in the spec's sketch, and one proposal a week |
 

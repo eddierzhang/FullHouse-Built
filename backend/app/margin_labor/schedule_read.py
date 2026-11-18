@@ -26,7 +26,7 @@ def out(db: Session, restaurant_id: str, schedule: Schedule, user) -> dict:
             "shifts": shifts, "wage_access": wage_access}
     if wage_access:
         cost = s["cost_total"]
-        body.update(cost_total=None if cost is None else str(cost), net_expected=str(s["net_expected"]), uncosted_shifts=s["uncosted_shifts"],
+        body.update(cost_total=None if cost is None else str(cost), net_expected=str(s["net_expected"]), uncosted_shifts=s["uncosted_shifts"], cost_by_day=s["cost_by_day"],
                     labor_pct=None if cost is None or s["net_expected"] <= 0 else str((cost / s["net_expected"]).quantize(Decimal("0.000001"))))
     return body
 

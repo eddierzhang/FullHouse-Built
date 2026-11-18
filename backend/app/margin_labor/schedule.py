@@ -204,6 +204,7 @@ def summary(db: Session, service: labor.Service, schedule: Schedule) -> dict:
     paid = {s.id: scheduling.paid_minutes(s, rules) for s in specs}
     hours = sum((Decimal(paid[s.id]) for s in specs if s.person), Decimal(0)) / 60
     cost, uncosted = Decimal(0), 0
+    cost_by_day: dict[date, Decimal] = {}
     for s in specs:
         if not s.person:
             continue
@@ -212,10 +213,14 @@ def summary(db: Session, service: labor.Service, schedule: Schedule) -> dict:
             uncosted += 1
         else:
             cost += Decimal(paid[s.id]) / 60 * rate
+            cost_by_day[s.day] = cost_by_day.get(s.day, Decimal(0)) + Decimal(paid[s.id]) / 60 * rate
     days = week_days(schedule.week_of)
-    net = sum(r.p50 for r in db.query(ForecastInterval).filter(
+    net_rows = {r.business_date: r for r in db.query(ForecastInterval).filter(
         ForecastInterval.restaurant_id == service.restaurant_id, ForecastInterval.kind == labor.KIND, ForecastInterval.grain == "day", ForecastInterval.metric == "net",
-        ForecastInterval.channel == "all", ForecastInterval.business_date.in_(days)))
+        ForecastInterval.channel == "all", ForecastInterval.business_date.in_(days))}
+    net = sum(r.p50 for r in net_rows.values())
+    by_day = [{"date": d, "cost": str(cost_by_day.get(d, Decimal(0)).quantize(Decimal("0.01"))), "net_low": net_rows[d].p10 if d in net_rows else None,
+               "net_expected": net_rows[d].p50 if d in net_rows else None, "net_high": net_rows[d].p90 if d in net_rows else None} for d in days]
     needs = needs_for(db, service, days)
     under = 0
     for (role, day), (p50, _p90) in needs.items():
@@ -230,7 +235,7 @@ def summary(db: Session, service: labor.Service, schedule: Schedule) -> dict:
     return {"hours_total": hours.quantize(Decimal("0.01")), "cost_total": cost.quantize(Decimal("0.01")) if specs and uncosted == 0 and by_person else None,
             "uncosted_shifts": uncosted, "net_expected": Decimal(str(round(net, 2))), "open_shifts": sum(1 for s in specs if not s.person),
             "understaffed_intervals": under, "overtime": overtime, "hours_by_person": {p: round(m / 60, 2) for p, m in per_person.items()},
-            "violations": [{"shift_id": v.shift_id, "person": team.names.get(v.person, "Someone"), "rule": v.rule} for v in violations],
+            "cost_by_day": by_day, "violations": [{"shift_id": v.shift_id, "person": team.names.get(v.person, "Someone"), "rule": v.rule} for v in violations],
             "unset_rules": rules.unset(), "names": team.names, "roles_of": {p: sorted(r) for p, r in team.roles_of.items()}, "specs": specs, "rules": rules}
 
 

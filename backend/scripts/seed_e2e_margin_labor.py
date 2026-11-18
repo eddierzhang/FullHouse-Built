@@ -13,6 +13,7 @@ from app.db.session import SessionLocal  # noqa: E402
 from app.demo import DEMO_PROFILE  # noqa: E402
 from app.margin_labor import channels, demand, fixtures, labor, menu_costs, usage  # noqa: E402
 from app.margin_labor import settings as ml_settings  # noqa: E402
+from app.margin_labor.models import LaborRules  # noqa: E402
 from app.platform import flags  # noqa: E402
 from app.restaurant.models import Restaurant  # noqa: E402
 
@@ -62,6 +63,11 @@ def seed() -> None:
         fixtures.seed_service(db, floor.id, service.today, service.conf.timezone)
         db.commit()
         labor.forecast_labor(db, floor.id)
+        db.commit()
+        fixtures.seed_team(db, floor.id)
+        db.add(LaborRules(restaurant_id=floor.id, weekly_overtime_hours=40, daily_overtime_hours=8, min_rest_hours=10, min_shift_hours=4, max_shift_hours=8, max_hours_per_day=10,
+                          max_consecutive_days=6, break_after_hours=6, break_minutes=30, min_paid_hours=3, advance_notice_days=14, allow_on_call=False,
+                          confirmed_by="labor@example.com", confirmed_at=datetime.now(timezone.utc)))
         db.commit()
         print("Seeded the Margin & Labor test kitchen")
     finally:

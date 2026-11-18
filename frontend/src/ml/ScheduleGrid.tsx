@@ -18,7 +18,7 @@ export function ScheduleGrid({ days, open, rows, onPick }: { days: string[]; ope
     shifts
       .filter((s) => s.day === day)
       .map((s) => (
-        <button key={s.id} className={`ml-shift${s.locked ? ' locked' : ''}`} onClick={() => onPick?.(s)} aria-label={`${s.role}, ${s.start} to ${s.end}${s.locked ? ', locked' : ''}`}>
+        <button key={s.id} className={`ml-shift${s.locked ? ' locked' : ''}`} onClick={() => onPick?.(s)}>
           <span className="ml-shift-time">
             {s.start}–{s.end}
           </span>
