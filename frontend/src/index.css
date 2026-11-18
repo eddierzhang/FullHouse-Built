@@ -5220,3 +5220,7 @@ button.ml-bars-row { cursor: pointer; }
 .landing-preview-row strong { display: block; color: var(--ink); }
 .landing-preview-small { display: block; margin-top: 2px; font-size: 12.5px; color: var(--text-muted); line-height: 1.4; }
 .landing-preview-saves { flex: none; font-weight: 700; color: var(--ink); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* Section tabs as links (Inventory: Stock, Count, Variance & waste; Suppliers: Suppliers, Deliveries). */
+.tab-link { display: inline-flex; align-items: center; text-decoration: none; white-space: nowrap; }
+.tab-link[aria-current='page'] { border-bottom-color: var(--brand); color: var(--text); }

@@ -7,6 +7,7 @@ import { WasteDialog } from '../components/WasteDialog'
 import { money, qty, relativeTime } from '../lib/format'
 import { say, spokenNumber, useSpeech } from '../lib/speech'
 import { readHashParam } from '../lib/useHashRoute'
+import { SectionTabs } from '../components/SectionTabs'
 import { useLoad } from '../lib/useLoad'
 
 /** "$218.20 under what was expected": a count's total difference in words, never a bare minus sign. */
@@ -391,21 +392,16 @@ function Arrange({ app, areas, onChanged }: { app: AppContext; areas: StorageAre
 }
 
 /** Counting: pick an area, walk it, post. Counts are never required; each one tightens the figures and feeds the variance report. */
-export function CountPage({ app }: { app: AppContext }) {
-  const [openId, setOpenId] = useState(() => readHashParam())
+/**
+ * Counting, as a tab of Inventory: start a count of an area, the recent counts, and the shelf order.
+ */
+export function CountPanel({ app }: { app: AppContext }) {
   const areas = useLoad(listAreas, [])
-  const counts = useLoad(listCounts, [openId])
+  const counts = useLoad(listCounts, [])
   const [starting, setStarting] = useState<string | null>(null)
   const [wasteOpen, setWasteOpen] = useState(false)
-
-  useEffect(() => {
-    const onHash = () => setOpenId(readHashParam())
-    window.addEventListener('hashchange', onHash)
-    return () => window.removeEventListener('hashchange', onHash)
-  }, [])
   const open = (id: string) => {
-    window.location.hash = id ? `#count/${id}` : '#count'
-    setOpenId(id)
+    window.location.hash = `#count/${id}`
   }
   const start = async (areaId: string | null) => {
     setStarting(areaId ?? 'all')
@@ -418,109 +414,99 @@ export function CountPage({ app }: { app: AppContext }) {
     }
   }
   const unplaced = app.inventory.filter((i) => !i.storage_area_id).length
-  const current = counts.data?.find((c) => c.id === openId)
 
   return (
-    <main className="page">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">{openId ? (current ? `${current.area_name} count` : 'Count sheet') : 'Count sheet'}</h1>
-          <p className="page-subtitle">{openId ? 'Say what is on each shelf. Nothing changes until you post.' : 'Walk an area and say what is there. Each count tightens the stock figures.'}</p>
+    <>
+      <section className="card" aria-labelledby="count-title">
+        <div className="card-header">
+          <div>
+            <h2 className="card-title" id="count-title">
+              Start a count
+            </h2>
+            <div className="card-subtitle">One area takes a few minutes. Count what you have time for.</div>
+          </div>
+          <button className="btn btn-secondary btn-sm" onClick={() => setWasteOpen(true)}>
+            Log waste
+          </button>
         </div>
-        <button className="btn btn-secondary" onClick={() => setWasteOpen(true)}>
-          Log waste
-        </button>
-      </div>
-
-      {openId ? (
-        <Sheet app={app} id={openId} onLeave={() => open('')} />
-      ) : (
-        <div className="stack">
-          <section className="card">
-            <div className="card-header">
-              <div>
-                <h2 className="card-title">Start a count</h2>
-                <div className="card-subtitle">One area takes a few minutes. Count what you have time for.</div>
-              </div>
-            </div>
-            <Loaded load={areas} what="storage areas" placeholderHeight={90}>
-              {(list) => (
-                <div className="card-body count-starts">
-                  {list.map((area) => (
-                    <button key={area.id} className="count-start" disabled={starting !== null || area.items === 0} onClick={() => void start(area.id)}>
-                      <span className="strong">{area.name}</span>
-                      <span className="muted small">
-                        {area.items} {area.items === 1 ? 'item' : 'items'}
-                      </span>
-                    </button>
-                  ))}
-                  {unplaced > 0 && list.length > 0 && (
-                    <button className="count-start" disabled={starting !== null} onClick={() => void start('unplaced')}>
-                      <span className="strong">Not placed yet</span>
-                      <span className="muted small">
-                        {unplaced} {unplaced === 1 ? 'item' : 'items'}
-                      </span>
-                    </button>
-                  )}
-                  <button className="count-start" disabled={starting !== null || app.inventory.length === 0} onClick={() => void start(null)}>
-                    <span className="strong">Everything</span>
-                    <span className="muted small">
-                      {app.inventory.length} {app.inventory.length === 1 ? 'item' : 'items'}
-                    </span>
-                  </button>
-                </div>
+        <Loaded load={areas} what="storage areas" placeholderHeight={90}>
+          {(list) => (
+            <div className="card-body count-starts">
+              {list.map((area) => (
+                <button key={area.id} className="count-start" disabled={starting !== null || area.items === 0} onClick={() => void start(area.id)}>
+                  <span className="strong">{area.name}</span>
+                  <span className="muted small">
+                    {area.items} {area.items === 1 ? 'item' : 'items'}
+                  </span>
+                </button>
+              ))}
+              {unplaced > 0 && list.length > 0 && (
+                <button className="count-start" disabled={starting !== null} onClick={() => void start('unplaced')}>
+                  <span className="strong">Not placed yet</span>
+                  <span className="muted small">
+                    {unplaced} {unplaced === 1 ? 'item' : 'items'}
+                  </span>
+                </button>
               )}
-            </Loaded>
-          </section>
-
-          <section className="card">
-            <div className="card-header">
-              <div>
-                <h2 className="card-title">Recent counts</h2>
-              </div>
+              <button className="count-start" disabled={starting !== null || app.inventory.length === 0} onClick={() => void start(null)}>
+                <span className="strong">Everything</span>
+                <span className="muted small">
+                  {app.inventory.length} {app.inventory.length === 1 ? 'item' : 'items'}
+                </span>
+              </button>
             </div>
-            <Loaded load={counts} what="counts" placeholderHeight={90}>
-              {(list) =>
-                list.length === 0 ? (
-                  <div className="card-body">
-                    <Empty title="No counts yet">Stock runs on sales and deliveries until you count. A count shows what went missing.</Empty>
-                  </div>
-                ) : (
-                  <ul className="list">
-                    {list.map((c) => (
-                      <li key={c.id} className="list-item">
-                        <div className="list-item-main">
-                          <div className="row wrap">
-                            <span className="strong">{c.area_name}</span>
-                            <span className={`badge ${c.status === 'open' ? 'badge-warning' : 'badge-success'}`}>{c.status === 'open' ? 'In progress' : 'Posted'}</span>
-                          </div>
-                          <div className="muted small">
-                            {c.status === 'open'
-                              ? `Started ${relativeTime(c.started_at)} · ${c.summary.counted} of ${c.summary.lines} counted`
-                              : `${c.posted_at ? relativeTime(c.posted_at) : ''} · ${c.summary.counted} counted, ${c.summary.short} short, ${against(c.summary.difference_dollars)}`}
-                          </div>
-                        </div>
-                        <div className="row">
-                          {c.status === 'open' && app.canManage && (
-                            <button className="btn btn-ghost btn-sm" onClick={() => void discardCount(c.id).then(counts.reload).catch((err: unknown) => app.toast('Could not discard it', String(err)))}>
-                              Discard
-                            </button>
-                          )}
-                          <button className="btn btn-secondary btn-sm" onClick={() => open(c.id)}>
-                            {c.status === 'open' ? 'Continue' : 'View'}
-                          </button>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )
-              }
-            </Loaded>
-          </section>
+          )}
+        </Loaded>
+      </section>
 
-          {app.canManage && areas.data && <Arrange app={app} areas={areas.data} onChanged={areas.reload} />}
-        </div>
+      {(
+        <section className="card">
+          <div className="card-header">
+            <div>
+              <h2 className="card-title">Recent counts</h2>
+            </div>
+          </div>
+          <Loaded load={counts} what="counts" placeholderHeight={90}>
+            {(list) =>
+              list.length === 0 ? (
+                <div className="card-body">
+                  <Empty title="No counts yet">Stock runs on sales and deliveries until you count. A count shows what went missing.</Empty>
+                </div>
+              ) : (
+                <ul className="list">
+                  {list.map((c) => (
+                    <li key={c.id} className="list-item">
+                      <div className="list-item-main">
+                        <div className="row wrap">
+                          <span className="strong">{c.area_name}</span>
+                          <span className={`badge ${c.status === 'open' ? 'badge-warning' : 'badge-success'}`}>{c.status === 'open' ? 'In progress' : 'Posted'}</span>
+                        </div>
+                        <div className="muted small">
+                          {c.status === 'open'
+                            ? `Started ${relativeTime(c.started_at)} · ${c.summary.counted} of ${c.summary.lines} counted`
+                            : `${c.posted_at ? relativeTime(c.posted_at) : ''} · ${c.summary.counted} counted, ${c.summary.short} short, ${against(c.summary.difference_dollars)}`}
+                        </div>
+                      </div>
+                      <div className="row">
+                        {c.status === 'open' && app.canManage && (
+                          <button className="btn btn-ghost btn-sm" onClick={() => void discardCount(c.id).then(counts.reload).catch((err: unknown) => app.toast('Could not discard it', String(err)))}>
+                            Discard
+                          </button>
+                        )}
+                        <button className="btn btn-secondary btn-sm" onClick={() => open(c.id)}>
+                          {c.status === 'open' ? 'Continue' : 'View'}
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )
+            }
+          </Loaded>
+        </section>
       )}
+
+      {app.canManage && areas.data && <Arrange app={app} areas={areas.data} onChanged={areas.reload} />}
 
       <WasteDialog
         open={wasteOpen}
@@ -531,6 +517,43 @@ export function CountPage({ app }: { app: AppContext }) {
           app.refresh()
         }}
       />
+    </>
+  )
+}
+
+/** The Count tab of Inventory: start a count, or one count's sheet when its id is in the address. */
+export function CountPage({ app }: { app: AppContext }) {
+  const [openId, setOpenId] = useState(() => readHashParam())
+  const counts = useLoad(listCounts, [openId])
+  useEffect(() => {
+    const onHash = () => setOpenId(readHashParam())
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
+  const current = counts.data?.find((c) => c.id === openId)
+
+  return (
+    <main className="page">
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">{openId && current ? `${current.area_name} count` : 'Count stock'}</h1>
+          <p className="page-subtitle">{openId ? 'Say what is on each shelf. Nothing changes until you post.' : 'Walk an area and say what is there. Each count tightens the stock figures.'}</p>
+        </div>
+      </div>
+      <SectionTabs app={app} section="inventory" />
+      {openId ? (
+        <Sheet
+          app={app}
+          id={openId}
+          onLeave={() => {
+            window.location.hash = '#count'
+          }}
+        />
+      ) : (
+        <div className="stack">
+          <CountPanel app={app} />
+        </div>
+      )}
     </main>
   )
 }

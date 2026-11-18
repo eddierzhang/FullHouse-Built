@@ -1,4 +1,5 @@
 import { type ChangeEvent, type FormEvent, Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { SectionTabs } from '../components/SectionTabs'
 import {
   ApiError,
   type InventoryItem,
@@ -134,6 +135,7 @@ export function InventoryPage({ app, user }: { app: AppContext; user: User }) {
           <Icon name={adding ? 'close' : 'plus'} size={16} /> {adding ? 'Cancel' : 'Add item'}
         </button>
       </div>
+      <SectionTabs app={app} section="inventory" />
 
       <div className="stack">
         {suppliersLoad.status === 'error' && (

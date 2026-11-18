@@ -172,6 +172,9 @@ const INSIGHTS_GROUP: { label: string; items: NavItem[] } = {
   ],
 }
 
+/** Pages that are tabs of another page (SectionTabs): the sidebar marks their section as the current page. */
+const SECTION_OF: Partial<Record<Route, Route>> = { count: 'inventory', variance: 'inventory', receive: 'suppliers' }
+
 /** The Margin & Labor Engine's pages, each behind its own flag, with the spec's labels. */
 const MARGIN_LABOR: { flag: string; item: NavItem }[] = [
   { flag: 'ml_menu_costs', item: { route: 'menu-costs', label: 'Menu costs', icon: 'menu' } },
@@ -206,7 +209,7 @@ const PAGE_KEYWORDS: Partial<Record<Route, string>> = {
  * what-if tools, counting, deliveries, autopilot). Every other page is still there: one click on "Show all
  * pages" brings the whole menu back, and search reaches all of them either way.
  */
-const DEMO_MENU = new Set<Route>(['overview', 'approvals', 'insights', 'tools', 'inventory', 'count', 'variance', 'receive', 'autopilot', 'invoices', 'questions', 'digest', 'help'])
+const DEMO_MENU = new Set<Route>(['overview', 'approvals', 'insights', 'tools', 'inventory', 'suppliers', 'count', 'variance', 'receive', 'autopilot', 'invoices', 'questions', 'digest', 'help'])
 const FULL_MENU_KEY = 'fullhouse.nav.full'
 
 const COLLAPSED_KEY = 'fullhouse.nav.collapsed'
@@ -531,8 +534,6 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
   // draws and what search offers.
   const extra = (label: string | null): NavItem[] => {
     const more: NavItem[] = []
-    if (label === 'Inventory' && flags.v3_stock) more.push({ route: 'count', label: 'Count sheet', icon: 'check' }, { route: 'variance', label: 'Variance & waste', icon: 'trend' })
-    if (label === 'Inventory' && flags.v3_receiving) more.push({ route: 'receive', label: 'Deliveries', icon: 'suppliers' })
     if (label === 'Inventory' && flags.v3_autopilot) more.push({ route: 'autopilot', label: 'Ordering autopilot', icon: 'play' })
     if (label === 'Restaurant' && flags.v2_calendar) more.push({ route: 'calendar', label: 'Calendar', icon: 'clock' })
     if (label === 'Restaurant' && flags.v2_connect) more.push({ route: 'connect', label: 'Connections', icon: 'suppliers' })
@@ -556,10 +557,17 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
   const commandPages: CommandPage[] = allGroups.flatMap((group) =>
     group.items.map((item) => ({ label: item.label, href: `#${item.route}`, group: group.label ?? 'Today', icon: item.icon, keywords: PAGE_KEYWORDS[item.route] })),
   )
+  // The tabs of Inventory and Suppliers have no sidebar entry of their own; search still reaches each one.
+  if (flags.v3_stock)
+    commandPages.push(
+      { label: 'Count stock', href: '#count', group: 'Inventory', icon: 'check', keywords: PAGE_KEYWORDS.count },
+      { label: 'Variance & waste', href: '#variance', group: 'Inventory', icon: 'trend', keywords: PAGE_KEYWORDS.variance },
+    )
+  if (flags.v3_receiving) commandPages.push({ label: 'Deliveries', href: '#receive', group: 'Inventory', icon: 'suppliers', keywords: PAGE_KEYWORDS.receive })
   const navLink = (item: NavItem) => {
     const count = counts[item.route]
     return (
-      <a key={item.route} className="nav-link" href={`#${item.route}`} aria-current={route === item.route ? 'page' : undefined}>
+      <a key={item.route} className="nav-link" href={`#${item.route}`} aria-current={route === item.route || SECTION_OF[route] === item.route ? 'page' : undefined}>
         <Icon name={item.icon} />
         {item.label}
         {count && count.value > 0 && <span className={`nav-count${count.attention ? ' attention' : ''}`}>{count.value}</span>}

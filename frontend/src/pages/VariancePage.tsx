@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { SectionTabs } from '../components/SectionTabs'
 import { fetchStockStatus, fetchVariance, fetchWaste } from '../api/stock'
 import type { AppContext } from '../app/context'
 import { Icon } from '../components/Icon'
@@ -43,6 +44,7 @@ export function VariancePage({ app }: { app: AppContext }) {
           </a>
         </div>
       </div>
+      <SectionTabs app={app} section="inventory" />
 
       <div className="stack">
         {status.data && status.data.alerts.length > 0 && (

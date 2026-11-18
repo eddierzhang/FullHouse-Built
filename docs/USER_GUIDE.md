@@ -11,6 +11,10 @@ Digest, Conversation), **Staffing** (Schedule & staff), **Customers** (Customer 
 Help). On a phone, Today, Inventory, Schedule and Recommendations are the bottom bar, and everything else is behind
 **More**.
 
+Inventory and Suppliers each hold more than one page, as tabs under the page title. With stock counting switched
+on, Inventory has **Stock**, **Count** and **Variance & waste**. With deliveries switched on, Suppliers has
+**Suppliers** and **Deliveries**. Search still reaches each tab by name.
+
 - **Today**: low stock, recommendations waiting, and the day's figures.
 - **Inventory**: stock on hand, deliveries, counts, each item's history, and the last price the invoices show for it.
 - **Schedule & staff**: the team and the published schedule.

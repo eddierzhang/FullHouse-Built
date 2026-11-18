@@ -64,7 +64,11 @@ export function CommandBar({ open, onClose, pages, canAsk, onError }: { open: bo
       onClose()
     }
     const needle = query.toLowerCase()
-    const matching = pages.filter((p) => !needle || `${p.label} ${p.group} ${p.keywords ?? ''}`.toLowerCase().includes(needle))
+    // A page named for what was typed comes before one that only mentions it in its keywords.
+    const named = (p: CommandPage) => (needle && p.label.toLowerCase().includes(needle) ? 0 : 1)
+    const matching = pages
+      .filter((p) => !needle || `${p.label} ${p.group} ${p.keywords ?? ''}`.toLowerCase().includes(needle))
+      .sort((x, y) => named(x) - named(y))
     const out: Row[] = hits.map((h, i) => ({ key: `hit-${i}-${h.href}-${h.title}`, title: h.title, subtitle: `${KIND_LABEL[h.kind]} · ${h.subtitle}`, icon: KIND_ICON[h.kind], run: go(h.href) }))
     out.push(...matching.slice(0, needle ? 6 : 8).map((p) => ({ key: `page-${p.href}`, title: p.label, subtitle: `Page · ${p.group}`, icon: p.icon, run: go(p.href) })))
     if (canAsk && query.length >= 4) {

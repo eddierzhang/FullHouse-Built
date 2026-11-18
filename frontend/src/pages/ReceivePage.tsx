@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { SectionTabs } from '../components/SectionTabs'
 import { uploadDocument } from '../api/client'
 import { checkIn, type ExpectedOrder, fetchExpected, fetchReceipts, type LineStatus, supplierReplied } from '../api/receiving'
 import type { AppContext } from '../app/context'
@@ -170,6 +171,7 @@ export function ReceivePage({ app }: { app: AppContext }) {
         </div>
         <Freshness loads={[expected]} />
       </div>
+      <SectionTabs app={app} section="suppliers" />
 
       {open ? (
         <CheckIn
