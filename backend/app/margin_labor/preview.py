@@ -102,9 +102,11 @@ def wait() -> None:
         pass
 
 
-def fill_in_background(solve_seconds: int = 6) -> threading.Thread:
+def fill_in_background(solve_seconds: int = 45) -> threading.Thread:
     """After a demo reset: switch the Margin & Labor modules on in the demo restaurant (`fill_demo`) and add the empty
-    restaurant beside it, on a thread and a session of their own. A failure is logged and leaves the demo as it was."""
+    restaurant beside it, on a thread and a session of their own. A failure is logged and leaves the demo as it was.
+    The solver's limit is wall-clock time, and a small host has a fraction of a processor: 45 seconds there is a few
+    seconds of work, and on a fast machine the solve ends as soon as it is done."""
     def work() -> None:
         from app.db.session import SessionLocal
 
@@ -314,25 +316,49 @@ def fill_demo(db: Session, solve_seconds: int = 6, checkpoint=None) -> str | Non
         except ApplyError:
             logger.warning("could not confirm the proposed recipe %s", (action.payload or {}).get("name"))
     step()
-    menu_costs.recost(db, rid)
-    step()
-    # The Dishes list shows the same cost per plate as Menu costs.
-    recipes = {r.id: r.name for r in db.query(Recipe).filter(Recipe.restaurant_id == rid)}
-    by_name = {m.name: m for m in db.query(MenuItem).filter(MenuItem.restaurant_id == rid)}
-    for cost in db.query(DishCost).filter(DishCost.restaurant_id == rid, DishCost.is_current.is_(True)):
-        dish = by_name.get(recipes.get(cost.recipe_id, ""))
-        if dish is not None:
-            dish.cost = round(float(cost.plate_cost), 2)
-    usage.run(db, rid)
-    demand.forecast_items(db, rid)
-    step()
-    labor.forecast_labor(db, rid)
-    # The owner's floor minimums: a chef and a server whenever the doors are open; the cook, host and bar come in on demand.
-    for standard in db.query(LaborStandard).filter(LaborStandard.restaurant_id == rid):
-        standard.min_on_floor = 1 if standard.role_key in ("head_chef", "server") else 0
-    db.flush()
-    labor.forecast_labor(db, rid)
-    step()
-    schedule.generate(db, rid, labor_read.default_week(today), seconds=solve_seconds)
-    step()
+    # Each step below is retried on its own. The app's background jobs recompute the same tables when recipes and
+    # prices change, so a step can collide with one (a duplicate row, or a locked database on SQLite); the step then
+    # starts again from what the job wrote. One step failing never stops the ones after it.
+    import time as clock
+
+    from sqlalchemy.exc import DBAPIError
+
+    def attempt(name: str, work) -> None:
+        for tries in range(4):
+            try:
+                work()
+                db.commit()
+                return
+            except DBAPIError as err:
+                db.rollback()
+                logger.info("demo fill: %s collided with a background job (%s); trying again", name, type(err.orig).__name__)
+                clock.sleep(1.5 * (tries + 1))
+            except Exception:  # noqa: BLE001 - the remaining steps still run
+                db.rollback()
+                logger.exception("demo fill: %s failed", name)
+                return
+        logger.warning("demo fill: %s did not complete after four tries", name)
+
+    def align_dishes() -> None:
+        # The Dishes list shows the same cost per plate as Menu costs.
+        recipes = {r.id: r.name for r in db.query(Recipe).filter(Recipe.restaurant_id == rid)}
+        by_name = {m.name: m for m in db.query(MenuItem).filter(MenuItem.restaurant_id == rid)}
+        for cost in db.query(DishCost).filter(DishCost.restaurant_id == rid, DishCost.is_current.is_(True)):
+            dish = by_name.get(recipes.get(cost.recipe_id, ""))
+            if dish is not None:
+                dish.cost = round(float(cost.plate_cost), 2)
+
+    def floor_minimums() -> None:
+        # The owner's floor minimums: a chef and a server whenever the doors are open; the cook, host and bar come in on demand.
+        for standard in db.query(LaborStandard).filter(LaborStandard.restaurant_id == rid):
+            standard.min_on_floor = 1 if standard.role_key in ("head_chef", "server") else 0
+
+    attempt("menu costs", lambda: menu_costs.recost(db, rid))
+    attempt("dish costs on the menu", align_dishes)
+    attempt("usage", lambda: usage.run(db, rid))
+    attempt("item forecast", lambda: demand.forecast_items(db, rid))
+    attempt("labor forecast", lambda: labor.forecast_labor(db, rid))
+    attempt("floor minimums", floor_minimums)
+    attempt("labor forecast", lambda: labor.forecast_labor(db, rid))
+    attempt("draft schedule", lambda: schedule.generate(db, rid, labor_read.default_week(today), seconds=solve_seconds))
     return rid
