@@ -5211,3 +5211,12 @@ button.ml-bars-row { cursor: pointer; }
 /* Landing page: four steps sit in one row on a wide screen, two by two below that, and stack on a phone. */
 @media (min-width: 1100px) { .landing-steps { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @media (min-width: 721px) and (max-width: 1099px) { .landing-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Landing page preview: two more examples as short rows under the main card. */
+.landing-preview-more { list-style: none; margin: 16px 0 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.landing-preview-more li { padding-top: 12px; border-top: 1px solid var(--border, #eadfce); }
+.landing-preview-more li > div:first-child { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.landing-preview-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; font-size: 14px; }
+.landing-preview-row strong { display: block; color: var(--ink); }
+.landing-preview-small { display: block; margin-top: 2px; font-size: 12.5px; color: var(--text-muted); line-height: 1.4; }
+.landing-preview-saves { flex: none; font-weight: 700; color: var(--ink); white-space: nowrap; font-variant-numeric: tabular-nums; }

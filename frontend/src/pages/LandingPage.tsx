@@ -100,54 +100,89 @@ const ASSURANCES: { title: string; body: string }[] = [
   },
 ];
 
-/** The card shown when the site has no demo to draw one from: one item, with figures that add up. */
-const SAMPLE_CARD = {
-  item_name: "Tomatoes, 25 lb case",
-  sentence: "You paid $31.20 at Green Valley Farms on Monday. Sysco Foods charged $27.60 the day before.",
-  impact: 126,
-  total: 641.75,
-  items: 6,
-};
+/**
+ * Three things FullHouse might put in front of an owner in one week, each from a different part of the back
+ * office: a dish that costs too much to make, a slow night with one server too many, and a supplier charging
+ * more than another. Example figures that add up; a picture, not a control.
+ */
+const EXAMPLES: { badge: string; when: string; title: string; why: string; saves: string; action: string }[] = [
+  {
+    badge: "Menu cost",
+    when: "Tuesday",
+    title: "Burger is over your food cost target",
+    why: "Ground beef rose 9% on Monday’s invoice. The burger now costs $3.94 a plate, 32.8% of its $12.00 price. Your target is 30%.",
+    saves: "$315 a week",
+    action: "Review price",
+  },
+  {
+    badge: "Labor",
+    when: "Friday, 7:15 pm",
+    title: "Cut one server at 7:45",
+    why: "Covers are running 12% below forecast, and four servers are on where three are needed.",
+    saves: "$42 tonight",
+    action: "Accept",
+  },
+  {
+    badge: "Switch supplier",
+    when: "Monday",
+    title: "Tomatoes, 25 lb case",
+    why: "You paid $31.20 at Green Valley Farms. Sysco Foods charged $27.60 the day before.",
+    saves: "$126 a week",
+    action: "Move tomatoes",
+  },
+];
 
-const dollars = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
-
-/** One card from the digest, as it looks on a Monday. A picture, not a control. On the demo it is the demo's own top card. */
-function DigestPreview({ card }: { card?: AuthOptions["demo_card"] }) {
-  const shown = card ?? SAMPLE_CARD;
-  const short = shown.item_name.split(",")[0].toLowerCase();
+/** The first example as a full card, the others as short rows under it. */
+function ExamplesPreview() {
+  const [first, ...rest] = EXAMPLES;
   return (
     <figure
       className="landing-preview"
       role="img"
-      aria-label={`An example digest card: ${shown.item_name}, ${dollars(shown.impact)} a week, with the comparison and a Move ${short} button`}
+      aria-label={`Examples of what FullHouse raises in a week: ${EXAMPLES.map((e) => `${e.title}, ${e.saves}`).join("; ")}`}
     >
       <div className="landing-preview-head">
-        <span className="badge badge-brand">Switch supplier</span>
-        <span className="landing-preview-when">Monday</span>
+        <span className="badge badge-brand">{first.badge}</span>
+        <span className="landing-preview-when">{first.when}</span>
       </div>
-      <div className="landing-preview-title">{shown.item_name}</div>
-      <p className="landing-preview-why">{shown.sentence}</p>
+      <div className="landing-preview-title">{first.title}</div>
+      <p className="landing-preview-why">{first.why}</p>
       <dl className="landing-preview-facts">
         <div>
-          <dt>A week</dt>
-          <dd>{dollars(shown.impact)}</dd>
+          <dt>Costing you</dt>
+          <dd>{first.saves}</dd>
         </div>
         <div>
-          <dt>At stake this week</dt>
-          <dd>{dollars(shown.total)}</dd>
+          <dt>Suggested price</dt>
+          <dd>$13.00</dd>
         </div>
         <div>
-          <dt>Items</dt>
-          <dd>{shown.items}</dd>
+          <dt>Sold in 28 days</dt>
+          <dd>840</dd>
         </div>
       </dl>
       <div className="landing-preview-actions">
-        <span className="btn btn-primary btn-sm">Move {short}</span>
-        <span className="btn btn-secondary btn-sm">Not useful</span>
-        <span className="landing-preview-status">
-          Nothing is sent unless you say so
-        </span>
+        <span className="btn btn-primary btn-sm">{first.action}</span>
+        <span className="btn btn-secondary btn-sm">Dismiss</span>
+        <span className="landing-preview-status">Nothing is sent unless you say so</span>
       </div>
+      <ul className="landing-preview-more">
+        {rest.map((example) => (
+          <li key={example.title}>
+            <div>
+              <span className="badge badge-brand">{example.badge}</span>
+              <span className="landing-preview-when">{example.when}</span>
+            </div>
+            <div className="landing-preview-row">
+              <span>
+                <strong>{example.title}</strong>
+                <span className="landing-preview-small">{example.why}</span>
+              </span>
+              <span className="landing-preview-saves">{example.saves}</span>
+            </div>
+          </li>
+        ))}
+      </ul>
     </figure>
   );
 }
@@ -228,7 +263,7 @@ export function LandingPage({ options }: Props) {
                       : " "}
               </p>
             </div>
-            <DigestPreview card={options?.demo_card} />
+            <ExamplesPreview />
           </section>
         </div>
 
