@@ -46,6 +46,21 @@ export type OrderingSupplier = {
   policy: AutopilotPolicy
   order_email: string | null
   sent_this_week: number
+  outlook: Outlook
+}
+/** What autopilot will do next for a supplier, and what it would order and decide if today were the day. */
+export type Outlook = {
+  next: { cutoff: string; drafts_from: string; delivery: string } | null
+  today: {
+    lines: { description: string; qty: number; unit: string | null; unit_price: number | null; amount: number; basis: 'par' | 'usual' | null; usual: number; times_bought: number; previous_price: number | null }[]
+    total: number
+    rules: { rule: string; ok: boolean; detail: string }[]
+    would_send: boolean
+    under_minimum: boolean
+    minimum: number | null
+  }
+  draft_lead_minutes: number
+  failures_before_off: number
 }
 export type OrderingOverview = { paused: boolean; can_send: boolean; is_owner: boolean; now: string; suppliers: OrderingSupplier[]; waiting: Decision[]; recent: Decision[] }
 export type Preview = {

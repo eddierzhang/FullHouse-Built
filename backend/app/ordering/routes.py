@@ -121,6 +121,7 @@ def overview(user: User = Depends(manager), db: Session = Depends(get_db)) -> di
                        "calendar": _calendar_out(autopilot.calendar_for(db, restaurant_id, s.id)),
                        "policy": _policy_out(autopilot.policy_for(db, restaurant_id, s.id)),
                        "order_email": autopilot.order_email(db, restaurant_id, s.id),
+                       "outlook": autopilot.outlook(db, restaurant_id, s),
                        "sent_this_week": autopilot.sent_this_week(db, restaurant_id, s.id, datetime.now(timezone.utc))} for s in suppliers],
         "waiting": [d for d in out if d["outcome"] == PASSED], "recent": [d for d in out if d["outcome"] != PASSED],
     }

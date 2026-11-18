@@ -33,7 +33,7 @@ from app.voice import parser  # noqa: E402
 from app.voice.models import SpokenAlias, VoiceCommand  # noqa: E402
 
 ROUTE_LABELS = {"inventory": "Inventory", "receive": "Deliveries", "count": "the count sheet", "variance": "Variance & waste", "digest": "the digest",
-                "insights": "Savings & costs", "autopilot": "Ordering autopilot", "approvals": "Recommendations", "staff": "Schedule & staff",
+                "insights": "Savings & costs", "autopilot": "Ordering autopilot", "approvals": "Recommendations", "staff": "Labor and staffing",
                 "menu": "the menu", "invoices": "Invoices", "suppliers": "Suppliers", "profit": "Profit & forecast", "overview": "Today"}
 
 

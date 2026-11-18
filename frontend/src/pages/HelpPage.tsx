@@ -117,7 +117,7 @@ const GUIDE: { title: string; steps: ReactNode[] }[] = [
   {
     title: 'Check and publish the schedule',
     steps: [
-      <>Open <a href="#staff">Schedule & staff</a>. Owners and admins add shifts as drafts.</>,
+      <>Open <a href="#staff">Labor and staffing</a>. Owners and admins add shifts as drafts.</>,
       <>Press <strong>Publish</strong> when it’s ready. Staff see only published shifts.</>,
       'Shifts that break the restaurant’s scheduling rules (too long, too little rest, too many hours) are refused with the reason.',
     ],

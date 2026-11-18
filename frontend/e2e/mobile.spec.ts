@@ -27,7 +27,7 @@ test('on a phone, daily tasks are one tap away and stock can be logged', async (
   await noSidewaysScroll(page)
 
   // Each page in the bar opens and fits the screen.
-  for (const [tab, heading] of [['Schedule', 'Schedule & staff'], ['Recommend', 'Recommendations'], ['Inventory', 'Inventory']]) {
+  for (const [tab, heading] of [['Schedule', 'Labor and staffing'], ['Recommend', 'Recommendations'], ['Inventory', 'Inventory']]) {
     await tabs.getByRole('link', { name: new RegExp(`^${tab}`) }).click()
     await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible()
     await noSidewaysScroll(page)

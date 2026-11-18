@@ -528,6 +528,54 @@ def run(db: Session, restaurant_id: str, now: datetime | None = None) -> dict:
             "sent": deliver_due(db, now, restaurant_id)}
 
 
+# --- the outlook --------------------------------------------------------------------------------
+
+
+def outlook(db: Session, restaurant_id: str, supplier: Supplier, now: datetime | None = None) -> dict:
+    """What autopilot will do next for this supplier, and what it would order and decide if today were the day:
+    the next order day with its cutoff, when the draft is written and when it would arrive; the lines it would
+    put on the order with where each quantity comes from; and every rule's verdict against the current limits.
+    Reads only: nothing is drafted or decided here."""
+    now = now or _now()
+    local = _local(db, restaurant_id, now)
+    calendar = calendar_for(db, restaurant_id, supplier.id)
+    upcoming = None
+    if calendar and calendar.order_days:
+        try:
+            hour, minute = (int(part) for part in calendar.cutoff_time.split(":"))
+        except ValueError:
+            hour, minute = 14, 0
+        for ahead in range(8):
+            day = local + timedelta(days=ahead)
+            cutoff = day.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if day.weekday() in set(calendar.order_days) and local < cutoff:
+                upcoming = {"cutoff": cutoff.astimezone(timezone.utc), "drafts_from": (cutoff - timedelta(minutes=DRAFT_LEAD_MINUTES)).astimezone(timezone.utc),
+                            "delivery": next_delivery(calendar, supplier, cutoff.date())}
+                break
+    lines = order_lines(db, restaurant_id, supplier, local.date())
+    total = round(sum(float(l["qty"]) * float(l.get("unit_price_expected") or 0) for l in lines), 2)
+    fresh, detail = stock_state(db, restaurant_id, local.date())
+    facts = line_facts(db, restaurant_id, supplier.id, lines, local.date())
+    row = policy_for(db, restaurant_id, supplier.id)
+    verdict = policy.evaluate(policy.Draft(
+        supplier_name=supplier.name, total=total, lines=facts, channel=calendar.channel if calendar else "email",
+        order_email=order_email(db, restaurant_id, supplier.id, calendar), sent_this_week=sent_this_week(db, restaurant_id, supplier.id, now),
+        stock_fresh=fresh, stock_detail=detail, can_send=mail.can_send() or settings.demo_mode), limits_of(row, is_paused(db, restaurant_id)))
+    minimum = calendar.minimum_dollars if calendar else None
+    return {
+        "next": upcoming,
+        "today": {
+            "lines": [{"description": l.get("description"), "qty": l["qty"], "unit": l.get("unit"), "unit_price": l.get("unit_price_expected"),
+                       "amount": round(float(l["qty"]) * float(l.get("unit_price_expected") or 0), 2), "basis": l.get("basis"),
+                       "usual": fact.median_qty, "times_bought": fact.times_bought, "previous_price": fact.previous_price}
+                      for l, fact in zip(lines, facts)],
+            "total": total, "rules": [r.as_dict() for r in verdict.rules], "would_send": verdict.passed,
+            "under_minimum": bool(minimum and total < minimum), "minimum": minimum,
+        },
+        "draft_lead_minutes": DRAFT_LEAD_MINUTES, "failures_before_off": FAILURES_BEFORE_OFF,
+    }
+
+
 # --- the preview --------------------------------------------------------------------------------
 
 

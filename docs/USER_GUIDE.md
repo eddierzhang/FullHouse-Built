@@ -6,8 +6,8 @@ For owners, admins, staff and bookkeepers. The same steps are in the app under *
 
 The sidebar starts with Today, Recommendations and Profit & forecast, then one section for each part of the
 business: **Inventory** (Inventory, Suppliers), **Invoices & prices** (Invoices, Digest), **Staffing** (Schedule &
-staff), **Customers** (Customer requests) and **Menu**. Then **Agent** (Assistant Manager, Agent activity),
-**Records** (History & undo) and **Restaurant** (Profile, Help).
+staff), **Customers** (Customer requests) and **Menu**. Then
+**Records** (History & undo), **Agent** (Assistant Manager, Agent activity) and **Restaurant** (Profile, then Help last).
 
 Several entries hold more than one thing:
 
@@ -17,14 +17,14 @@ Several entries hold more than one thing:
   other documents, the items the invoices were matched to, and the conversation with the agent.
 - **Menu** is one page: menu costs and usage (when switched on), the dishes, recipes and prep sheets, with links at
   the top to jump to each.
-- **Schedule & staff** is one page: the labor forecast and draft schedule (when switched on), then the team and
+- **Labor and staffing** is one page: the labor forecast and draft schedule (when switched on), then the team and
   their shifts.
 
 Search (Ctrl or ⌘ K) still reaches each of these parts by name. Channels is taken out of the menu for now.
 
 - **Today**: low stock, recommendations waiting, and the day's figures.
 - **Inventory**: stock on hand, deliveries, counts, each item's history, and the last price the invoices show for it.
-- **Schedule & staff**: the team and the published schedule.
+- **Labor and staffing**: the team and the published schedule.
 - **Recommendations**: changes the Assistant Manager proposed, waiting for a decision.
 - **Customer requests**: what customers told you, in their own words.
 

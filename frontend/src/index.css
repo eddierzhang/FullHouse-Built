@@ -5232,7 +5232,7 @@ button.ml-bars-row { cursor: pointer; }
 .pi-docs-head > div:first-child { flex: 1 1 260px; }
 .pi-section .card { font-size: 14px; line-height: 1.45; }
 
-/* A page made of several (Menu, Schedule & staff): jump links, then each part as a section. */
+/* A page made of several (Menu, Labor and staffing): jump links, then each part as a section. */
 .jump-links { display: flex; flex-wrap: wrap; gap: 8px; margin: -8px 0 24px; }
 .jump-links a { padding: 6px 12px; border: 1px solid var(--border-strong); border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--text); text-decoration: none; background: var(--surface); }
 .jump-links a:hover { border-color: var(--brand); }
@@ -5243,3 +5243,17 @@ button.ml-bars-row { cursor: pointer; }
 /* Contrast: initials on the soft brand tile and the green badge now pass WCAG AA at their small sizes. */
 .avatar { color: #94390f; }
 .badge-success { color: #1f6436; }
+
+/* Ordering autopilot: the four steps and the "if it ordered today" pane. */
+.autopilot-steps { list-style: none; margin: 0; padding: 16px 20px 20px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+.autopilot-steps li { display: flex; gap: 12px; align-items: flex-start; }
+.autopilot-steps p { margin: 4px 0 0; line-height: 1.5; }
+.autopilot-step-n { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--brand-soft); color: #94390f; font-weight: 700; font-size: 13px; }
+.autopilot-outlook { padding: 4px 20px 16px; border-top: 1px solid var(--border); }
+.autopilot-outlook .table-wrap { margin: 8px 0 12px; }
+.autopilot-next { font-size: 20px; }
+@media (max-width: 1100px) { .autopilot-steps { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 640px) { .autopilot-steps { grid-template-columns: 1fr; } }
+.autopilot-outlook { min-width: 0; }
+.autopilot-outlook .table-wrap { overflow-x: auto; max-width: 100%; }
+.autopilot-supplier { min-width: 0; }

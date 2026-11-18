@@ -6,6 +6,7 @@ import {
   fetchOrdering,
   fetchPars,
   type OrderingSupplier,
+  type Outlook,
   pauseAutopilot,
   type Preview,
   previewPolicy,
@@ -20,6 +21,7 @@ import { Icon } from '../components/Icon'
 import { Empty, Freshness, Loaded } from '../components/PageState'
 import { money, qty, relativeTime, shortDate } from '../lib/format'
 import { useLoad } from '../lib/useLoad'
+import { dayLabel, timeLabel, useRestaurantClock } from '../ml/format'
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const OUTCOME: Record<Decision['outcome'], { label: string; badge: string }> = {
@@ -62,7 +64,7 @@ function NumberField({ label, value, onChange, prefix, suffix, step = 1, disable
   )
 }
 
-function Rules({ decision }: { decision: Decision }) {
+function Rules({ decision }: { decision: { rules: Decision['rules'] } }) {
   return (
     <ul className="rule-list">
       {decision.rules.map((r) => (
@@ -75,9 +77,123 @@ function Rules({ decision }: { decision: Decision }) {
   )
 }
 
+const PLURAL: Record<string, string> = { case: 'cases', box: 'boxes', pack: 'packs', bag: 'bags', tray: 'trays', bottle: 'bottles', can: 'cans', jar: 'jars', bunch: 'bunches', tub: 'tubs', wheel: 'wheels' }
+
+/** "Wed Nov 18, 2:00 pm" on the restaurant's clock. */
+const moment = (iso: string) => `${dayLabel(iso)}, ${timeLabel(iso)}`
+
+/** How the four steps work, in the restaurant's own numbers. */
+function HowItWorks({ suppliers }: { suppliers: OrderingSupplier[] }) {
+  const lead = (suppliers[0]?.outlook.draft_lead_minutes ?? 180) / 60
+  const strikes = suppliers[0]?.outlook.failures_before_off ?? 3
+  const windows = [...new Set(suppliers.filter((s) => s.policy.enabled).map((s) => s.policy.cancel_window_minutes))]
+  const wait = windows.length === 1 ? `${windows[0]} minutes` : windows.length > 1 ? `${Math.min(...windows)} to ${Math.max(...windows)} minutes` : '30 minutes unless you change it'
+  const steps = [
+    ['Draft', `On a supplier’s order day, ${lead} hours before their cutoff, one order is drafted. Each line is your usual week from eight weeks of invoices. Where stock is tracked and an item has a par, the line is sized to bring stock up to par instead.`],
+    ['Check', 'The draft is checked against ten limits: autopilot on, not paused, the supplier takes email, the order and weekly dollar limits, known items, usual quantities, steady prices, and current stock figures. Every limit is checked every time.'],
+    ['Wait', `If every limit passes, the order waits out the cancel window (${wait}) under Waiting to send, where anyone who manages the restaurant can stop it. The window never runs past the supplier’s cutoff.`],
+    ['Send', `When the window closes the order is emailed to the supplier’s order address and shows under Inventory as on order. If any limit fails, nothing is sent: the order goes to Recommendations with the failed limits named. ${strikes} sends in a row that fail or are stopped switch autopilot off for that supplier.`],
+  ]
+  return (
+    <section className="card" aria-labelledby="how-title">
+      <div className="card-header">
+        <div>
+          <h2 className="card-title" id="how-title">
+            How it works
+          </h2>
+          <div className="card-subtitle">Four steps, the same for every supplier. Only an owner can switch a supplier on or change its limits.</div>
+        </div>
+      </div>
+      <ol className="autopilot-steps">
+        {steps.map(([title, body], index) => (
+          <li key={title}>
+            <span className="autopilot-step-n">{index + 1}</span>
+            <div>
+              <div className="strong">{title}</div>
+              <p className="muted small">{body}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </section>
+  )
+}
+
+/** What autopilot would put on this supplier's order today, where each quantity comes from, and each limit's verdict. */
+function OutlookPane({ supplier }: { supplier: OrderingSupplier }) {
+  const outlook: Outlook = supplier.outlook
+  const today = outlook.today
+  const failed = today.rules.filter((r) => !r.ok)
+  return (
+    <div className="autopilot-outlook">
+      <h3 className="pane-title">If it ordered today</h3>
+      {today.lines.length === 0 ? (
+        <p className="muted small">Nothing to order: no invoices from {supplier.name} in the last eight weeks, or every stocked item is at par.</p>
+      ) : (
+        <>
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th className="num">Order</th>
+                  <th className="num">Usual week</th>
+                  <th className="num">Price</th>
+                  <th className="num">Amount</th>
+                  <th>Sized by</th>
+                </tr>
+              </thead>
+              <tbody>
+                {today.lines.map((line) => (
+                  <tr key={line.description}>
+                    <td>{line.description}</td>
+                    <td className="num">
+                      {qty(line.qty)} {line.unit ? (line.qty === 1 ? line.unit : PLURAL[line.unit] ?? line.unit) : ''}
+                    </td>
+                    <td className="num">{qty(line.usual)}</td>
+                    <td className="num">
+                      {line.unit_price == null ? '—' : money(line.unit_price, true)}
+                      {line.previous_price != null && line.unit_price != null && line.previous_price !== line.unit_price && (
+                        <span className="muted small"> was {money(line.previous_price, true)}</span>
+                      )}
+                    </td>
+                    <td className="num">{money(line.amount, true)}</td>
+                    <td className="muted small">{line.basis === 'par' ? 'Stock up to par' : `Usual week, bought ${line.times_bought} times`}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={4} className="strong">
+                    Total
+                  </td>
+                  <td className="num strong">{money(today.total, true)}</td>
+                  <td />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          {today.under_minimum && today.minimum != null && (
+            <p className="small count-short">
+              {money(today.total, true)} is under their {money(today.minimum, true)} minimum, so no order would be drafted.
+            </p>
+          )}
+          <p className="small strong">
+            {today.would_send
+              ? 'Every limit passes: this order would go out after the cancel window.'
+              : `${failed.length} of ${today.rules.length} limits would hold this order for you.`}
+          </p>
+          <Rules decision={today} />
+        </>
+      )}
+    </div>
+  )
+}
+
 /** One supplier: when they take orders, and the limits autopilot works inside. Folded to a summary until opened. */
 function SupplierCard({ app, supplier, isOwner, onSaved }: { app: AppContext; supplier: OrderingSupplier; isOwner: boolean; onSaved: () => void }) {
   const [open, setOpen] = useState(false)
+  const [looking, setLooking] = useState(false)
   const [calendar, setCalendar] = useState<SupplierCalendar>(supplier.calendar)
   const { consecutive_failures: _f, paused_reason: _r, ...initial } = supplier.policy
   const [limits, setLimits] = useState<AutopilotLimits>(initial)
@@ -116,12 +232,24 @@ function SupplierCard({ app, supplier, isOwner, onSaved }: { app: AppContext; su
             Orders {dayList(supplier.calendar.order_days)} by {supplier.calendar.cutoff_time} · delivers {dayList(supplier.calendar.delivery_days)}
             {on ? ` · up to ${money(supplier.policy.per_order_cap)} an order, ${money(supplier.policy.weekly_cap)} a week · ${money(supplier.sent_this_week)} sent this week` : ''}
           </div>
+          <div className="muted small">
+            {supplier.outlook.next
+              ? `Next order: cutoff ${moment(supplier.outlook.next.cutoff)}. Drafted from ${timeLabel(supplier.outlook.next.drafts_from)}. Delivery ${dayLabel(supplier.outlook.next.delivery)}.`
+              : 'No order days set, so nothing is drafted for this supplier.'}
+            {supplier.outlook.today.lines.length > 0 && ` Today’s order would be ${supplier.outlook.today.lines.length} ${supplier.outlook.today.lines.length === 1 ? 'line' : 'lines'}, ${money(supplier.outlook.today.total, true)}.`}
+          </div>
           {supplier.policy.paused_reason && <div className="small count-short">{supplier.policy.paused_reason}</div>}
         </div>
-        <button className="btn btn-secondary btn-sm" aria-expanded={open} onClick={() => setOpen(!open)}>
-          {open ? 'Close' : 'Edit'}
-        </button>
+        <div className="row">
+          <button className="btn btn-ghost btn-sm" aria-expanded={looking} onClick={() => setLooking(!looking)}>
+            {looking ? 'Hide order' : 'See order'}
+          </button>
+          <button className="btn btn-secondary btn-sm" aria-expanded={open} onClick={() => setOpen(!open)}>
+            {open ? 'Close' : 'Edit'}
+          </button>
+        </div>
       </div>
+      {looking && <OutlookPane supplier={supplier} />}
       {open && (
         <div className="autopilot-edit">
           <div className="autopilot-pane">
@@ -235,7 +363,19 @@ function SupplierCard({ app, supplier, isOwner, onSaved }: { app: AppContext; su
  * that supplier. Everything else still waits in Recommendations. The page
  * leads with what is about to go, because that is what can still be stopped.
  */
+const soonest = (suppliers: OrderingSupplier[]) =>
+  suppliers.filter((s) => s.outlook.next).sort((a, b) => a.outlook.next!.cutoff.localeCompare(b.outlook.next!.cutoff))[0]
+const nextCutoff = (suppliers: OrderingSupplier[]) => {
+  const first = soonest(suppliers)
+  return first ? moment(first.outlook.next!.cutoff) : '—'
+}
+const nextCutoffName = (suppliers: OrderingSupplier[]) => {
+  const first = soonest(suppliers)
+  return first ? `${first.name}, ${first.policy.enabled ? 'autopilot on' : 'you send'}` : 'no order days set'
+}
+
 export function AutopilotPage({ app }: { app: AppContext }) {
+  useRestaurantClock(app.restaurant.timezone)
   const load = useLoad(fetchOrdering, [])
   const pars = useLoad(fetchPars, [])
   const [busy, setBusy] = useState<string | null>(null)
@@ -307,6 +447,33 @@ export function AutopilotPage({ app }: { app: AppContext }) {
               </div>
             )}
 
+            <section className="grid grid-stats" aria-label="Autopilot at a glance">
+              <div className="card stat">
+                <div className="stat-label">Suppliers on autopilot</div>
+                <div className="stat-value">
+                  {data.suppliers.filter((s) => s.policy.enabled).length} of {data.suppliers.length}
+                </div>
+                <div className="stat-meta">the rest you send yourself</div>
+              </div>
+              <div className="card stat">
+                <div className="stat-label">Waiting to send</div>
+                <div className="stat-value">{data.waiting.length}</div>
+                <div className="stat-meta">{data.waiting.length ? money(data.waiting.reduce((sum, w) => sum + w.total, 0), true) : 'inside the cancel window'}</div>
+              </div>
+              <div className="card stat">
+                <div className="stat-label">Sent in the last 7 days</div>
+                <div className="stat-value">{money(data.suppliers.reduce((sum, s) => sum + s.sent_this_week, 0))}</div>
+                <div className="stat-meta">counted against each weekly limit</div>
+              </div>
+              <div className="card stat">
+                <div className="stat-label">Next cutoff</div>
+                <div className="stat-value autopilot-next">{nextCutoff(data.suppliers)}</div>
+                <div className="stat-meta">{nextCutoffName(data.suppliers)}</div>
+              </div>
+            </section>
+
+            <HowItWorks suppliers={data.suppliers} />
+
             <section className="card" aria-labelledby="waiting-title">
               <div className="card-header">
                 <div>
@@ -357,7 +524,7 @@ export function AutopilotPage({ app }: { app: AppContext }) {
                   <h2 className="card-title" id="suppliers-title">
                     Suppliers
                   </h2>
-                  <div className="card-subtitle">Autopilot is off for a supplier until an owner switches it on.</div>
+                  <div className="card-subtitle">Autopilot is off for a supplier until an owner switches it on. See order shows what it would order today and how each limit would rule on it.</div>
                 </div>
               </div>
               {data.suppliers.length === 0 ? (

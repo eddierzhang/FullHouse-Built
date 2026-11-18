@@ -13,7 +13,7 @@ export async function signIn(page: Page, who = ML_OWNER) {
 }
 
 /**
- * A module's own part of a combined page (Menu, Schedule & staff). On any other page, such as a detail page or the
+ * A module's own part of a combined page (Menu, Labor and staffing). On any other page, such as a detail page or the
  * digest, it is the whole document, so one locator serves a test that moves between them.
  */
 export const part = (page: Page, id: string) => page.locator(`#sec-${id}, body:not(:has(#sec-${id}))`)

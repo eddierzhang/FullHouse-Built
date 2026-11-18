@@ -65,10 +65,10 @@ export function MenuSectionsPage({ app, at }: { app: AppContext; at: Route }) {
   return <Sections title="Menu" subtitle="What each dish costs and earns, what the kitchen used, the recipes and the prep." parts={parts} at={at} />
 }
 
-/** Schedule & staff: the labor forecast and draft schedule, then the team and their shifts. */
+/** Labor and staffing: the labor forecast and draft schedule, then the team and their shifts. */
 export function StaffSectionsPage({ app, user, at }: { app: AppContext; user: User; at: Route }) {
   const parts: Part[] = []
   if (app.flags.ml_labor) parts.push({ id: 'labor', label: 'Labor', body: <LaborPage app={app} /> })
   parts.push({ id: 'staff', label: 'Team and shifts', body: <StaffPage app={app} user={user} /> })
-  return <Sections title="Schedule & staff" subtitle="The hours the week needs, the draft schedule, the team and their shifts." parts={parts} at={at} />
+  return <Sections title="Labor and staffing" subtitle="The hours the week needs, the draft schedule, the team and their shifts." parts={parts} at={at} />
 }

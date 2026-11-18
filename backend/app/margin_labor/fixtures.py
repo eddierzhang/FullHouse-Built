@@ -399,6 +399,11 @@ def seed_books(db: Session, restaurant_id: str, made: dict, today: date, tz: str
     local = zone(tz)
     supplier, items, recipes = made["supplier"], made["items"], made["recipes"]
     supplier.contact_info = "orders@marginfarm.example · 555 0142"
+    # The same order and delivery days the Ordering and prep page works to (`seed_schedule`), for the autopilot page.
+    from app.ordering.models import SupplierCalendar
+
+    db.add(SupplierCalendar(restaurant_id=restaurant_id, supplier_id=supplier.id, order_days=[2, 6], cutoff_time="14:00", delivery_days=[0, 3], lead_time_days=1,
+                            minimum_dollars=150.0, channel="email", order_email="orders@marginfarm.example"))
     latest = {name: ITEMS[name][2] for name in ITEMS}
     latest["Ground beef"] = 22.00  # the price on the newest invoice
     # What one plate takes of each ingredient, in invoice units, with trim and the sauce's own recipe followed.

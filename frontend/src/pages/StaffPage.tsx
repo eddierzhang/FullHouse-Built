@@ -210,7 +210,7 @@ export function StaffPage({ app, user }: { app: AppContext; user: User }) {
     <PageFrame className="page">
       <div className="page-header">
         <div>
-          <PageTitle embedded="Team and shifts">Schedule & staff</PageTitle>
+          <PageTitle embedded="Team and shifts">Labor and staffing</PageTitle>
           <p className="page-subtitle">{isManager ? 'The team and the schedule.' : 'Your shifts and the team schedule.'}</p>
         </div>
         <div className="row wrap">

@@ -433,3 +433,28 @@ def test_an_order_never_goes_after_the_cutoff_or_long_after_it_was_due_and_a_rej
     # And the same order day does not get a second draft five minutes later.
     assert autopilot.draft_for(db, rid, farm, TODAY) is None
     assert client.put(f"{API}/suppliers/{farm.id}/policy", json={"enabled": True, "cancel_window_minutes": 720}).status_code == 422
+
+
+def test_the_outlook_says_when_the_next_order_is_and_what_it_would_be_without_drafting_anything(client, db, monkeypatch):
+    """The autopilot page's detail: the next cutoff, when the draft is written, and today's order checked rule by rule."""
+    from datetime import datetime, timezone
+
+    from app.agents.models import AgentAction
+    from app.ordering.models import AutopilotDecision
+
+    rid, suppliers, _sent = _restaurant(client, db, monkeypatch)
+    supplier = suppliers["Sysco Foods"]
+    db.add(SupplierCalendar(restaurant_id=rid, supplier_id=supplier.id, order_days=[2], cutoff_time="14:00", delivery_days=[3], lead_time_days=1))
+    db.commit()
+    before = (db.query(AgentAction).count(), db.query(AutopilotDecision).count())
+    seen = autopilot.outlook(db, rid, supplier, datetime(2026, 11, 16, 15, 0, tzinfo=timezone.utc))  # a Monday
+    local = autopilot._local(db, rid, seen["next"]["cutoff"])
+    assert (local.weekday(), local.hour, local.minute) == (2, 14, 0) and seen["next"]["delivery"].weekday() == 3
+    assert (seen["next"]["cutoff"] - seen["next"]["drafts_from"]).total_seconds() == 3 * 3600
+    rules = seen["today"]["rules"]
+    assert [r["rule"] for r in rules][:2] == ["autopilot_on", "not_paused"] and len(rules) == 10 and rules[0]["ok"] is False
+    assert seen["today"]["would_send"] is False and len(seen["today"]["lines"]) > 0
+    assert seen["today"]["total"] == round(sum(l["amount"] for l in seen["today"]["lines"]), 2)
+    db.commit()
+    assert (db.query(AgentAction).count(), db.query(AutopilotDecision).count()) == before  # nothing drafted, nothing decided
+    assert "outlook" in client.get("/api/v1/ordering/overview").json()["suppliers"][0]

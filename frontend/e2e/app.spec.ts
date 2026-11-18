@@ -117,19 +117,19 @@ test.describe('navigation', () => {
       'Suppliers',
       'Invoices',
       'Digest',
-      'Schedule & staff',
+      'Labor and staffing',
       'Customer requests',
       'Menu',
+      'History & undo',
       'Assistant Manager',
       'Agent activity',
-      'History & undo',
       'Profile',
       'Help',
     ])
 
     const headings: Record<string, string> = {
       Inventory: 'Inventory',
-      'Schedule & staff': 'Schedule & staff',
+      'Labor and staffing': 'Labor and staffing',
       Recommendations: 'Recommendations',
       'Customer requests': 'Customer requests',
       Invoices: 'Invoices',
@@ -155,7 +155,7 @@ test.describe('navigation', () => {
     await page.goto('/#marketing')
     await expect(page.getByRole('heading', { level: 1, name: 'Menu' })).toBeVisible()
     await page.goto('/#employees')
-    await expect(page.getByRole('heading', { level: 1, name: 'Schedule & staff' })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 1, name: 'Labor and staffing' })).toBeVisible()
     await page.goto('/#recommendations')
     await expect(page.getByRole('heading', { level: 1, name: 'Recommendations' })).toBeVisible()
     await page.goto('/#settings')

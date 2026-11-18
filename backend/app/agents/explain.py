@@ -120,7 +120,7 @@ def _shift(payload: dict) -> Explanation:
     issue = _text(payload.get("note")) or f"A shift on {day} needs covering."
     change = (f"Approving adds a draft shift for {staff} on {day}, {_text(payload.get('start_time'))} to "
               f"{_text(payload.get('end_time'))}{' as ' + role if role else ''}. Staff don't see it until you publish the "
-              f"schedule from Schedule & staff.")
+              f"schedule from Labor and staffing.")
     know = ("It is checked against your scheduling rules at approval and refused if it breaks one (rest between shifts, "
             "weekly hours). Approving sends nothing to the employee.")
     return Explanation(issue, change, know)

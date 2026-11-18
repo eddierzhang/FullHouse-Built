@@ -113,7 +113,7 @@ const NAV: { label: string | null; items: NavItem[] }[] = [
   },
   {
     label: 'Staffing',
-    items: [{ route: 'staff', label: 'Schedule & staff', icon: 'staff' }],
+    items: [{ route: 'staff', label: 'Labor and staffing', icon: 'staff' }],
   },
   {
     label: 'Customers',
@@ -124,15 +124,15 @@ const NAV: { label: string | null; items: NavItem[] }[] = [
     items: [{ route: 'menu', label: 'Menu', icon: 'menu' }],
   },
   {
+    label: 'Records',
+    items: [{ route: 'history', label: 'History & undo', icon: 'clock' }],
+  },
+  {
     label: 'Agent',
     items: [
       { route: 'agents', label: 'Assistant Manager', icon: 'agents' },
       { route: 'runs', label: 'Agent activity', icon: 'runs' },
     ],
-  },
-  {
-    label: 'Records',
-    items: [{ route: 'history', label: 'History & undo', icon: 'clock' }],
   },
   {
     label: 'Restaurant',
@@ -526,7 +526,8 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
   const marginLabor = MARGIN_LABOR.filter((entry) => flags[entry.flag]).map((entry) => entry.item)
   // Today, then Inventory and Invoices & prices, then the newer groups, then the rest.
   const allGroups = [...NAV.slice(0, 3), ...(navOn ? [INSIGHTS_GROUP] : []), ...(marginLabor.length ? [{ label: 'Margin & labor', items: marginLabor }] : []), ...NAV.slice(3)]
-    .map((group) => ({ label: group.label, items: [...group.items, ...extra(group.label)].filter(allowed) }))
+    // Help is always the last entry of the sidebar, after the pages a flag adds to Restaurant.
+    .map((group) => ({ label: group.label, items: [...group.items, ...extra(group.label)].filter(allowed).sort((x, y) => Number(x.route === 'help') - Number(y.route === 'help')) }))
     .filter((group) => group.items.length > 0)
   // In the demo the sidebar starts short; search still offers every page.
   const shortMenu = runtime?.demo_mode === true && !fullMenu
@@ -551,7 +552,7 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
     { label: 'Conversation', href: '#thread', group: 'Invoices', icon: 'chat', keywords: PAGE_KEYWORDS.thread },
   )
   if (flags.v2_documents) commandPages.push({ label: 'Documents', href: '#documents', group: 'Invoices', icon: 'clock', keywords: PAGE_KEYWORDS.documents })
-  // The parts of Menu and of Schedule & staff, by name.
+  // The parts of Menu and of Labor and staffing, by name.
   if (flags.ml_menu_costs) commandPages.push({ label: 'Menu costs', href: '#menu-costs', group: 'Menu', icon: 'menu', keywords: PAGE_KEYWORDS['menu-costs'] })
   if (flags.ml_usage) commandPages.push({ label: 'Usage', href: '#usage', group: 'Menu', icon: 'inventory', keywords: PAGE_KEYWORDS.usage })
   if (flags.v2_documents) commandPages.push({ label: 'Recipes', href: '#recipes', group: 'Menu', icon: 'menu', keywords: PAGE_KEYWORDS.recipes })
