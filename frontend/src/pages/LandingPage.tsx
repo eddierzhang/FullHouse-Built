@@ -255,7 +255,7 @@ export function LandingPage({ options }: Props) {
               {actions}
               <p className="landing-note">
                 {options?.samples?.length
-                  ? "This preview is an empty restaurant with every feature switched on. Use the account on the next page."
+                  ? "This preview has a small sample restaurant and an empty one, each with every feature switched on. Pick one on the next page."
                   : options?.demo
                   ? "The demo is a sample bistro with eight weeks of invoices, stock and orders. It resets every day, so try anything."
                   : closed

@@ -117,8 +117,8 @@ def demo(_args) -> None:
 def margin_labor(_args) -> None:
     """The Margin & Labor Engine on sample data, on its own port and its own throwaway database.
 
-    One empty restaurant with every module switched on: sign in as demo@example.com, password demo-kitchen (the
-    sign-in page has a button for it). Set PREVIEW_SAMPLE=1 to start it filled with sample data instead. Nothing here
+    Two restaurants with every module switched on, each with a button on the sign-in page: Corner Grill, a small
+    sample restaurant (demo@example.com), and an empty one (empty@example.com); password demo-kitchen. Nothing here
     touches the demo or your data.
     """
     step("Building the frontend")
@@ -132,14 +132,14 @@ def margin_labor(_args) -> None:
         # Lets the Labor Today page be read as of a time of day, to see a service in progress at any hour.
         "ALLOW_TIME_TRAVEL": "true",
         # The sign-in page offers the two sample accounts with one click.
-        "SAMPLE_ACCOUNTS": "Empty restaurant, every feature on|demo@example.com|demo-kitchen",
+        "SAMPLE_ACCOUNTS": "Corner Grill, a small sample restaurant|demo@example.com|demo-kitchen;Empty restaurant, to fill in yourself|empty@example.com|demo-kitchen",
         "STATIC_DIR": str(FRONTEND / "dist"),
     }
-    step("Creating the restaurant (empty, unless PREVIEW_SAMPLE=1)")
+    step("Loading the sample restaurant and an empty one (about half a minute: it drafts next week's schedule)")
     run([python(), "-m", "alembic", "upgrade", "head"], BACKEND, env)
     run([python(), "scripts/seed_preview.py"], BACKEND, env)
 
-    step("Margin & Labor on http://localhost:8090 (Ctrl+C to stop). Sign in: demo@example.com, password demo-kitchen")
+    step("Margin & Labor on http://localhost:8090 (Ctrl+C to stop). Sign in: demo@example.com (sample) or empty@example.com (empty), password demo-kitchen")
     _serve([subprocess.Popen(
         [str(python()), "-m", "uvicorn", "app.main:app", "--port", "8090"], cwd=BACKEND,
         env={**os.environ, **env},
