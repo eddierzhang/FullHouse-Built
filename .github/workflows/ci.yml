@@ -18,7 +18,7 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -48,7 +48,7 @@ jobs:
     env:
       TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/fullhouse_test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -62,7 +62,7 @@ jobs:
     name: Known vulnerabilities in dependencies
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -80,7 +80,7 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -94,7 +94,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [backend-sqlite, frontend]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -135,7 +135,7 @@ jobs:
       # The smoke test signs in with a password; two-step sign-in has its own tests.
       REQUIRE_MFA: "false"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build images
         run: docker compose build backend frontend
       - name: Start backend and frontend
@@ -177,7 +177,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [backend-sqlite, frontend]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build the single-container image
         run: docker build -t fullhouse-demo .
       - name: Start it the way Render does, on an assigned port
