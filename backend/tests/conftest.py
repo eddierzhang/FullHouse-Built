@@ -113,6 +113,13 @@ def anon_client(db):
     failed_accounts.clear()
     app.dependency_overrides[get_db] = lambda: db
     with TestClient(app) as test_client:
+        # Start-up seeds the connector catalogue through the app's own engine. On Postgres that is this test's
+        # database, so its inserts would sit in the change history every test starts from; on SQLite they are in
+        # a separate file. Either way a test begins with the history its own steps wrote.
+        from app.audit.models import ChangeLog
+
+        if db.query(ChangeLog).filter(ChangeLog.entity_type == "connector_providers").delete(synchronize_session=False):
+            db.commit()
         yield test_client
     app.dependency_overrides.clear()
 
