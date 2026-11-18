@@ -46,5 +46,9 @@ def _explain_schedule_draft(payload: dict) -> Explanation:
 def register() -> None:
     appliers.APPLIERS.setdefault("channel_reprice", apply_channel_reprice)
     explain.EXTRA.setdefault("channel_reprice", _explain_channel_reprice)
+    # A labor suggestion's notification is for owners and managers only.
+    from app.notify import service as notify
+
+    notify.MANAGER_KINDS.add("labor_suggestion")
     appliers.APPLIERS.setdefault("schedule_draft", apply_schedule_draft)
     explain.EXTRA.setdefault("schedule_draft", _explain_schedule_draft)

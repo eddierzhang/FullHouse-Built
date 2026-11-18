@@ -347,13 +347,13 @@ def forecast_labor(db: Session, restaurant_id: str, now: datetime | None = None)
     return {"state": state, "run_id": run.id, "written": written, "requirements": needs, "stage": stage}
 
 
-def daypart_accuracy(service: Service, drivers, model) -> list[dict]:
+def daypart_accuracy(service: Service, drivers, model, days: int = 84) -> list[dict]:
     """Average miss by daypart over the last 12 weeks: each week forecast from what was known before it, split by the
     shape of the 8 weeks before."""
     slots = service.series(service.primary)
     history = service.daily(slots)
     scores: dict[str, list[float]] = {}
-    start = service.today - timedelta(days=84)
+    start = service.today - timedelta(days=days)
     week = start
     while week < service.today:
         known = {d: v for d, v in history.items() if d < week}

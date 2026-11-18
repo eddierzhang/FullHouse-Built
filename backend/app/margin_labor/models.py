@@ -636,3 +636,28 @@ class ScheduleShift(_Row, Base):
     break_minutes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     note: Mapped[str] = mapped_column(String(200), default="", nullable=False)
+
+
+# --- Module D: intraday -------------------------------------------------------------------------------
+
+
+class LaborAdjustment(_Row, Base):
+    """A suggestion to a manager during service: cut, extend or call in. Not a proposal: it expires in minutes, and
+    accepting it records the manager's decision. The manager tells the employee."""
+
+    __tablename__ = "labor_adjustments"
+    __table_args__ = (Index("ix_labor_adjustments_restaurant_date", "restaurant_id", "business_date", "role_key"),)
+
+    restaurant_id: Mapped[str] = _tenant("labor_adjustments")
+    business_date: Mapped[date] = mapped_column(Date, nullable=False)
+    kind: Mapped[str] = mapped_column(String(8), nullable=False)  # cut|extend|call_in
+    role_key: Mapped[str] = mapped_column(String(40), nullable=False)
+    shift_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    suggested_time: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    #: Hours removed times the hourly rate. Restricted: returned only to people with wage access.
+    savings_estimate: Mapped[Decimal | None] = mapped_column(Dec(), nullable=True)
+    reason: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    status: Mapped[str] = mapped_column(String(10), default="proposed", nullable=False)  # proposed|accepted|dismissed|expired
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    decided_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    decided_by: Mapped[str | None] = mapped_column(String(254), nullable=True)

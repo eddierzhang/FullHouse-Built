@@ -103,6 +103,9 @@ class Settings:
     # Public demo: replace the data with the demo restaurant at startup and
     # again on this schedule (UTC), so visitors' changes never accumulate.
     demo_mode: bool = os.getenv("DEMO_MODE", "false").strip().lower() in ("1", "true", "yes")
+    #: Lets the Labor Today page be read "as of" a given moment. For browser tests and demos of a service in
+    #: progress; off unless set.
+    allow_time_travel: bool = os.getenv("ALLOW_TIME_TRAVEL", "false").strip().lower() in ("1", "true", "yes")
     demo_reset_cron: str = os.getenv("DEMO_RESET_CRON", "0 4 * * *")
 
     # Where owners forward supplier invoices, shown on the Invoices page when

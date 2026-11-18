@@ -969,3 +969,51 @@ def labor_team_save(staff_id: str, body: TeamMemberIn, user: User = Depends(mana
         events.emit(db, restaurant_id, "wage.changed", "staff", staff_id, {"changed_by": user.email})
     db.commit()
     return _team(db, restaurant_id)
+
+
+# --- Module D: Labor (today) -------------------------------------------------------------------------
+
+
+def _as_of(at: datetime | None) -> datetime | None:
+    """The moment to read Today as of: now, unless the site allows a given moment (browser tests, demos)."""
+    from app.config import settings
+
+    if at is None or not settings.allow_time_travel:
+        return None
+    return at if at.tzinfo else at.replace(tzinfo=timezone.utc)
+
+
+@router.get("/labor/today")
+def labor_today(at: datetime | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """Pace against the forecast, the revised forecast for the rest of the day, people on against people needed, and
+    the open suggestion (for owners and managers)."""
+    from app.margin_labor import intraday
+
+    return intraday.today(db, _module(db, user, flags.ML_LABOR), user, _as_of(at))
+
+
+def _decide(db: Session, user: User, adjustment_id: str, decision: str, at: datetime | None) -> dict:
+    from app.margin_labor import intraday
+
+    restaurant_id = _module(db, user, flags.ML_LABOR)
+    try:
+        row = intraday.decide(db, restaurant_id, adjustment_id, decision, user.email, _as_of(at))
+    except LookupError as err:
+        raise HTTPException(404, str(err)) from err
+    except ValueError as err:
+        db.commit()
+        raise HTTPException(409, str(err)) from err
+    db.commit()
+    return {"id": row.id, "status": row.status}
+
+
+@router.post("/labor/adjustments/{adjustment_id}/accept")
+def labor_adjustment_accept(adjustment_id: str, at: datetime | None = None, user: User = Depends(manager), db: Session = Depends(get_db)) -> dict:
+    """Record that the manager took the suggestion. The manager tells the employee; FullHouse messages nobody."""
+    return _decide(db, user, adjustment_id, "accepted", at)
+
+
+@router.post("/labor/adjustments/{adjustment_id}/dismiss")
+def labor_adjustment_dismiss(adjustment_id: str, at: datetime | None = None, user: User = Depends(manager), db: Session = Depends(get_db)) -> dict:
+    """Set the suggestion aside. No new one is made for that role for an hour."""
+    return _decide(db, user, adjustment_id, "dismissed", at)

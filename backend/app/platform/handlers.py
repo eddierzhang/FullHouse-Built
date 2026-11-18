@@ -210,6 +210,10 @@ def derive(db: Session, payload: dict) -> None:
             ordering.draft(db, restaurant_id, payload["supplier_id"])
         else:
             ordering.prep_sheet(db, restaurant_id, date.fromisoformat(payload["business_date"]))
+    elif payload.get("job") == "intraday_reforecast" and flags.enabled(db, restaurant_id, flags.ML_LABOR):
+        from app.margin_labor import intraday
+
+        intraday.reforecast(db, restaurant_id)
     elif payload.get("job") == "schedule_generate" and flags.enabled(db, restaurant_id, flags.ML_LABOR):
         from app.margin_labor import schedule
 

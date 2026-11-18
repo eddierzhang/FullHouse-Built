@@ -207,3 +207,57 @@ def seed_team(db: Session, restaurant_id: str) -> dict:
             db.add(EmployeeWage(restaurant_id=restaurant_id, staff_id=out[name].id, hourly_rate=Decimal(rate)))
     db.flush()
     return out
+
+
+#: (people, role, start minute, end minute, weekdays or None for every day)
+WEEK_SHIFTS = (
+    (("Ana Rivera", "Ben Tran"), "server", 11 * 60, 15 * 60, None),
+    (("Cal Ortiz", "Dee Shah", "Eve Park", "Fay Lund"), "server", 16 * 60 + 30, 21 * 60 + 30, None),
+    (("Gil Moreno",), "line_cook", 10 * 60 + 30, 14 * 60 + 30, None),
+    (("Hal Brandt", "Ivy Chen"), "line_cook", 16 * 60, 21 * 60 + 30, None),
+)
+
+
+def seed_week_schedule(db: Session, restaurant_id: str, team: dict, week_of: date, tz: str):
+    """A published schedule for one week, the same every day: two servers at lunch, four at dinner, and the cooks.
+    Written by hand so that who is on at any minute is known exactly. Four at dinner is one more than a slow
+    night needs even if it turns busy, which is what a cut suggestion looks for."""
+    from app.margin_labor.models import Schedule, ScheduleShift
+
+    local = zone(tz)
+    schedule = Schedule(restaurant_id=restaurant_id, week_of=week_of, status="published", version=1, published_at=datetime.now(timezone.utc), published_by="fixture",
+                        generated_at=datetime.now(timezone.utc))
+    db.add(schedule)
+    db.flush()
+    for n in range(7):
+        day = week_of + timedelta(days=n)
+        midnight = datetime.combine(day, time(0, 0), tzinfo=local)
+        for names, role, start, end, weekdays in WEEK_SHIFTS:
+            if weekdays is not None and day.weekday() not in weekdays:
+                continue
+            for name in names:
+                db.add(ScheduleShift(restaurant_id=restaurant_id, schedule_id=schedule.id, staff_id=team[name].id, role_key=role, business_date=day,
+                                     start_at=(midnight + timedelta(minutes=start)).astimezone(timezone.utc), end_at=(midnight + timedelta(minutes=end)).astimezone(timezone.utc)))
+    db.flush()
+    return schedule
+
+
+def seed_today(db: Session, restaurant_id: str, day: date, tz: str, until: time, covers_factor: float) -> None:
+    """Today's orders up to `until`, at `covers_factor` times the usual covers: a slow night at 0.5, a busy one at 2."""
+    local = zone(tz)
+    busy = day.weekday() in (4, 5)
+    for name, (start, count, covers) in (("L", LUNCH), ("D", DINNER)):
+        covers = BUSY_DINNER_COVERS if busy and name == "D" else covers
+        for n in range(count):
+            opened = datetime.combine(day, start, tzinfo=local) + timedelta(minutes=15 * n)
+            if opened.time() > until:
+                continue
+            guests = max(1, round(covers * covers_factor))
+            net = Decimal(20 * guests)
+            order = SalesOrder(restaurant_id=restaurant_id, connection_key="fixture", external_id=f"SV-{day.isoformat()}-{name}{n}", opened_at=opened.astimezone(timezone.utc),
+                               business_date=day, channel="dine_in", covers=guests, gross=net, net=net, status="open")
+            db.add(order)
+            db.flush()
+            db.add(SalesOrderLine(restaurant_id=restaurant_id, order_id=order.id, line_no=1, business_date=day, pos_item_id="BURGER", pos_item_name="Burger",
+                                  qty=Decimal(guests), net=net))
+    db.flush()

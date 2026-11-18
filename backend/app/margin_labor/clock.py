@@ -57,7 +57,18 @@ def _extra(db: Session, restaurant, now: datetime, local: datetime) -> int:
     if flags.enabled(db, restaurant.id, flags.ML_LABOR) and (local.hour, local.minute) == NIGHTLY:
         day = business_date(now, restaurant.timezone).isoformat()
         queued += _queue(db, restaurant.id, "forecast_labor", f"forecast_labor:{day}", {"business_date": day})
+    if flags.enabled(db, restaurant.id, flags.ML_LABOR) and local.minute % 15 == 0 and _open(restaurant, local):
+        # The intraday reforecast, every 15 minutes during opening hours: one job per business date and interval.
+        day = business_date(now, restaurant.timezone).isoformat()
+        queued += _queue(db, restaurant.id, "intraday_reforecast", f"intraday:{day}:{local.hour:02d}{local.minute:02d}", {"business_date": day})
     return queued
+
+
+def _open(restaurant, local: datetime) -> bool:
+    held = (restaurant.opening_hours or {}).get(("mon", "tue", "wed", "thu", "fri", "sat", "sun")[local.weekday()])
+    if not held or held.get("closed") or not held.get("open") or not held.get("close"):
+        return False
+    return held["open"] <= f"{local.hour:02d}:{local.minute:02d}" < held["close"]
 
 
 def _queue(db: Session, restaurant_id: str, job: str, key: str, payload: dict) -> int:
