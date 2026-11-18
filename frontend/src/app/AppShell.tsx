@@ -111,14 +111,6 @@ const NAV: { label: string | null; items: NavItem[] }[] = [
     ],
   },
   {
-    label: 'Staffing',
-    items: [{ route: 'staff', label: 'Schedule & staff', icon: 'staff' }],
-  },
-  {
-    label: 'Customers',
-    items: [{ route: 'customers', label: 'Customer requests', icon: 'chat' }],
-  },
-  {
     label: 'Invoices & prices',
     items: [
       { route: 'invoices', label: 'Invoices', icon: 'suppliers' },
@@ -127,6 +119,14 @@ const NAV: { label: string | null; items: NavItem[] }[] = [
       { route: 'digest', label: 'Digest', icon: 'profit' },
       { route: 'thread', label: 'Conversation', icon: 'chat' },
     ],
+  },
+  {
+    label: 'Staffing',
+    items: [{ route: 'staff', label: 'Schedule & staff', icon: 'staff' }],
+  },
+  {
+    label: 'Customers',
+    items: [{ route: 'customers', label: 'Customer requests', icon: 'chat' }],
   },
   {
     label: 'Menu',
@@ -542,7 +542,8 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
     return more
   }
   const marginLabor = MARGIN_LABOR.filter((entry) => flags[entry.flag]).map((entry) => entry.item)
-  const allGroups = [...NAV.slice(0, 1), ...(navOn ? [INSIGHTS_GROUP] : []), ...(marginLabor.length ? [{ label: 'Margin & labor', items: marginLabor }] : []), ...NAV.slice(1)]
+  // Today, then Inventory and Invoices & prices, then the newer groups, then the rest.
+  const allGroups = [...NAV.slice(0, 3), ...(navOn ? [INSIGHTS_GROUP] : []), ...(marginLabor.length ? [{ label: 'Margin & labor', items: marginLabor }] : []), ...NAV.slice(3)]
     .map((group) => ({ label: group.label, items: [...group.items, ...extra(group.label)].filter(allowed) }))
     .filter((group) => group.items.length > 0)
   // In the demo the sidebar starts short; search still offers every page.
