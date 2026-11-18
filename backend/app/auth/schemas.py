@@ -102,6 +102,14 @@ class DemoCard(BaseModel):
     items: int
 
 
+class SampleAccount(BaseModel):
+    """One sample sign-in a preview site offers on its login page."""
+
+    label: str
+    email: str
+    password: str
+
+
 class AuthOptions(BaseModel):
     #: Whether a new restaurant can sign up here. A restaurant's team joins by invite either way.
     signup_enabled: bool
@@ -109,6 +117,8 @@ class AuthOptions(BaseModel):
     demo: DemoCredentials | None = None
     #: The top card of the demo restaurant's digest; null everywhere else.
     demo_card: DemoCard | None = None
+    #: Sample accounts of a preview on sample data (`SAMPLE_ACCOUNTS`); empty everywhere else.
+    samples: list[SampleAccount] = []
 
 
 class InviteIn(BaseModel):

@@ -113,7 +113,12 @@ def options(db: Session = Depends(get_db)):
         from app.demo import DEMO_EMAIL, DEMO_PASSWORD
 
         demo = schemas.DemoCredentials(email=DEMO_EMAIL, password=DEMO_PASSWORD)
-    return schemas.AuthOptions(signup_enabled=_signup_open(db), demo=demo, demo_card=_demo_card(db) if demo else None)
+    samples = []
+    for entry in settings.sample_accounts.split(";"):
+        parts = [p.strip() for p in entry.split("|")]
+        if len(parts) == 3 and all(parts):
+            samples.append(schemas.SampleAccount(label=parts[0], email=parts[1], password=parts[2]))
+    return schemas.AuthOptions(signup_enabled=_signup_open(db), demo=demo, demo_card=_demo_card(db) if demo else None, samples=samples)
 
 
 def _demo_card(db: Session) -> schemas.DemoCard | None:

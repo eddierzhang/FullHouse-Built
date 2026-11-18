@@ -205,6 +205,37 @@ export function LoginPage({ mode, onMode, unreachable, expired = false, onRetry,
           </div>
         )}
 
+        {!signingUp &&
+          (options?.samples ?? []).map((sample) => (
+            <div className="auth-demo" key={sample.email}>
+              <div>
+                <div className="auth-demo-title">Sample account: {sample.label}</div>
+                <dl className="auth-demo-creds">
+                  <dt>Email</dt>
+                  <dd>
+                    <code>{sample.email}</code>
+                  </dd>
+                  <dt>Password</dt>
+                  <dd>
+                    <code>{sample.password}</code>
+                  </dd>
+                </dl>
+              </div>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                disabled={busy}
+                onClick={() => {
+                  setEmail(sample.email)
+                  setPassword(sample.password)
+                  void submit(sample)
+                }}
+              >
+                Use this account
+              </button>
+            </div>
+          ))}
+
         <form className="auth-form" onSubmit={onSubmit} noValidate>
           {signingUp && (
             <label className="field">

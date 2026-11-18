@@ -32,7 +32,7 @@ def test_data_routes_refuse_anyone_signed_out(anon_client, method, path):
 
 def test_health_and_login_options_stay_public(anon_client):
     assert anon_client.get("/health").status_code == 200
-    assert anon_client.get("/api/v1/auth/options").json() == {"signup_enabled": True, "demo": None, "demo_card": None}
+    assert anon_client.get("/api/v1/auth/options").json() == {"signup_enabled": True, "demo": None, "demo_card": None, "samples": []}
 
 
 def test_signup_signs_you_in(anon_client):
@@ -224,3 +224,12 @@ def test_hashes_carry_their_parameters():
     assert stored.startswith("scrypt$16384$8$1$")
     assert hash_password("pw") != stored  # salted
     assert not verify_password("pw", "garbage")
+
+
+def test_a_preview_site_offers_its_sample_accounts_and_no_other_site_does(anon_client, monkeypatch):
+    from app.config import settings
+
+    assert anon_client.get("/api/v1/auth/options").json()["samples"] == []
+    monkeypatch.setattr(settings, "sample_accounts", "Kitchen|ml@example.com|ml-password; Labor|labor@example.com|ml-password;broken|x")
+    assert anon_client.get("/api/v1/auth/options").json()["samples"] == [
+        {"label": "Kitchen", "email": "ml@example.com", "password": "ml-password"}, {"label": "Labor", "email": "labor@example.com", "password": "ml-password"}]

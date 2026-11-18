@@ -208,7 +208,7 @@ export function LandingPage({ options }: Props) {
         className={`btn ${canSignUp ? "btn-secondary" : "btn-primary"} landing-cta`}
         href="#signin"
       >
-        {options?.demo ? "Try the demo" : "Sign in"}
+        {options?.demo || options?.samples?.length ? "Try the demo" : "Sign in"}
       </a>
     </div>
   );
@@ -254,7 +254,9 @@ export function LandingPage({ options }: Props) {
               </p>
               {actions}
               <p className="landing-note">
-                {options?.demo
+                {options?.samples?.length
+                  ? "This preview has two sample restaurants with every feature switched on. Pick an account on the next page."
+                  : options?.demo
                   ? "The demo is a sample bistro with eight weeks of invoices, stock and orders. It resets every day, so try anything."
                   : closed
                     ? "Joining your restaurant’s team? Ask the owner or a manager for an invite link."

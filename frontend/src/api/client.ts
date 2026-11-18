@@ -661,6 +661,8 @@ export type AuthOptions = {
   demo: { email: string; password: string } | null
   /** The demo's own top digest card, previewed on the landing page; null on real deployments. */
   demo_card?: { item_name: string; sentence: string; impact: number; total: number; items: number } | null
+  /** Sample accounts a preview on sample data offers on its sign-in page; empty everywhere else. */
+  samples?: { label: string; email: string; password: string }[]
 }
 
 export const fetchAuthOptions = () => get<AuthOptions>('/api/v1/auth/options')

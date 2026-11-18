@@ -130,6 +130,8 @@ def margin_labor(_args) -> None:
         "REQUIRE_MFA": "false",
         # Lets the Labor Today page be read as of a time of day, to see a service in progress at any hour.
         "ALLOW_TIME_TRAVEL": "true",
+        # The sign-in page offers the two sample accounts with one click.
+        "SAMPLE_ACCOUNTS": "Kitchen: menu costs, usage, ordering, channels|ml@example.com|ml-password;Floor: labor and schedules|labor@example.com|ml-password",
         "STATIC_DIR": str(FRONTEND / "dist"),
     }
     step("Loading the sample restaurants")
