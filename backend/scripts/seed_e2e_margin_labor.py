@@ -11,7 +11,7 @@ from app.auth.models import User  # noqa: E402
 from app.auth.security import hash_password  # noqa: E402
 from app.db.session import SessionLocal  # noqa: E402
 from app.demo import DEMO_PROFILE  # noqa: E402
-from app.margin_labor import channels, fixtures, menu_costs, usage  # noqa: E402
+from app.margin_labor import channels, demand, fixtures, menu_costs, usage  # noqa: E402
 from app.margin_labor import settings as ml_settings  # noqa: E402
 from app.platform import flags  # noqa: E402
 from app.restaurant.models import Restaurant  # noqa: E402
@@ -35,17 +35,19 @@ def seed() -> None:
         db.flush()
         db.add(User(email=EMAIL, name="Margin Owner", password_hash=hash_password(PASSWORD), restaurant_id=restaurant.id))
         db.add(User(email="ml-staff@example.com", name="Margin Staff", password_hash=hash_password(PASSWORD), restaurant_id=restaurant.id, role="member"))
-        for flag in (flags.V2_CONNECT, flags.V2_DOCUMENTS, flags.ML_MENU_COSTS, flags.ML_USAGE, flags.ML_CHANNELS):
+        for flag in (flags.V2_CONNECT, flags.V2_DOCUMENTS, flags.ML_MENU_COSTS, flags.ML_USAGE, flags.ML_CHANNELS, flags.ML_ORDERING):
             flags.set_flag(db, restaurant.id, flag, True)
         db.commit()
         today = menu_costs.load(db, restaurant.id).today
-        fixtures.seed_kitchen(db, restaurant.id, today)
+        made = fixtures.seed_kitchen(db, restaurant.id, today)
+        fixtures.seed_schedule(db, restaurant.id, made["supplier"].id, minimum="150")
         fixtures.seed_orders(db, restaurant.id, today, ml_settings.for_restaurant(db, restaurant.id).timezone)
         db.commit()
         menu_costs.recost(db, restaurant.id)
         db.commit()
         usage.run(db, restaurant.id)
         channels.run(db, restaurant.id)
+        demand.forecast_items(db, restaurant.id)
         db.commit()
         print("Seeded the Margin & Labor test kitchen")
     finally:

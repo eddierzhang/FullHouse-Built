@@ -39,6 +39,7 @@ export type RawWhy = {
   computed_at: string
   inputs_changed_on: string | null
   fix: { label: string; route: string } | null
+  series?: { label: string; unit: string; points: { date: string; value: string; marks: string[] }[] } | null
   waterfall?: { start: { label: string; amount: string }; steps: { label: string; amount: string }[]; end: { label: string; amount: string } } | null
 }
 export const fetchWhy = (table: string, rowId: string, figure?: string) =>
@@ -277,3 +278,68 @@ export type Channels = {
 export const fetchChannels = () => get<Channels>(`${BASE}/channels`)
 export const saveChannelTerms = (body: ChannelTermsRow) => send<{ terms: ChannelTermsRow[] }>('PUT', `${BASE}/channels/terms`, body)
 export const requestChannelReprice = (rowId: string) => send<{ proposal_id: string }>('POST', `${BASE}/channels/${rowId}/reprice`)
+
+// --- Module C: Ordering and prep ---------------------------------------------------------------------
+
+export type OrderLine = {
+  line_ref: string
+  item_id: string
+  name: string
+  suggested: number
+  qty: number
+  pack_unit: string
+  pack_base_qty: string
+  base_unit: string
+  expected_use: string
+  est_on_hand: string
+  est_on_hand_at_delivery: string
+  need: string
+  pack_price: string | null
+  line_total: string | null
+  correction: 'out' | 'plenty' | 'edit' | null
+}
+export type OrderDraft = {
+  proposal_id: string
+  supplier_id: string
+  supplier: string
+  delivery_date: string
+  cutoff_at: string
+  period_start: string
+  period_end: string
+  check_quantities: boolean
+  minimum_order_amount: string | null
+  under_minimum: boolean
+  total: string | null
+  lines: OrderLine[]
+}
+export type DeliveryDay = { id: string; supplier_id: string; supplier: string; order_cutoff_weekday: number; order_cutoff_time: string; delivery_weekday: number; minimum_order_amount: string | null }
+export type NextCutoff = { supplier_id: string; supplier: string; at: string; delivery_date: string; hours_away: number }
+export type Ordering = {
+  state: ModuleState
+  setup: { key: string; done: boolean; count: number; of?: number }[]
+  today: string
+  computed_at: string | null
+  stale: boolean
+  last_sales_date: string | null
+  weeks_of_data: number
+  schedules: DeliveryDay[]
+  suppliers: { id: string; name: string }[]
+  header: { orders: number; next_cutoff: NextCutoff | null } | null
+  tiles: { waiting: { value: number; lines: number }; next_cutoff: NextCutoff | null; average_miss: { value: number | null; then: number | null; stage: string | null } } | null
+  chart: { points: { date: string; low: number; expected: number; high: number; actual: number | null; drivers: string[] }[]; today_index: number; coverage: number | null } | null
+  accuracy: { week: string; wape: number | null }[]
+  drafts: OrderDraft[]
+  can_draft?: { supplier_id: string; supplier: string; delivery_date: string; cutoff_at: string }[]
+}
+export type PrepLine = { item_id: string; item_name: string; unit: string; station: string; par: string; expected: string; batch_size: string; batches_to_par: number; shelf_life_days: number | null; used_by: string[] }
+export type PrepSheet = { state: ModuleState; date: string; today: string; lines: PrepLine[]; proposal: { id: string; status: string } | null }
+
+export const fetchOrdering = () => get<Ordering>(`${BASE}/ordering/drafts`)
+export const draftOrder = (supplierId: string) => send<{ proposal_id: string; made: boolean }>('POST', `${BASE}/ordering/drafts`, { supplier_id: supplierId })
+export const correctLine = (lineRef: string, kind: 'out' | 'plenty') => send<{ total: string }>('POST', `${BASE}/ordering/lines/${lineRef}/correction`, { kind })
+export const setLineQty = (lineRef: string, qty: number) => send<{ total: string }>('PUT', `${BASE}/ordering/lines/${lineRef}`, { qty })
+export const saveDeliveryDay = (body: { supplier_id: string; order_cutoff_weekday: number; order_cutoff_time: string; delivery_weekday: number; minimum_order_amount?: string | null }) =>
+  send<{ schedules: DeliveryDay[] }>('PUT', `${BASE}/ordering/schedules`, body)
+export const removeDeliveryDay = (id: string) => send<{ schedules: DeliveryDay[] }>('DELETE', `${BASE}/ordering/schedules/${id}`)
+export const fetchPrep = (day: string) => get<PrepSheet>(`${BASE}/prep/${day}`)
+export const proposePrep = (day: string) => send<{ proposal_id: string; made: boolean }>('POST', `${BASE}/prep/${day}/propose`)

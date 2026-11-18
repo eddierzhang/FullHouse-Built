@@ -32,6 +32,7 @@ export const ROUTES = [
   'menu-costs',
   'usage',
   'channels',
+  'ordering-prep',
   'approvals',
   'runs',
   'agents',

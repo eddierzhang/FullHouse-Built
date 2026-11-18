@@ -2,7 +2,7 @@ import type { AppContext } from '../app/context'
 import { useLoad } from '../lib/useLoad'
 import { fetchModuleCards, ML_FLAGS, type ModuleCard } from './api'
 import { Sparkline } from './charts'
-import { dollars, percent } from './format'
+import { dayLabel, dollars, percent } from './format'
 
 type Shown = { key: string; title: string; sentence: string; number?: string; trend?: (number | null)[]; trendLabel?: string; href: string; button: string }
 
@@ -46,6 +46,14 @@ function words(card: ModuleCard): Shown | null {
       href: `#usage?checks=${top.item_id}`,
       button: 'See checks',
     }
+  }
+  if (card.module === 'ordering') {
+    if (card.state === 'setup') {
+      const missing = card.missing ?? []
+      return { key: card.module, title: 'Ordering and prep', sentence: `${missing.length} ${missing.length === 1 ? 'step is' : 'steps are'} left to turn on Ordering and prep.`, href: '#ordering-prep', button: 'Open' }
+    }
+    const n = Number(card.orders)
+    return { key: card.module, title: 'Ordering and prep', sentence: `${n} ${n === 1 ? 'order' : 'orders'} to review. First: ${String(card.supplier)}, by ${dayLabel(String(card.cutoff_at))}.`, number: card.total ? dollars(String(card.total)) : undefined, href: '#ordering-prep', button: 'Review order' }
   }
   if (card.module === 'channels') {
     if (card.state === 'setup') {

@@ -1,8 +1,8 @@
 import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from 'react'
 import { Icon, type IconName } from '../components/Icon'
 import { fetchWhy, type RawWhy } from './api'
-import { Waterfall } from './charts'
-import { confidenceWords, dayLabel, dollars, percent, rangeWords, timeLabel } from './format'
+import { StepLines, Waterfall } from './charts'
+import { amount, confidenceWords, dayLabel, dollars, percent, rangeWords, timeLabel } from './format'
 
 /**
  * The shared parts of every Margin & Labor page (spec section 10.12). Each page is the same shape, top to
@@ -410,7 +410,9 @@ export function toWhy(raw: RawWhy): Why {
     dataBasis: raw.data_basis,
     freshness: `Computed ${dayLabel(raw.computed_at)} at ${timeLabel(raw.computed_at)}.${changed}`,
     fix: raw.fix ? { label: raw.fix.label, href: `#${raw.fix.route}` } : undefined,
-    figure: raw.waterfall ? (
+    figure: raw.series ? (
+      <StepLines points={raw.series.points.map((p) => ({ date: p.date, value: Number(p.value), marks: p.marks }))} label={raw.series.label} unit={raw.series.unit} format={(v) => amount(v, raw.series?.unit ?? 'each')} height={220} />
+    ) : raw.waterfall ? (
       <Waterfall start={{ label: raw.waterfall.start.label, amount: Number(raw.waterfall.start.amount) }} steps={raw.waterfall.steps.map((s) => ({ label: s.label, amount: Number(s.amount) }))} end={{ label: raw.waterfall.end.label, amount: Number(raw.waterfall.end.amount) }} format={(v) => dollars(v)} />
     ) : undefined,
   }

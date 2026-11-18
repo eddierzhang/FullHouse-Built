@@ -67,4 +67,19 @@ One line per decision made where `docs/SPEC-margin-labor.md` was silent, or wher
 | 2026-11-17 | `channel_reprice` is registered beside the older proposal kinds from the new module; approving records the intent and changes nothing | Ground rules 1 and 7 |
 | 2026-11-17 | A link that opens a page with a panel showing is read once and removed from the address | Otherwise a reload reopens the panel over the page |
 | 2026-11-17 | `test_stock_outlook...` now names the date it checks | The demo is seeded on the UTC date and the outlook used the server's; they differ after midnight UTC on a server west of it. The product mismatch itself is left as it was and is listed in the report |
+| 2026-11-17 | Item forecasts are a new `item_forecasts` table; the older `forecasts` table and its job are untouched | Additive only; the older table's low and high are not a 10th and 90th percentile |
+| 2026-11-17 | Stage 3 (the quantile model) is not built | The spec builds it only after stages 1 and 2 are live, and it needs 52 weeks |
+| 2026-11-17 | Events and promotions stay in baseline training; only closures and holidays are left out | The spec's list of what a normal week excludes |
+| 2026-11-17 | A closure is a forecast of zero at every stage | A restaurant on the baseline stage is closed all the same |
+| 2026-11-17 | The holiday calendar is built in for the United States; elsewhere the owner adds holidays | "Built-in calendar by country" with one country to hand |
+| 2026-11-17 | Weather drivers are not built | Spec 14: no weather source until one is chosen |
+| 2026-11-17 | Average miss is measured by replaying the forecast week by week over the last 12 weeks, not from stored `forecast_errors` | It is a pure function of the history and is there the day the module is switched on; the older `forecast_errors` table is left to the older job |
+| 2026-11-17 | The stock estimate is replayed from a stored starting point (half a median delivery, 28 days back, or a person's last correction) | A running estimate that is still reproducible from its inputs |
+| 2026-11-17 | An ingredient is ordered from the supplier on its latest invoice | The spec does not say which supplier an ingredient belongs to |
+| 2026-11-17 | An edited quantity goes through its own endpoint, which corrects the estimate at once | The existing approve endpoint has no hook for edits |
+| 2026-11-17 | One order draft per supplier and delivery date, ever: a dismissed one is not made again | Idempotent on supplier and delivery date, as the spec's job table says |
+| 2026-11-17 | Timed work (nightly forecast and prep sheet, drafts before a cutoff) rides the scheduler's existing minute tick; no workflow rows are added | Additive only; each job is idempotent on its own key |
+| 2026-11-17 | One prep sheet per business date across the old and new prep jobs; the cap is the date, not the older two-a-week | Ground rule 9's cap for `prep_sheet` |
+| 2026-11-17 | Prepped items are confirmed sub-recipes; all sit on one station, "Kitchen"; shelf life shows "Not set" | The app has no stations, and sub-recipes carry no shelf life yet |
+| 2026-11-17 | The existing order-line table gained two optional columns, and the draft writer stores them | The spec's `po_lines.suggested_qty` and `basis` |
 
