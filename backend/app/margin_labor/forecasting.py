@@ -141,7 +141,10 @@ class Baseline:
     @staticmethod
     def _trend(history: History, drivers: Drivers, last: date) -> float:
         def mean(start: date, end: date) -> float | None:
-            values = [history[d] for d in (start + timedelta(days=n) for n in range((end - start).days + 1)) if d in history and not abnormal(drivers, d)]
+            # Every day with sales counts, holidays included: leaving a few days out of a two-week mean would tilt it by
+            # their weekday. Only a closure, which is zero by definition, is left out.
+            values = [history[d] for d in (start + timedelta(days=n) for n in range((end - start).days + 1))
+                      if d in history and not any(x.kind == "closure" for x in drivers.get(d, ()))]
             return sum(values) / len(values) if values else None
 
         recent = mean(last - timedelta(days=13), last)

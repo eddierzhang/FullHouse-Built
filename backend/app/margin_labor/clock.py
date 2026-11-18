@@ -52,8 +52,12 @@ def run_due(db: Session, now: datetime | None = None) -> int:
 
 
 def _extra(db: Session, restaurant, now: datetime, local: datetime) -> int:
-    """Later phases add their own timed work here (labor forecasts, the intraday reforecast)."""
-    return 0
+    """Module D's timed work: the labor forecast and requirements, nightly with the item forecast."""
+    queued = 0
+    if flags.enabled(db, restaurant.id, flags.ML_LABOR) and (local.hour, local.minute) == NIGHTLY:
+        day = business_date(now, restaurant.timezone).isoformat()
+        queued += _queue(db, restaurant.id, "forecast_labor", f"forecast_labor:{day}", {"business_date": day})
+    return queued
 
 
 def _queue(db: Session, restaurant_id: str, job: str, key: str, payload: dict) -> int:

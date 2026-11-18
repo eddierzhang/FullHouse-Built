@@ -462,3 +462,59 @@ class StockEstimate(_Row, Base):
     last_correction_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
     #: {"anchor_date", "anchor_qty", "anchor_kind": start|out|plenty|edit}: the estimate is replayed forward from here.
     basis: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+
+
+# --- Module D: labor forecasting ------------------------------------------------------------------
+
+
+class LaborRole(_Row, Base):
+    """A job people are scheduled into: server, host, bartender, line cook, prep, dish."""
+
+    __tablename__ = "labor_roles"
+    __table_args__ = (UniqueConstraint("restaurant_id", "key", name="uq_labor_roles_key"),)
+
+    restaurant_id: Mapped[str] = _tenant("labor_roles")
+    key: Mapped[str] = mapped_column(String(40), nullable=False)
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    is_tipped: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+
+class LaborStandard(_Row, Base):
+    """How many units of work one person in a role handles an hour, and the fewest people ever on. Learned from
+    punches, or set by the owner; an owner's value always wins. Configuration, not code."""
+
+    __tablename__ = "labor_standards"
+    __table_args__ = (UniqueConstraint("restaurant_id", "role_key", "source", "effective_from", name="uq_labor_standards_row"),)
+
+    restaurant_id: Mapped[str] = _tenant("labor_standards")
+    role_key: Mapped[str] = mapped_column(String(40), nullable=False)
+    #: covers, orders, items or net; "none" for a role staffed in fixed blocks.
+    driver_metric: Mapped[str] = mapped_column(String(8), nullable=False)
+    #: {"channels": [...], "categories": [...]}: which sales count as this role's work. Empty means all.
+    driver_filter: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    units_per_labor_hour: Mapped[Decimal | None] = mapped_column(Dec(), nullable=True)
+    min_on_floor: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    open_lead_minutes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    close_lag_minutes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    source: Mapped[str] = mapped_column(String(8), nullable=False)  # learned|manual
+    sample_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    effective_from: Mapped[date] = mapped_column(Date, nullable=False)
+
+
+class LaborRequirement(_Row, Base):
+    """People needed in one role for one 30-minute interval, at expected volume and if busy."""
+
+    __tablename__ = "labor_requirements"
+    __table_args__ = (UniqueConstraint("restaurant_id", "business_date", "interval_start", "role_key", "kind", name="uq_labor_requirements_row"),)
+
+    restaurant_id: Mapped[str] = _tenant("labor_requirements")
+    business_date: Mapped[date] = mapped_column(Date, nullable=False)
+    interval_start: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    role_key: Mapped[str] = mapped_column(String(40), nullable=False)
+    units_p50: Mapped[float] = mapped_column(Float, nullable=False)
+    units_p90: Mapped[float] = mapped_column(Float, nullable=False)
+    need_p50: Mapped[int] = mapped_column(Integer, nullable=False)
+    need_p90: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: weekly, or intraday for the rest of a day revised during service.
+    kind: Mapped[str] = mapped_column(String(10), default="weekly", nullable=False)
+    run_id: Mapped[str | None] = mapped_column(String(32), nullable=True)

@@ -90,9 +90,9 @@ def forecast_items(db: Session, restaurant_id: str, now: datetime | None = None)
     drivers = drivers_for(db, restaurant_id, today - timedelta(days=HISTORY_DAYS), today + timedelta(days=HORIZON_DAYS))
     stage, scores = forecasting.choose_stage(sales.total, drivers, today)
     digest = _hash(sales, drivers, stage)
-    done = db.query(ForecastRun).filter(ForecastRun.restaurant_id == restaurant_id, ForecastRun.kind == KIND, ForecastRun.model == "items",
-                                        ForecastRun.inputs_hash == digest, ForecastRun.status == "done").first()
-    if done is not None:
+    # Only the newest run counts: inputs that change and change back (a closure added, then removed) must be worked out again.
+    done = latest_run(db, restaurant_id)
+    if done is not None and done.inputs_hash == digest:
         return {"state": "live", "run_id": done.id, "written": 0, "stage": stage}
     run = ForecastRun(restaurant_id=restaurant_id, kind=KIND, model="items", model_version=stage, inputs_hash=digest, started_at=now, status="running")
     db.add(run)

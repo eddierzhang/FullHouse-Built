@@ -99,6 +99,12 @@ def test_a_closure_is_a_forecast_of_zero_and_the_drivers_endpoints_keep_one_row_
     db.commit()
     db.expire_all()
     assert db.query(ItemForecast).filter_by(restaurant_id=k.rid, pos_item_id="BURGER", business_date=k.today + timedelta(days=2)).one().p50 == 30.0
+    # Putting the closure back gives the same inputs as two runs ago: it is still worked out again, not skipped.
+    client.post(f"{API}/drivers", json=body)
+    demand.forecast_items(db, k.rid)
+    db.commit()
+    db.expire_all()
+    assert db.query(ItemForecast).filter_by(restaurant_id=k.rid, pos_item_id="BURGER", business_date=k.today + timedelta(days=2)).one().p50 == 0.0
 
 
 def test_a_draft_orders_what_the_period_needs_less_the_estimate_in_whole_packs_and_sends_nothing(client, db):

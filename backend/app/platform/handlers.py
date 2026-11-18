@@ -210,6 +210,10 @@ def derive(db: Session, payload: dict) -> None:
             ordering.draft(db, restaurant_id, payload["supplier_id"])
         else:
             ordering.prep_sheet(db, restaurant_id, date.fromisoformat(payload["business_date"]))
+    elif payload.get("job") == "forecast_labor" and flags.enabled(db, restaurant_id, flags.ML_LABOR):
+        from app.margin_labor import labor
+
+        labor.forecast_labor(db, restaurant_id)
     elif payload.get("job") == "channel_margins" and flags.enabled(db, restaurant_id, flags.ML_CHANNELS):
         from app.margin_labor import channels
 

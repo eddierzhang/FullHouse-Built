@@ -611,3 +611,92 @@ def drivers_remove(driver_id: str, user: User = Depends(manager), db: Session = 
     events.emit(db, restaurant_id, "drivers.updated", "demand_drivers", driver_id, {"removed": True})
     db.commit()
     return {"removed": driver_id}
+
+
+# --- Module D: Labor (forecast, standards and requirements) -------------------------------------------
+
+
+@router.get("/labor/weeks/{week_of}")
+def labor_week(week_of: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """One week: the forecast by day with its range, and the people needed per role by half hour. `next` is the week being planned."""
+    from app.margin_labor import labor_read, schedule_read
+
+    restaurant_id = _module(db, user, flags.ML_LABOR)
+    try:
+        day = None if week_of == "next" else _date.fromisoformat(week_of)
+    except ValueError as err:
+        raise HTTPException(422, "The week is a date, or next.") from err
+    out = labor_read.week(db, restaurant_id, day)
+    return schedule_read.attach(db, restaurant_id, out, user)
+
+
+@router.get("/labor/standards")
+def labor_standards(user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """One row per role: its driver, standard, minimum on floor, where the standard came from, and the data behind it."""
+    from app.margin_labor import labor_read
+
+    return labor_read.standards_page(db, _module(db, user, flags.ML_LABOR))
+
+
+class StandardIn(BaseModel):
+    role_key: str = Field(min_length=1, max_length=40, pattern="^[a-z0-9_]+$")
+    driver_metric: str | None = Field(default=None, pattern="^(covers|orders|items|net|none)$")
+    units_per_labor_hour: Decimal = Field(gt=0, le=100000, max_digits=12, decimal_places=4)
+    min_on_floor: int = Field(default=0, ge=0, le=50)
+    open_lead_minutes: int = Field(default=0, ge=0, le=480)
+    close_lag_minutes: int = Field(default=0, ge=0, le=480)
+
+
+@router.post("/labor/standards/preview")
+def labor_standard_preview(body: StandardIn, user: User = Depends(manager), db: Session = Depends(get_db)) -> dict:
+    """What a changed standard would do to the role's hours over the next 7 days. Nothing is saved."""
+    from app.margin_labor import labor
+
+    restaurant_id = _module(db, user, flags.ML_LABOR)
+    return labor.preview(db, restaurant_id, body.role_key, body.units_per_labor_hour, body.min_on_floor)
+
+
+@router.put("/labor/standards")
+def labor_standard_save(body: StandardIn, user: User = Depends(manager), db: Session = Depends(get_db)) -> dict:
+    """Set a role's standard. An owner's value always wins over the learned one; requirements are worked out again."""
+    from app.margin_labor import labor, labor_read
+    from app.margin_labor.models import LaborRole, LaborStandard
+
+    restaurant_id = _module(db, user, flags.ML_LABOR)
+    service = labor.Service(db, restaurant_id)
+    role = db.query(LaborRole).filter(LaborRole.restaurant_id == restaurant_id, LaborRole.key == body.role_key).first()
+    if role is None:
+        db.add(LaborRole(restaurant_id=restaurant_id, key=body.role_key, name=body.role_key.replace("_", " ").capitalize()))
+    current = labor.standards(db, restaurant_id, service.today).get(body.role_key)
+    metric, filt = (current.driver_metric, current.driver_filter or {}) if current is not None else labor.default_driver(body.role_key, service.has_covers)
+    if body.driver_metric is not None and body.driver_metric != metric:
+        metric, filt = body.driver_metric, {}
+    row = db.query(LaborStandard).filter(LaborStandard.restaurant_id == restaurant_id, LaborStandard.role_key == body.role_key, LaborStandard.source == "manual",
+                                         LaborStandard.effective_from == service.today).first()
+    if row is None:
+        row = LaborStandard(restaurant_id=restaurant_id, role_key=body.role_key, source="manual", effective_from=service.today, driver_metric=metric)
+        db.add(row)
+    row.driver_metric, row.driver_filter, row.units_per_labor_hour = metric, filt, body.units_per_labor_hour
+    row.min_on_floor, row.open_lead_minutes, row.close_lag_minutes = body.min_on_floor, body.open_lead_minutes, body.close_lag_minutes
+    db.flush()
+    labor.forecast_labor(db, restaurant_id)
+    db.commit()
+    return labor_read.standards_page(db, restaurant_id)
+
+
+@router.delete("/labor/standards/{role_key}")
+def labor_standard_reset(role_key: str, user: User = Depends(manager), db: Session = Depends(get_db)) -> dict:
+    """Drop the owner's value for a role and go back to the learned one."""
+    from app.margin_labor import labor, labor_read
+    from app.margin_labor.models import LaborStandard
+
+    restaurant_id = _module(db, user, flags.ML_LABOR)
+    removed = db.query(LaborStandard).filter(LaborStandard.restaurant_id == restaurant_id, LaborStandard.role_key == role_key, LaborStandard.source == "manual").all()
+    if not removed:
+        raise HTTPException(404, "This role has no value of your own to drop.")
+    for row in removed:
+        db.delete(row)
+    db.flush()
+    labor.forecast_labor(db, restaurant_id)
+    db.commit()
+    return labor_read.standards_page(db, restaurant_id)

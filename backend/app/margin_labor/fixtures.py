@@ -13,7 +13,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.margin_labor.business import zone
-from app.margin_labor.models import ChannelPayout, ChannelTerms, PosItem, SalesOrder, SalesOrderLine, SupplierSchedule
+from app.margin_labor.models import ChannelPayout, ChannelTerms, LaborPunch, PosItem, SalesOrder, SalesOrderLine, SupplierSchedule
 from app.prices.engine import normalize
 from app.prices.models import Invoice, InvoiceLine, ItemAlias, PriceItem
 from app.recipes.models import CONFIRMED, Recipe, RecipeLine
@@ -145,4 +145,43 @@ def seed_schedule(db: Session, restaurant_id: str, supplier_id: str, minimum: st
     for cutoff, delivery in ((2, 3), (6, 0)):
         db.add(SupplierSchedule(restaurant_id=restaurant_id, supplier_id=supplier_id, order_cutoff_weekday=cutoff, order_cutoff_time="14:00", delivery_weekday=delivery,
                                 minimum_order_amount=None if minimum is None else Decimal(minimum)))
+    db.flush()
+
+
+#: (first slot, last slot exclusive, covers an order) for each service; an order every 15 minutes.
+LUNCH = (time(11, 30), 10, 4)
+DINNER = (time(17, 0), 16, 6)
+BUSY_DINNER_COVERS = 8   # Fridays and Saturdays
+#: role -> (lunch heads, dinner heads, busy dinner heads), with the hours each service is staffed
+STAFFING = {"server": (2, 3, 4), "line_cook": (1, 2, 2)}
+LUNCH_SHIFT = (time(11, 0), time(14, 30))
+DINNER_SHIFT = (time(16, 30), time(21, 30))
+
+
+def seed_service(db: Session, restaurant_id: str, today: date, tz: str, days: int = 70) -> None:
+    """Timestamped dine-in orders and punches, the same every week: an order every 15 minutes through lunch (4 covers)
+    and dinner (6 covers; 8 on Fridays and Saturdays), each cover one burger at $20. Servers and line cooks are
+    clocked so that a server always handles 8 covers an hour: 2 at lunch, 3 at dinner, 4 on a busy dinner."""
+    local = zone(tz)
+    for back in range(days, 0, -1):
+        day = today - timedelta(days=back)
+        busy = day.weekday() in (4, 5)
+        for name, (start, count, covers) in (("L", LUNCH), ("D", DINNER)):
+            covers = BUSY_DINNER_COVERS if busy and name == "D" else covers
+            for n in range(count):
+                opened = (datetime.combine(day, start, tzinfo=local) + timedelta(minutes=15 * n)).astimezone(timezone.utc)
+                net = Decimal(20 * covers)
+                order = SalesOrder(restaurant_id=restaurant_id, connection_key="fixture", external_id=f"SV-{day.isoformat()}-{name}{n}", opened_at=opened,
+                                   closed_at=opened + timedelta(minutes=50), business_date=day, channel="dine_in", covers=covers, gross=net, net=net, status="closed")
+                db.add(order)
+                db.flush()
+                db.add(SalesOrderLine(restaurant_id=restaurant_id, order_id=order.id, line_no=1, business_date=day, pos_item_id="BURGER", pos_item_name="Burger",
+                                      qty=Decimal(covers), net=net))
+        for role, (lunch, dinner, busy_dinner) in STAFFING.items():
+            for service, (start, end), heads in (("L", LUNCH_SHIFT, lunch), ("D", DINNER_SHIFT, busy_dinner if busy else dinner)):
+                for head in range(heads):
+                    db.add(LaborPunch(restaurant_id=restaurant_id, employee_name=f"{role.replace('_', ' ').title()} {head + 1}", role_key=role,
+                                      clock_in=datetime.combine(day, start, tzinfo=local).astimezone(timezone.utc),
+                                      clock_out=datetime.combine(day, end, tzinfo=local).astimezone(timezone.utc), business_date=day, source="csv",
+                                      external_id=f"SV-{day.isoformat()}-{role}-{service}{head}"))
     db.flush()
