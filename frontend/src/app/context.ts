@@ -14,6 +14,8 @@ export type AppContext = {
   apiStatus: 'checking' | 'ok' | 'error'
   /** Owner or admin: may run and approve the agent, edit the menu and suppliers, and see profit. */
   canManage: boolean
+  /** The v2 features switched on for this restaurant (Profile, Features). */
+  flags: Record<string, boolean>
 
   navigate: (route: Route) => void
   refresh: () => void

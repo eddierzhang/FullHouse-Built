@@ -11,20 +11,25 @@ work, find what gets in their way, and fix it while it's still one restaurant.
 - [ ] Set `SENTRY_DSN` and `SENTRY_ENVIRONMENT=pilot`; set `SUPPORT_EMAIL` to an address someone reads daily.
 - [ ] Turn on Render's failure emails and an uptime check on `/health` (DEPLOY.md, Error alerts).
 - [ ] Write down the current alembic revision: the one you'd roll back to (DEPLOY.md, Rolling back).
-- [ ] Sit with the owner for setup: details, hours, roles and rules; invite their team; import their stock list.
-- [ ] Check with them that the imported stock matches their last count.
+- [ ] Sit with the owner for setup: details, hours, roles and rules; invite their team.
+- [ ] Add their last four weeks of invoices with them and answer the first questions together, so the first digest
+      has something to say. Check the pack sizes it assumed against a real case.
 
 ## Watch them work (first week)
 
 Sit with the owner and one or two staff for a real shift each. Don't help unless they're stuck; note where they
 hesitate. Ask them to do, on their own devices:
 
-- [ ] Log a delivery as it comes in (including one bought by the case).
-- [ ] Record waste at the end of a shift.
-- [ ] Do a stock count of a few items.
-- [ ] Find their shifts for next week (staff); publish next week's schedule (owner).
-- [ ] Ask the Assistant Manager for a stock check, and approve or reject what it suggests.
-- [ ] Undo something from History & undo.
+- [ ] Add this week's invoices: one pasted from a forwarded email, one typed from a paper invoice, and a Bill.com
+      export if they have one.
+- [ ] Answer the agent's questions as they come (staff who unpack deliveries can do this too).
+- [ ] Read Monday's digest on a phone between services, and say out loud what they'd do about each card.
+- [ ] Draft a message to a rep from a "Price went up" card, edit it, and send it from their own mail app.
+- [ ] Ask the agent three questions they'd normally ask their POS assistant, e.g. what they paid for an item last
+      month, which supplier is cheapest on paper goods, how much a supplier shorted them.
+- [ ] Ask for talking points before the manager meeting and use them in it.
+- [ ] Press "Not useful" on a card they don't care about, and "Wrong?" on a pack size.
+- [ ] If they have a bookkeeper: invite them, and watch the bookkeeper answer a question from the clients table.
 - [ ] Use it on a phone in the kitchen, including somewhere with poor signal.
 
 For each task note: did they finish it, how long it took, where they hesitated, and anything they said.

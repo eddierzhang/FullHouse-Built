@@ -602,5 +602,8 @@ def claim_unassigned(db: Session, restaurant) -> None:
 
     inventory.claim_unassigned(db, restaurant)
     hr.claim_unassigned(db, restaurant)
-    for model in (Supplier, MenuItem, Order, AgentRun, AgentAction, ChangeLog):
+    from app.customers.models import CustomerActionItem, CustomerRequest, CustomerServiceReview
+
+    for model in (Supplier, MenuItem, Order, AgentRun, AgentAction, ChangeLog,
+                  CustomerRequest, CustomerServiceReview, CustomerActionItem):
         db.execute(update(model).where(model.restaurant_id.is_(None)).values(restaurant_id=restaurant.id))

@@ -99,7 +99,7 @@ def test_the_daily_stock_check_asks_the_agent_a_set_question(client, db, maestro
     assert scheduler.stock_check_cron(db) == "30 7 * * *"
 
     submitted = []
-    monkeypatch.setattr("app.agents.executor.submit", submitted.append)
+    monkeypatch.setattr("app.agents.executor.submit", lambda run_id, db=None: submitted.append(run_id))
     run_id = scheduler.run_stock_check(db)
 
     run = db.get(AgentRun, run_id)
@@ -166,7 +166,7 @@ def test_the_migration_leaves_an_empty_database_for_the_seed(tmp_path, monkeypat
 def test_scheduled_runs_still_default_to_their_schedule(db, maestro, monkeypatch):
     maestro.schedule_cron = "0 10 * * tue"
     db.commit()
-    monkeypatch.setattr("app.agents.executor.submit", lambda run_id: None)
+    monkeypatch.setattr("app.agents.executor.submit", lambda run_id, db=None: None)
     run = db.get(AgentRun, scheduler.run_scheduled_agent(AGENT_KEY, db))
     assert run.input.startswith("Scheduled run (0 10 * * tue")
 

@@ -17,6 +17,29 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+#: Dollars per million tokens in and out, by model family, at list price. The rule-based
+#: provider and a local model cost nothing. Unknown hosted models use the Sonnet rate.
+PRICES_PER_MILLION = {
+    "opus": (15.0, 75.0), "sonnet": (3.0, 15.0), "haiku": (0.8, 4.0),
+    "gemini-2.5-pro": (1.25, 10.0), "gemini-2.5-flash": (0.30, 2.50), "gemini": (0.30, 2.50),
+    "gpt-4o-mini": (0.15, 0.60), "gpt-4o": (2.50, 10.0), "gpt": (2.50, 10.0),
+}
+
+
+def run_cost(provider_key: str, model: str, result) -> float | None:
+    """What the run cost at list price, from the tokens the provider reported. 0 when nothing is billed."""
+    if provider_key in ("scripted", "ollama"):
+        return 0.0
+    total = result.tokens_used
+    if total is None:
+        return None
+    lower = (model or "").lower()
+    rate_in, rate_out = next((v for k, v in PRICES_PER_MILLION.items() if k in lower), PRICES_PER_MILLION["sonnet"])
+    tokens_in = result.tokens_in if result.tokens_in is not None else total * 0.8
+    tokens_out = result.tokens_out if result.tokens_out is not None else total - tokens_in
+    return round((tokens_in * rate_in + tokens_out * rate_out) / 1_000_000, 6)
+
+
 def execute_run(run_id: str, db: Session | None = None) -> str:
     """Drive one agent run to completion via the configured LLM provider.
 
@@ -42,7 +65,9 @@ def execute_run(run_id: str, db: Session | None = None) -> str:
         # correct for delegation: a subagent's context unwinds back to the
         # Boss's when its run returns.
         run_actor = Actor(type=AGENT, id=defn.key, agent_run_id=run.id, restaurant_id=run.restaurant_id)
-        with actor_context(run_actor):
+        from app.support.alerts import log_context
+
+        with actor_context(run_actor), log_context(restaurant_id=run.restaurant_id, run_id=run.id):
             agent_crud.set_run_status(db, run, "running", started_at=_now())
             agent_crud.add_event(db, run.id, "status_change", {"status": "running"})
             broker.publish(run.id, {"type": "status_change", "run_id": run.id, "payload": {"status": "running"}})
@@ -88,6 +113,9 @@ def execute_run(run_id: str, db: Session | None = None) -> str:
                 "succeeded",
                 output_summary=output_summary,
                 tokens_used=result.tokens_used,
+                tokens_in=result.tokens_in,
+                tokens_out=result.tokens_out,
+                cost_usd=run_cost(provider.key, model, result),
                 finished_at=_now(),
             )
             agent_crud.add_event(db, run.id, "status_change", {"status": "succeeded"})

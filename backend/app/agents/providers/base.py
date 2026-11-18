@@ -37,6 +37,9 @@ class ProviderError(RuntimeError):
 class ProviderResult:
     text: str
     tokens_used: int | None = None
+    #: Where the provider reports the split; the runner prices the run from these.
+    tokens_in: int | None = None
+    tokens_out: int | None = None
 
 
 def to_function_schema(tool: Any) -> dict:

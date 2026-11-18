@@ -85,8 +85,20 @@ def labels_for(db: Session, changes: list[ChangeLog]) -> dict[int, str]:
             label = f"recipe for {dish}" if dish else "a recipe"
         elif table == "orders":
             label = "a sale"
+        elif table == "purchase_orders":
+            label = f"order for {snapshot.get('item_name')}" if snapshot.get("item_name") else "a purchase order"
         elif table == "agent_runs":
             label = "an agent run"
+        elif table == "agent_questions":
+            label = f"question: {snapshot.get('text')}" if snapshot.get("text") else "a question from the agent"
+        elif table == "price_items":
+            label = _snapshot_name(change) or "an item"
+        elif table == "price_item_aliases":
+            label = f"how “{snapshot.get('description_key')}” is read" if snapshot.get("description_key") else "an invoice line's match"
+        elif table == "supplier_invoices":
+            label = f"invoice {snapshot.get('reference')}" if snapshot.get("reference") else f"an invoice dated {snapshot.get('invoice_date', '?')}"
+        elif table == "outreach_drafts":
+            label = f"draft: {snapshot.get('subject')}" if snapshot.get("subject") else "a draft message"
         else:
             label = None
         labels[change.id] = label or table.replace("_", " ")

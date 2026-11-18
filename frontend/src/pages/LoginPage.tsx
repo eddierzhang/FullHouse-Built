@@ -176,34 +176,76 @@ export function LoginPage({ mode, onMode, unreachable, expired = false, onRetry,
         )}
 
         {options?.demo && !signingUp && (
-          <div className="auth-demo">
+          <div className="auth-demo auth-demo-choice">
             <div>
               <div className="auth-demo-title">Trying the demo?</div>
-              <dl className="auth-demo-creds">
-                <dt>Email</dt>
-                <dd>
-                  <code>{options.demo.email}</code>
-                </dd>
-                <dt>Password</dt>
-                <dd>
-                  <code>{options.demo.password}</code>
-                </dd>
-              </dl>
+              <p className="auth-demo-note">
+                {options.demo.empty
+                  ? 'Choose how it starts. Filled in is a sample bistro with weeks of invoices, sales and schedules. Empty has every feature on and nothing in it.'
+                  : 'A sample bistro with weeks of invoices, sales and schedules. It resets every day.'}
+              </p>
             </div>
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              disabled={busy}
-              onClick={() => {
-                setEmail(options.demo!.email)
-                setPassword(options.demo!.password)
-                void submit(options.demo!)
-              }}
-            >
-              Use demo account
-            </button>
+            <div className="auth-demo-buttons">
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                disabled={busy}
+                onClick={() => {
+                  setEmail(options.demo!.email)
+                  setPassword(options.demo!.password)
+                  void submit(options.demo!)
+                }}
+              >
+                {options.demo.empty ? 'Start filled in' : 'Use demo account'}
+              </button>
+              {options.demo.empty && (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={busy}
+                  onClick={() => {
+                    setEmail(options.demo!.empty!.email)
+                    setPassword(options.demo!.empty!.password)
+                    void submit(options.demo!.empty!)
+                  }}
+                >
+                  Start empty
+                </button>
+              )}
+            </div>
           </div>
         )}
+
+        {!signingUp &&
+          (options?.samples ?? []).map((sample) => (
+            <div className="auth-demo" key={sample.email}>
+              <div>
+                <div className="auth-demo-title">{options?.demo ? sample.label : `Sample account: ${sample.label}`}</div>
+                <dl className="auth-demo-creds">
+                  <dt>Email</dt>
+                  <dd>
+                    <code>{sample.email}</code>
+                  </dd>
+                  <dt>Password</dt>
+                  <dd>
+                    <code>{sample.password}</code>
+                  </dd>
+                </dl>
+              </div>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                disabled={busy}
+                onClick={() => {
+                  setEmail(sample.email)
+                  setPassword(sample.password)
+                  void submit(sample)
+                }}
+              >
+                Use this account
+              </button>
+            </div>
+          ))}
 
         <form className="auth-form" onSubmit={onSubmit} noValidate>
           {signingUp && (

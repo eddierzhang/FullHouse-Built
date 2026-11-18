@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState } from 'react'
+import { PageFrame, PageTitle } from '../components/PageFrame'
 import { ApiError, type MenuPerformance, createMenuItem, deleteMenuItem, listMenuPerformance, updateMenuItem } from '../api/client'
 import type { AppContext } from '../app/context'
 import { Icon } from '../components/Icon'
@@ -364,10 +365,10 @@ export function MenuPage({ app }: { app: AppContext }) {
   }
 
   return (
-    <main className="page">
+    <PageFrame className="page">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Menu</h1>
+          <PageTitle embedded="Dishes">Menu</PageTitle>
           <p className="page-subtitle">What each dish sells and earns, and what it costs to make.</p>
         </div>
         <Freshness loads={[load]} />
@@ -381,6 +382,6 @@ export function MenuPage({ app }: { app: AppContext }) {
       <Loaded load={load} what="the menu" placeholderHeight={320}>
         {board}
       </Loaded>
-    </main>
+    </PageFrame>
   )
 }

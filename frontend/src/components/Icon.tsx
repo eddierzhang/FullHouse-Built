@@ -43,6 +43,7 @@ const PATHS: Record<string, ReactNode> = {
   ),
   profit: <path d="M3 3v18h18M7 15l4-4 3 3 6-6" />,
   trend: <path d="m22 7-8.5 8.5-5-5L2 17M16 7h6v6" />,
+  chat: <path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2zM8 8h8M8 12h5" />,
   plus: <path d="M12 5v14M5 12h14" />,
   hamburger: <path d="M4 6h16M4 12h16M4 18h16" />,
   close: <path d="M18 6 6 18M6 6l12 12" />,
@@ -71,6 +72,10 @@ const PATHS: Record<string, ReactNode> = {
       <path d="M10 20v-6h4v6" />
     </>
   ),
+  bell: <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10 21a2 2 0 0 0 4 0" />,
+  mic: <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3" />,
+  search: <path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4" />,
+  chevron: <path d="m6 9 6 6 6-6" />,
   trash: <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />,
 }
 

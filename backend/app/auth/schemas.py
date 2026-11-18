@@ -90,6 +90,28 @@ class RoleIn(BaseModel):
 class DemoCredentials(BaseModel):
     email: str
     password: str
+    #: What this demo restaurant is good for, shown when the sign-in page offers more than one.
+    label: str | None = None
+    #: The same demo with nothing in it: every feature on, every page empty. None until it is ready.
+    empty: "DemoCredentials | None" = None
+
+
+class DemoCard(BaseModel):
+    """The demo's own top digest card, so the landing page shows what is inside."""
+
+    item_name: str
+    sentence: str
+    impact: float
+    total: float
+    items: int
+
+
+class SampleAccount(BaseModel):
+    """One sample sign-in a preview site offers on its login page."""
+
+    label: str
+    email: str
+    password: str
 
 
 class AuthOptions(BaseModel):
@@ -97,10 +119,15 @@ class AuthOptions(BaseModel):
     signup_enabled: bool
     #: Shown on the login page of the public demo; null everywhere else.
     demo: DemoCredentials | None = None
+    #: The top card of the demo restaurant's digest; null everywhere else.
+    demo_card: DemoCard | None = None
+    #: Sample accounts of a preview on sample data (`SAMPLE_ACCOUNTS`); empty everywhere else.
+    samples: list[SampleAccount] = []
 
 
 class InviteIn(BaseModel):
-    role: Literal["admin", "member"] = "member"
+    #: "bookkeeper": an outside accountant, who may already keep other restaurants' books.
+    role: Literal["admin", "member", "bookkeeper"] = "member"
     #: Optional: when given, only this address can accept the invite.
     email: str | None = Field(default=None, max_length=254)
 

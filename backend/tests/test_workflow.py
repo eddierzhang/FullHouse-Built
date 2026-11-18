@@ -16,7 +16,7 @@ def test_stock_change_to_agent_proposal_to_approval_to_dashboard(client, db, mon
     restaurant = _set_up(client, db)
     monkeypatch.setattr("app.agents.runner.get_provider", lambda: ScriptedProvider(step_delay=0))
     # The run is executed below, in this session; the background pool would run it a second time.
-    monkeypatch.setattr("app.agents.executor.submit", lambda run_id: None)
+    monkeypatch.setattr("app.agents.executor.submit", lambda run_id, db=None: None)
     agent = db.query(AgentDefinition).filter_by(key=AGENT_DEF["key"]).one()
 
     # 1. Staff update inventory: saffron is used until it runs low.
@@ -46,7 +46,13 @@ def test_stock_change_to_agent_proposal_to_approval_to_dashboard(client, db, mon
     assert approved.status_code == 200
     assert client.post(f"/api/v1/agents/actions/{proposal['id']}/approve", json={}).status_code == 400
 
-    # 4. The dashboard's figures update.
+    # 4. The order is placed, and the stock moves when it is received.
+    assert {i["name"]: i for i in client.get(ITEMS).json()}["Saffron"]["quantity_on_hand"] == 2
+    (order,) = client.get(f"{API}/purchase-orders").json()
+    assert (order["item_name"], order["quantity"], order["status"], order["action_id"]) == ("Saffron", 20, "draft", proposal["id"])
+    received = client.post(f"{API}/purchase-orders/{order['id']}/receive", json={})
+    assert received.status_code == 200, received.text
+    assert client.get(f"{API}/purchase-orders").json() == []
     stock = {i["name"]: i for i in client.get(ITEMS).json()}
     assert stock["Saffron"]["quantity_on_hand"] == 22
     assert client.get(f"{API}/supply-chain").json()["low_stock_count"] == 0

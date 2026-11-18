@@ -55,12 +55,15 @@ class AnthropicProvider(LLMProvider):
 
             last_message = None
             tokens = 0
+            tokens_in = tokens_out = 0
             for message in tool_runner:
                 if should_cancel and should_cancel():
                     raise RunCancelledError("Run cancelled between model turns")
                 last_message = message
                 usage = getattr(message, "usage", None)
                 if usage is not None:
+                    tokens_in += usage.input_tokens or 0
+                    tokens_out += usage.output_tokens or 0
                     tokens += (usage.input_tokens or 0) + (usage.output_tokens or 0)
                 for block in message.content:
                     if block.type == "text" and block.text:
@@ -70,4 +73,5 @@ class AnthropicProvider(LLMProvider):
         except anthropic.AnthropicError as exc:
             raise ProviderError(f"Anthropic request failed: {exc}") from exc
 
-        return ProviderResult(text=_extract_text(last_message), tokens_used=tokens or None)
+        return ProviderResult(text=_extract_text(last_message), tokens_used=tokens or None,
+                              tokens_in=tokens_in or None, tokens_out=tokens_out or None)

@@ -25,10 +25,12 @@ const env = {
   // Owners sign in with a password alone here; e2e/mfa.spec.ts turns two-step on for its own account.
   REQUIRE_MFA: 'false',
   FRONTEND_ORIGIN: process.env.E2E_WEB_ORIGIN ?? 'http://127.0.0.1:5174',
+  // The Labor Today page can be read as of a given moment, so a service in progress can be tested at any hour.
+  ALLOW_TIME_TRAVEL: 'true',
   PYTHONUNBUFFERED: '1',
 }
 
-for (const args of [['-m', 'alembic', 'upgrade', 'head'], ['scripts/seed_data.py'], ['scripts/seed_e2e.py']]) {
+for (const args of [['-m', 'alembic', 'upgrade', 'head'], ['scripts/seed_data.py'], ['scripts/seed_e2e.py'], ['scripts/seed_e2e_margin_labor.py']]) {
   const result = spawnSync(python, args, { cwd: backend, env, stdio: 'inherit' })
   if (result.status !== 0) {
     console.error(`e2e backend setup failed: ${python} ${args.join(' ')}`)

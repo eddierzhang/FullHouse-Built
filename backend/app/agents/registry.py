@@ -1,7 +1,18 @@
 from sqlalchemy.orm import Session
 
+from app.agents import guard
 from app.agents.models import AgentDefinition, AgentRun
-from app.agents.tools import employee_tools, inventory_tools, marketing_tools, profit_tools, supply_chain_tools
+from app.agents.tools import (
+    customer_tools,
+    employee_tools,
+    inventory_tools,
+    marketing_tools,
+    order_tools,
+    price_tools,
+    profit_tools,
+    recipe_tools,
+    supply_chain_tools,
+)
 
 #: Every tool the agent has, by the part of the restaurant it covers. Order
 #: is the order the agent is offered them in.
@@ -11,6 +22,10 @@ TOOL_AREAS = {
     "staff": employee_tools.build_tools,
     "menu": marketing_tools.build_tools,
     "profit": profit_tools.build_tools,
+    "customers": customer_tools.build_tools,
+    "prices": price_tools.build_tools,
+    "recipes": recipe_tools.build_tools,
+    "orders": order_tools.build_tools,
 }
 
 
@@ -26,5 +41,5 @@ def resolve_tools(db: Session, run: AgentRun, defn: AgentDefinition) -> list:
             continue
         for tool in build(db, run, defn.id):
             tool.area = area
-            tools.append(tool)
+            tools.append(guard.guarded(tool))
     return tools

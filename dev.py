@@ -4,6 +4,7 @@
     python dev.py setup      install everything and create a seeded database
     python dev.py dev        run the API (:8000) and the frontend (:5173) together
     python dev.py demo       run the public demo locally (:8080), no Docker or model needed
+    python dev.py margin-labor   the Margin & Labor Engine on sample data (:8090)
     python dev.py test       backend tests and a frontend type-check/build
     python dev.py e2e        Playwright end-to-end tests on an isolated stack
     python dev.py eval ...   agent evaluation; extra arguments go to evals.run
@@ -56,7 +57,7 @@ def setup(_args) -> None:
     if not env_file.exists():
         step("Creating backend/.env from .env.example (agents default to the scripted provider)")
         text = (BACKEND / ".env.example").read_text(encoding="utf-8")
-        env_file.write_text(text.replace("LLM_PROVIDER=anthropic", "LLM_PROVIDER=scripted"), encoding="utf-8")
+        env_file.write_text(text.replace("LLM_PROVIDER=\n", "LLM_PROVIDER=scripted\n", 1), encoding="utf-8")
 
     step("Migrating and seeding the database")
     run([VENV_PYTHON, "-m", "alembic", "upgrade", "head"], BACKEND)
@@ -90,8 +91,27 @@ def dev(_args) -> None:
     ])
 
 
+def _model_provider() -> tuple[str, str]:
+    """(provider, what to say about it) for the demo: a real model when a key is set in the environment or in
+    backend/.env, else the rule-based assistant. An Anthropic key means Claude; an LLM_API_KEY means the
+    OpenAI-compatible provider (Gemini by default)."""
+    held = dict(os.environ)
+    env_file = BACKEND / ".env"
+    if env_file.exists():
+        for line in env_file.read_text(encoding="utf-8").splitlines():
+            key, sep, value = line.partition("=")
+            if sep and not key.strip().startswith("#"):
+                held.setdefault(key.strip(), value.strip())
+    if held.get("ANTHROPIC_API_KEY"):
+        return "anthropic", "Claude answers questions (ANTHROPIC_API_KEY is set)"
+    if held.get("LLM_API_KEY"):
+        return "openai", f"{held.get('LLM_MODEL') or 'a model'} answers questions (LLM_API_KEY is set)"
+    return "scripted", "questions are answered by rule (no model key is set)"
+
+
 def demo(_args) -> None:
     """The single-container demo, without the container."""
+    provider, said = _model_provider()
     step("Building the frontend")
     run([NPM, "run", "build"], FRONTEND, env={"VITE_API_BASE": "same-origin"})
 
@@ -99,16 +119,48 @@ def demo(_args) -> None:
     env = {
         "DATABASE_URL": f"sqlite:///{database.as_posix()}",
         "DEMO_MODE": "true",
-        "LLM_PROVIDER": "scripted",
+        "LLM_PROVIDER": provider,
         "SCRIPTED_STEP_DELAY_SECONDS": "0.8",
         "STATIC_DIR": str(FRONTEND / "dist"),
     }
-    step("Loading the demo restaurant")
+    step(f"Loading the demo restaurant; {said}")
     run([python(), "-m", "alembic", "upgrade", "head"], BACKEND, env)
 
     step("Demo on http://localhost:8080 (Ctrl+C to stop)")
     _serve([subprocess.Popen(
         [str(python()), "-m", "uvicorn", "app.main:app", "--port", "8080"], cwd=BACKEND,
+        env={**os.environ, **env},
+    )])
+
+
+def margin_labor(_args) -> None:
+    """The Margin & Labor Engine on sample data, on its own port and its own throwaway database.
+
+    Two restaurants with every module switched on, each with a button on the sign-in page: Corner Grill, a small
+    sample restaurant (demo@example.com), and an empty one (empty@example.com); password demo-kitchen. Nothing here
+    touches the demo or your data.
+    """
+    step("Building the frontend")
+    run([NPM, "run", "build"], FRONTEND, env={"VITE_API_BASE": "same-origin"})
+
+    database = Path(tempfile.mkdtemp(prefix="fullhouse-margin-labor-")) / "preview.db"
+    env = {
+        "DATABASE_URL": f"sqlite:///{database.as_posix()}",
+        "LLM_PROVIDER": "scripted",
+        "REQUIRE_MFA": "false",
+        # Lets the Labor Today page be read as of a time of day, to see a service in progress at any hour.
+        "ALLOW_TIME_TRAVEL": "true",
+        # The sign-in page offers the two sample accounts with one click.
+        "SAMPLE_ACCOUNTS": "Corner Grill, a small sample restaurant|demo@example.com|demo-kitchen;Empty restaurant, to fill in yourself|empty@example.com|demo-kitchen",
+        "STATIC_DIR": str(FRONTEND / "dist"),
+    }
+    step("Loading the sample restaurant and an empty one (about half a minute: it drafts next week's schedule)")
+    run([python(), "-m", "alembic", "upgrade", "head"], BACKEND, env)
+    run([python(), "scripts/seed_preview.py"], BACKEND, env)
+
+    step("Margin & Labor on http://localhost:8090 (Ctrl+C to stop). Sign in: demo@example.com (sample) or empty@example.com (empty), password demo-kitchen")
+    _serve([subprocess.Popen(
+        [str(python()), "-m", "uvicorn", "app.main:app", "--port", "8090"], cwd=BACKEND,
         env={**os.environ, **env},
     )])
 
@@ -130,7 +182,7 @@ def evaluate(args) -> None:
     run([python(), "-m", "evals.run", *(args or ["--targets", "scripted"])], BACKEND)
 
 
-COMMANDS = {"setup": setup, "dev": dev, "demo": demo, "test": test, "e2e": e2e, "eval": evaluate}
+COMMANDS = {"setup": setup, "dev": dev, "demo": demo, "margin-labor": margin_labor, "test": test, "e2e": e2e, "eval": evaluate}
 
 if __name__ == "__main__":
     if len(sys.argv) < 2 or sys.argv[1] not in COMMANDS:

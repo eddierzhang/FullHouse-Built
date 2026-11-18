@@ -1,12 +1,95 @@
 import { type ReactNode, useState } from 'react'
 import { downloadExport, fetchSupportInfo, listFeedback } from '../api/client'
+import { showTour } from '../components/Tour'
 import type { AppContext } from '../app/context'
 import { FeedbackButton } from '../components/FeedbackButton'
 import { Empty, Loaded } from '../components/PageState'
 import { dateTime, relativeTime } from '../lib/format'
 import { useLoad } from '../lib/useLoad'
 
-/** The everyday jobs, each in a few steps. Kept in step with docs/USER_GUIDE.md. */
+/** Prices, each job in a few steps. Kept in step with docs/USER_GUIDE.md. */
+const PRICE_GUIDE: { title: string; steps: ReactNode[] }[] = [
+  {
+    title: 'Add an invoice',
+    steps: [
+      <>Open <a href="#invoices">Invoices</a> and press <strong>Add invoice</strong> (the first time, the three choices are the whole page).</>,
+      'Pick a Bill.com CSV, paste the text of an emailed invoice, or take a photo and type its lines.',
+      'Check the lines as printed, the quantity and the price each, then press Save invoice. The agent matches what it can and asks about the rest.',
+    ],
+  },
+  {
+    title: 'Answer the agent’s questions',
+    steps: [
+      <>Open <a href="#questions">Questions</a>. Each card shows the invoice line and asks one thing: is this the same item, or how many come in a pack.</>,
+      'Tap an answer. "Something else" lets you name the item or type the count. Items with an open question stay out of the digest until you answer.',
+      'The agent asks at most five questions a week, biggest dollars first.',
+    ],
+  },
+  {
+    title: 'Read the digest',
+    steps: [
+      <>Open <a href="#digest">Digest</a>. The number at the top is the dollars at stake this week.</>,
+      'Switch supplier: another supplier charged less for the same item recently. Price went up: the same supplier charges more than before. Owed to you: billed more than delivered, no credit yet.',
+      'Tap a card for the item: eight weeks of prices by supplier and every invoice line behind them.',
+    ],
+  },
+  {
+    title: 'Draft a message to a supplier',
+    steps: [
+      <>On a card or an item, press <strong>Draft message</strong>. The subject, three sentences and the invoice lines are filled in.</>,
+      'Edit anything. Send via email opens the message in your own mail app after you confirm the recipient; Copy puts it on the clipboard for a text.',
+      'Nothing is ever sent for you. The rep’s name and email are remembered for next time.',
+    ],
+  },
+  {
+    title: 'Hide an item',
+    steps: [
+      <>Press <strong>Not useful</strong> on a card. The item leaves the digest for four weeks; Undo brings it back.</>,
+      <>Hidden items are still listed under <a href="#items">Items</a> with the date they return.</>,
+    ],
+  },
+  {
+    title: 'Let the invoices keep the stock and propose reorders',
+    steps: [
+      <>An item on the invoices is counted as the Inventory item its name matches; the item page says which (<strong>Change</strong> to pick another, or none).</>,
+      'A line on a confirmed invoice is booked into Inventory as a delivery, once, in the agent’s name, with the invoice in the note.',
+      <>An item at its reorder point gets a reorder proposed under <a href="#approvals">Recommendations</a> from the cheapest recent supplier, in whole packs, with the cost. Approve it or reject it; nothing is ordered for you.</>,
+    ],
+  },
+  {
+    title: 'Connect your POS and payroll for prime cost',
+    steps: [
+      <>The owner switches it on under <a href="#profile/features">Profile › Features</a>; <strong>Connections</strong> then appears under Restaurant.</>,
+      'Connect Square or Gusto, or drop in a CSV export of sales or payroll: the columns are matched from the headers and shown back before anything is imported.',
+      'Once a week has sales and labor for every day, the Monday digest opens with prime cost as a share of sales. A missing day shows what to connect instead of a number.',
+    ],
+  },
+  {
+    title: 'Hand over a price list, a recipe card or a permit',
+    steps: [
+      <>Under <a href="#documents">Documents</a> (switched on under Profile › Features), upload it or forward it to your inbound address. It is read for what it is.</>,
+      'A price list becomes agreed-price proposals; a recipe card a recipe proposal; a permit or warranty is kept with its dates. Approve what is right under Recommendations.',
+      <>From then on an invoice billed above an agreed price shows under Owed to you, and each dish with a recipe gets a plate cost on <a href="#recipes">Recipes</a>.</>,
+    ],
+  },
+  {
+    title: 'Keep permits, licenses and warranties from lapsing',
+    steps: [
+      <>Upload each under <a href="#documents">Documents</a>; it is proposed as a date on the <a href="#calendar">Calendar</a> (switched on under Profile › Features).</>,
+      'Within thirty days of a date the digest lists it under Coming due; past it, the calendar shows it in red.',
+      'Attach the renewal or the report as proof to clear it. Yearly items get next year’s date on their own.',
+    ],
+  },
+  {
+    title: 'Ask the agent anything about prices',
+    steps: [
+      'Type into the field at the top (or the bottom, on a phone): "what did I pay for tomatoes last month", "which supplier is cheapest on paper goods".',
+      <>The answer appears in the <a href="#thread">Conversation</a>, with the invoices and items it used underneath. Ask for "talking points" to get five lines for the manager meeting.</>,
+    ],
+  },
+]
+
+/** The everyday jobs: stock, the schedule, the Assistant Manager, undo. */
 const GUIDE: { title: string; steps: ReactNode[] }[] = [
   {
     title: 'Log a delivery',
@@ -34,7 +117,7 @@ const GUIDE: { title: string; steps: ReactNode[] }[] = [
   {
     title: 'Check and publish the schedule',
     steps: [
-      <>Open <a href="#staff">Schedule & staff</a>. Owners and admins add shifts as drafts.</>,
+      <>Open <a href="#staff">Labor and staffing</a>. Owners and admins add shifts as drafts.</>,
       <>Press <strong>Publish</strong> when it’s ready. Staff see only published shifts.</>,
       'Shifts that break the restaurant’s scheduling rules (too long, too little rest, too many hours) are refused with the reason.',
     ],
@@ -42,9 +125,18 @@ const GUIDE: { title: string; steps: ReactNode[] }[] = [
   {
     title: 'Review the Assistant Manager’s recommendations',
     steps: [
-      <>Open <a href="#approvals">Recommendations</a>. Each one says what it would change and why.</>,
-      <><strong>Approve</strong> carries it out; <strong>Reject</strong> drops it. Nothing changes until someone approves.</>,
+      <>Open <a href="#approvals">Recommendations</a>. On a phone they come one card at a time, <strong>Approve</strong> or <strong>Not now</strong>. Swipe left to set one aside.</>,
+      <>Under every proposal, three parts: <strong>The issue</strong> (what the agent saw), <strong>If you approve</strong> (exactly what changes in FullHouse, and what does not, like sending or the POS), and <strong>Worth knowing</strong> (the source, the limits, and the step that stays yours).</>,
+      <><strong>Approve</strong> carries it out; <strong>Reject</strong> drops it. Nothing changes until someone approves. Approving a reorder places the order; the stock moves when it arrives.</>,
       <>Ask it for something any time with <strong>New task</strong>, e.g. “Check stock and reorder anything low”.</>,
+    ],
+  },
+  {
+    title: 'Track an order from approval to delivery',
+    steps: [
+      <>Approving a reorder drafts it under <strong>On order</strong> on <a href="#inventory">Inventory</a>. <strong>Send to rep</strong> mails the lines with a PDF, or <strong>Placed by phone</strong> marks it placed. Orders placed outside the app go there too: <strong>Record an order</strong>.</>,
+      <><strong>Mark shipped</strong> when the supplier says it’s on its way. An order past its expected date shows as overdue, here and on Today.</>,
+      <><strong>Receive</strong> when it arrives: enter what actually came and it is booked into stock, once. If the invoice for it is added first, the invoice receives it instead, and nothing is counted twice.</>,
     ],
   },
   {
@@ -93,7 +185,7 @@ export function HelpPage({ app }: { app: AppContext }) {
       <div className="page-header">
         <div>
           <h1 className="page-title">Help</h1>
-          <p className="page-subtitle">How to do the everyday things, who to ask, and your data.</p>
+          <p className="page-subtitle">How to add invoices, answer the agent, read the digest, and reach a rep. Plus who to ask, and your data.</p>
         </div>
       </div>
 
@@ -125,13 +217,20 @@ export function HelpPage({ app }: { app: AppContext }) {
                   </div>
                 ) : (
                   <p className="muted">
-                    No support contact has been set up yet. Use Send feedback below, or ask whoever set FullHouse up for you.
+                    {app.runtime?.demo_mode
+                      ? 'This is the demo, so there is nobody on call. On your own site, your support contact appears here.'
+                      : 'No support contact has been set up yet. Use Send feedback below, or ask whoever set FullHouse up for you.'}
                   </p>
                 )
               }
             </Loaded>
             <div>
               <FeedbackButton onSent={() => (app.toast('Thanks, feedback sent'), void feedback.reload())} />
+              {app.flags.v3_nav && (
+                <button className="btn btn-secondary" style={{ marginLeft: 8 }} onClick={showTour}>
+                  Take the one-minute tour
+                </button>
+              )}
             </div>
           </div>
         </section>
@@ -146,6 +245,23 @@ export function HelpPage({ app }: { app: AppContext }) {
           </div>
           <div className="card-body guide">
             {GUIDE.map((topic) => (
+              <details key={topic.title}>
+                <summary>{topic.title}</summary>
+                <ol>
+                  {topic.steps.map((step, i) => (
+                    <li key={i}>{step}</li>
+                  ))}
+                </ol>
+              </details>
+            ))}
+            <h3 style={{ marginTop: 16 }}>Invoices &amp; prices</h3>
+            <p className="muted">
+              The sidebar follows an invoice through: it is read on <a href="#invoices">Invoices</a>, the agent asks about
+              lines it can’t place on <a href="#questions">Questions</a>, each confirmed line adds to the price history on{' '}
+              <a href="#items">Items</a>, the weekly findings go out on <a href="#digest">Digest</a>, and the conversation and
+              drafts live on <a href="#thread">Conversation</a>.
+            </p>
+            {PRICE_GUIDE.map((topic) => (
               <details key={topic.title}>
                 <summary>{topic.title}</summary>
                 <ol>

@@ -6,6 +6,8 @@ pydantic==2.13.5
 python-dotenv==1.2.4
 anthropic==1.11.0
 httpx==0.28.1
+# Text out of supplier PDFs, so they read without a model (app.prices.extract).
+pypdf==6.21.4
 psycopg[binary]==3.3.6
 apscheduler==3.11.3
 # IANA timezones for the restaurant's clock, where the OS has none (Windows, slim images).
@@ -15,3 +17,4 @@ cryptography==50.0.2
 segno==1.6.6
 # Error alerts: off unless SENTRY_DSN is set (see DEPLOY.md).
 sentry-sdk[fastapi]==2.71.0
+ortools==9.15.6755

@@ -14,7 +14,10 @@ OWNER = "owner"
 ADMIN = "admin"
 #: Everyone who signs up once the restaurant exists: sees it, can't edit it.
 MEMBER = "member"
-ROLES = (OWNER, ADMIN, MEMBER)
+#: Keeps the books for one or more restaurants (app/prices/models.py BookkeeperClient)
+#: and belongs to none: answers the agent's questions for its clients, sees nothing else.
+BOOKKEEPER = "bookkeeper"
+ROLES = (OWNER, ADMIN, MEMBER, BOOKKEEPER)
 #: Who may change the restaurant profile and see who changed it.
 MANAGER_ROLES = frozenset({OWNER, ADMIN})
 

@@ -112,8 +112,11 @@ async function request(path: string, options: RequestOptions = {}): Promise<Resp
   return res
 }
 
-const get = <T>(path: string) => request(path).then((r) => r.json() as Promise<T>)
-const send = <T>(method: string, path: string, body?: unknown, idempotencyKey?: string) =>
+/** GET and decode. Exported for the per-feature API files beside this one. */
+/** The full address of an API path, for a file download the browser saves. */
+export const apiUrl = (path: string) => `${API_BASE}${path}`
+export const get = <T>(path: string) => request(path).then((r) => r.json() as Promise<T>)
+export const send = <T>(method: string, path: string, body?: unknown, idempotencyKey?: string) =>
   request(path, { method, body: body === undefined ? undefined : JSON.stringify(body), idempotencyKey }).then(
     (r) => r.json() as Promise<T>,
   )
@@ -197,7 +200,11 @@ export type AgentAction = {
   appliable?: boolean
   /** Fields the proposal left for the operator to supply. */
   needs_input?: string[]
+  /** Three plain sentences: the issue, what approving changes, what the owner should know. */
+  explain?: ActionExplanation
 }
+
+export type ActionExplanation = { issue: string; change: string; know: string }
 
 export const fetchRuntime = () => get<Runtime>('/api/v1/agents/runtime')
 export const listAgentDefinitions = () => get<AgentDefinition[]>('/api/v1/agents/definitions')
@@ -234,6 +241,10 @@ export type InventoryItem = {
   /** Bought in packs: one `pack_unit` (a case) holds `pack_size` of `unit`. Both null otherwise. */
   pack_unit: string | null
   pack_size: number | null
+  /** Where it is kept, its place on the shelf, and its usable share (count sheets and depletion). */
+  storage_area_id?: string | null
+  shelf_order?: number
+  yield_pct?: number | null
   /** When the item or its stock last changed. */
   updated_at: string
   /** At or below the reorder point. */
@@ -286,6 +297,80 @@ export type StockAdjustment = {
   actor_name: string | null
   created_at: string
 }
+
+export type PurchaseOrderStatus = 'draft' | 'ordered' | 'shipped' | 'received' | 'cancelled'
+
+/** An order placed with a supplier, followed from approval to receipt. Placing it moves no stock; receiving it does. */
+export type PurchaseOrderLine = {
+  id: string
+  item_id: string | null
+  inventory_item_id: string | null
+  description: string
+  qty: number
+  unit: string
+  units: number | null
+  unit_price_expected: number | null
+  received_qty: number | null
+  invoice_line_id: string | null
+}
+
+export type PurchaseOrder = {
+  id: string
+  /** Empty for an order with lines. */
+  inventory_item_id: string | null
+  lines: PurchaseOrderLine[]
+  sent_at: string | null
+  sent_by: string | null
+  rep_email: string | null
+  item_name: string
+  unit: string
+  /** In the item's unit; `packs` and `pack_unit` say how it was ordered when known. */
+  quantity: number
+  packs: number | null
+  pack_unit: string | null
+  supplier_id: string | null
+  supplier_name: string | null
+  estimated_cost: number | null
+  status: PurchaseOrderStatus
+  ordered_at: string
+  expected_on: string | null
+  shipped_at: string | null
+  received_at: string | null
+  received_qty: number | null
+  overdue: boolean
+  /** Received by its invoice arriving rather than by hand. */
+  received_by_invoice: boolean
+  action_id: string | null
+  note: string | null
+  placed_by: string | null
+  received_by: string | null
+}
+
+export type PurchaseOrderInput = {
+  inventory_item_id: string
+  supplier_id?: string | null
+  quantity: number
+  in_packs?: boolean
+  expected_on?: string | null
+  note?: string | null
+}
+
+const ORDERS = '/api/v1/restaurant/purchase-orders'
+export const listPurchaseOrders = (status: 'open' | 'all' | PurchaseOrderStatus = 'open') =>
+  get<PurchaseOrder[]>(`${ORDERS}?status=${status}`)
+/** An order placed by phone, email or a portal, recorded so its arrival can be tracked and booked. */
+export const placePurchaseOrder = (input: PurchaseOrderInput) => send<PurchaseOrder>('POST', ORDERS, input)
+export const markOrderShipped = (id: string, expected_on?: string | null) =>
+  send<PurchaseOrder>('POST', `${ORDERS}/${id}/shipped`, { expected_on: expected_on ?? null })
+/** What arrived goes into stock, once, and the order closes. `quantity` unset means all of it. */
+export const receiveOrder = (id: string, quantity?: number | null, note?: string | null) =>
+  send<{ order: PurchaseOrder; item: InventoryItem }>('POST', `${ORDERS}/${id}/receive`, { quantity: quantity ?? null, note: note ?? null })
+export const cancelOrder = (id: string) => send<PurchaseOrder>('POST', `${ORDERS}/${id}/cancel`)
+export const getPurchaseOrder = (id: string) => get<PurchaseOrder>(`${ORDERS}/${id}`)
+/** Mail a drafted order to the rep (the remembered one, or `to`) with a PDF, and mark it sent. Owners and admins. */
+export const sendOrder = (id: string, to?: string | null) => send<PurchaseOrder>('POST', `${ORDERS}/${id}/send`, { to: to ?? null })
+/** Placed by phone or in the supplier's portal: the draft becomes an order without a mail. */
+export const markOrderSent = (id: string) => send<PurchaseOrder>('POST', `${ORDERS}/${id}/mark-sent`)
 
 export type Supplier = { id: string; name: string; contact_info: string | null; lead_time_days: number }
 export type SupplierInput = { name: string; contact_info?: string | null; lead_time_days?: number }
@@ -547,7 +632,8 @@ export const fetchHealth = () => get<{ status: string }>('/health')
 
 // --- auth ----------------------------------------------------------------------
 
-export type Role = 'owner' | 'admin' | 'member'
+/** A bookkeeper belongs to no restaurant: they answer the agent's questions for several clients. */
+export type Role = 'owner' | 'admin' | 'member' | 'bookkeeper'
 
 export const canEditRestaurant = (user: User) => user.role === 'owner' || user.role === 'admin'
 
@@ -572,7 +658,11 @@ export type AuthOptions = {
   /** Whether a new restaurant can sign up here. A restaurant's team joins by invite either way. */
   signup_enabled: boolean
   /** The public demo's shared account; null on real deployments. */
-  demo: { email: string; password: string } | null
+  demo: { email: string; password: string; label?: string | null; empty?: { email: string; password: string } | null } | null
+  /** The demo's own top digest card, previewed on the landing page; null on real deployments. */
+  demo_card?: { item_name: string; sentence: string; impact: number; total: number; items: number } | null
+  /** Sample accounts a preview on sample data offers on its sign-in page; empty everywhere else. */
+  samples?: { label: string; email: string; password: string }[]
 }
 
 export const fetchAuthOptions = () => get<AuthOptions>('/api/v1/auth/options')
@@ -825,3 +915,636 @@ export function reportClientError(message: string, stack?: string): void {
     keepalive: true,
   }).catch(() => {})
 }
+
+// --- customer service requests ---------------------------------------------------
+
+export const REQUEST_CHANNELS = ['in_person', 'phone', 'email', 'online_review', 'social_media', 'other'] as const
+export const REQUEST_KINDS = ['complaint', 'question', 'request', 'compliment', 'other'] as const
+export type RequestChannel = (typeof REQUEST_CHANNELS)[number]
+export type RequestKind = (typeof REQUEST_KINDS)[number]
+
+/** One thing a customer told the restaurant. `message` is the original, and never changes. */
+export type CustomerRequest = {
+  id: string
+  received_at: string
+  channel: RequestChannel
+  kind: RequestKind
+  customer_name: string | null
+  customer_contact: string | null
+  message: string
+  logged_by: string
+  created_at: string
+  status: 'open' | 'resolved'
+  resolved_at: string | null
+  resolved_by: string | null
+  resolution_note: string | null
+}
+
+export type NewCustomerRequest = {
+  message: string
+  channel: RequestChannel
+  kind: RequestKind
+  customer_name: string
+  customer_contact: string
+}
+
+export type CustomerActionItem = {
+  id: string
+  title: string
+  details: string | null
+  priority: 'high' | 'normal' | 'low'
+  /** The requests it comes from. */
+  request_ids: string[]
+  status: 'open' | 'done'
+  done_at: string | null
+  done_by: string | null
+}
+
+/** The Assistant Manager's summary of the open requests from one run, and what it suggests doing. */
+export type CustomerServiceReview = {
+  id: string
+  run_id: string | null
+  summary: string
+  request_ids: string[]
+  created_at: string
+  action_items: CustomerActionItem[]
+}
+
+/** Anyone on the team can write a request down. */
+export const logCustomerRequest = (body: NewCustomerRequest) =>
+  send<{ id: string; received_at: string }>('POST', '/api/v1/customer-requests', body)
+/** Owners and admins, as are the rest. */
+export const listCustomerRequests = () => get<CustomerRequest[]>('/api/v1/customer-requests')
+export const resolveCustomerRequest = (id: string, note: string) =>
+  send<CustomerRequest>('POST', `/api/v1/customer-requests/${id}/resolve`, { note })
+export const reopenCustomerRequest = (id: string) => send<CustomerRequest>('POST', `/api/v1/customer-requests/${id}/reopen`)
+export const listCustomerReviews = () => get<CustomerServiceReview[]>('/api/v1/customer-requests/reviews')
+/** Starts the Assistant Manager summarising the open requests; the review appears when the run finishes. */
+export const startCustomerReview = () => send<AgentRun>('POST', '/api/v1/customer-requests/reviews')
+export const setCustomerActionItemDone = (id: string, done: boolean) =>
+  send<CustomerActionItem>('PATCH', `/api/v1/customer-requests/action-items/${id}`, { done })
+
+// --- prices: invoices, the digest, the agent's questions, drafts ------------------------
+// The shapes mirror backend/app/prices/schemas.py; dates are ISO strings.
+
+const PRICES = '/api/v1/prices'
+
+export type SupplierRef = { id: string; name: string }
+export type PriceCategory = 'food' | 'dry' | 'paper' | 'beer' | 'wine' | 'liquor'
+export type InvoiceSource = 'billcom' | 'email' | 'photo' | 'pdf' | 'typed'
+export type DigestSectionKey = 'switch' | 'up' | 'owed' | 'margin' | 'due'
+export type DraftKind = 'price_challenge' | 'credit_claim' | 'short_delivery'
+
+export type Reader = 'claude' | 'openai' | 'text'
+
+/** Whether this site reads a photo of an invoice, or only a PDF. */
+export const readsPhotos = (reader: Reader | null | undefined) => reader === 'claude' || reader === 'openai'
+
+export type PriceStatus = {
+  invoice_count: number
+  suppliers: SupplierRef[]
+  first_digest: string | null
+  questions_open: number
+  progress: string
+  forward_address: string | null
+  /** What reads a photo or PDF into lines here. Only Claude and a model on the OpenAI-compatible API read
+   * photos; 'text' (no model) reads PDFs that carry text. */
+  reader: Reader
+  billcom_configured: boolean
+  digest_email_to: string | null
+}
+
+/** A chip under an agent message: the invoice or item it used. */
+export type MessageSource = { kind: 'invoice' | 'item' | 'digest'; id: string; label: string }
+
+export type CardAction = { kind: 'move' | 'draft' | 'reprice' | 'calendar'; label: string; draft_kind: DraftKind | null; supplier_id: string | null }
+
+export type DigestCard = {
+  section: DigestSectionKey
+  item_id: string
+  item_name: string
+  /** For a menu-margin card: the recipe the card is about. */
+  recipe_id?: string | null
+  calendar_item_id?: string | null
+  impact: number
+  sentence: string
+  action: CardAction
+  sources: MessageSource[]
+}
+
+export type DigestSection = { key: DigestSectionKey; label: string; total: number; cards: DigestCard[] }
+
+/** The week's prime cost at the top of the digest, or what to connect to see it. */
+export type PrimeLine = {
+  week_of: string
+  complete: boolean
+  prime_pct: number | null
+  food_pct: number | null
+  paper_pct: number | null
+  labor_pct: number | null
+  sales_net: number | null
+  labor_dollars: number | null
+  purchases: number
+  prompt: string | null
+}
+
+export type Digest = {
+  id: string
+  week_start: string
+  /** Present when connections are switched on for the restaurant. */
+  prime: PrimeLine | null
+  forecast_accuracy?: number | null
+  recovered_to_date?: number | null
+  total: number
+  item_count: number
+  supplier_count: number
+  sections: DigestSection[]
+  hidden_count: number
+  questions_open: number
+  built_at: string
+  invoices_through: string | null
+  supplier_names: string[]
+}
+
+export type TalkingPoints = { lines: string[]; sources: MessageSource[] }
+
+export type ItemState = 'ok' | 'insufficient' | 'awaiting' | 'hidden'
+
+export type PriceItem = {
+  id: string
+  name: string
+  category: PriceCategory | string
+  pack_size: number
+  pack_unit: string
+  unit: string
+  state: ItemState
+  last_price: number | null
+  last_supplier: SupplierRef | null
+  last_date: string | null
+  change_8w: number | null
+  /** The change as a share of the earliest price in the window, and that price and its date. */
+  change_8w_pct?: number | null
+  first_price_8w?: number | null
+  first_date_8w?: string | null
+  hidden_until: string | null
+  questions_open: number
+}
+
+export type SeriesPoint = { week_start: string; price: number | null }
+export type PriceSeries = { supplier: SupplierRef; current: boolean; points: SeriesPoint[] }
+
+export type InvoiceLine = {
+  id: string
+  invoice_id: string
+  invoice_date: string
+  supplier: SupplierRef
+  description: string
+  qty: number
+  pack_text: string | null
+  unit_price: number
+  per_unit: number | null
+  pack_size: number | null
+  extended: number
+  delivered_qty: number | null
+  credited: number
+}
+
+/** An open purchase order, as the price pages mention it. */
+export type OrderBrief = {
+  id: string
+  quantity: number
+  unit: string
+  supplier_name: string | null
+  status: 'draft' | 'ordered' | 'shipped'
+  expected_on: string | null
+  overdue: boolean
+}
+
+/** The inventory item a price item is counted as, and how it stands. */
+export type StockLink = {
+  inventory_item_id: string
+  name: string
+  unit: string
+  quantity_on_hand: number
+  reorder_threshold: number
+  low_stock: boolean
+  /** False when the invoice's unit can't be read in the stock unit (lb against L): nothing is booked then. */
+  converts: boolean
+  /** A reorder waiting under Recommendations for this stock item. */
+  pending_action_id: string | null
+  /** An order already placed and not yet received. */
+  on_order: OrderBrief | null
+}
+
+export type PriceItemDetail = PriceItem & {
+  pack_sentence: string
+  card: DigestCard | null
+  note: string | null
+  series: PriceSeries[]
+  lines: InvoiceLine[]
+  moved_to: SupplierRef | null
+  stock: StockLink | null
+  /** "owner" once the owner chose what it is counted as; "auto" while the name match stands. */
+  inventory_link: 'auto' | 'owner'
+  /** The agreed price in effect, per unit, when documents are on. */
+  agreed: AgreedPrice | null
+  used_in: { id: string; name: string; status: string }[]
+}
+
+export type AgreedPrice = {
+  id: string
+  supplier: SupplierRef
+  unit_price: number
+  base_unit: string
+  effective_from: string
+  effective_to: string | null
+  source_document_id: string | null
+}
+
+/** For the Inventory page: what the invoices say about one stock item. */
+export type StockRow = {
+  inventory_item_id: string
+  item_id: string
+  item_name: string
+  unit: string
+  converts: boolean
+  /** The last price paid, per unit of stock. */
+  per_unit: number | null
+  last_supplier: SupplierRef | null
+  last_date: string | null
+  pending_action_id: string | null
+  on_order: OrderBrief | null
+}
+
+export type QuestionOption = { key: string; label: string }
+export type CropLine = { text: string; hit: boolean }
+
+export type AgentQuestion = {
+  id: string
+  kind: 'match' | 'pack' | 'repack'
+  text: string
+  options: QuestionOption[]
+  crop: CropLine[]
+  has_image: boolean
+  supplier: SupplierRef
+  invoice_id: string
+  invoice_date: string
+  line_id: string
+  dollar_impact: number
+  status: 'open' | 'answered' | 'held'
+  answer: string | null
+  created_at: string
+}
+
+export type QuestionAnswer = { answer: 'yes' | 'no' | 'other'; text?: string | null; pack_size?: number | null }
+
+export type DraftSummary = { id: string; status: DraftStatus; subject: string; to_name: string | null; supplier: SupplierRef }
+export type DraftStatus = 'draft' | 'sent' | 'discarded'
+
+export type ThreadMessage = {
+  id: string
+  role: 'you' | 'agent'
+  text: string
+  sources: MessageSource[]
+  question: AgentQuestion | null
+  draft: DraftSummary | null
+  status: 'ok' | 'pending' | 'failed'
+  created_at: string
+}
+
+export type DraftLine = { line_id: string; label: string }
+
+export type OutreachDraft = {
+  id: string
+  status: DraftStatus
+  kind: DraftKind
+  supplier: SupplierRef
+  item_id: string
+  item_name: string
+  to_name: string | null
+  to_email: string | null
+  remembered_from: string | null
+  subject: string
+  body: string
+  lines: DraftLine[]
+  created_at: string
+  sent_at: string | null
+}
+
+export type DraftPatch = { to_name?: string | null; to_email?: string | null; subject?: string; body?: string }
+
+export type NewInvoiceLine = {
+  description: string
+  qty: number
+  pack_text?: string | null
+  unit_price: number
+  extended?: number | null
+  delivered_qty?: number | null
+  /** How sure the reader was of this line, 0-1. Absent for a line a person typed. */
+  confidence?: number | null
+}
+
+/** A photo or PDF read into lines. Nothing is saved until the person checks and saves. */
+export type ReadInvoice = {
+  supplier_guess: string | null
+  date_guess: string | null
+  reference: string | null
+  total: number | null
+  lines: NewInvoiceLine[]
+  needs_review: boolean
+  reasons: string[]
+  reader: Reader
+}
+
+export type ParsedInvoice = { lines: NewInvoiceLine[]; skipped: number[]; supplier_guess: string | null; date_guess: string | null }
+
+export type NewInvoice = {
+  supplier_id?: string | null
+  supplier_name?: string | null
+  invoice_date: string
+  reference?: string | null
+  source: InvoiceSource
+  lines: NewInvoiceLine[]
+  /** The total printed on the invoice, when known. */
+  total?: number | null
+}
+
+export type InvoiceSaved = { id: string; line_count: number; matched: number; questions_asked: number; first_question: AgentQuestion | null }
+
+export type InvoiceRow = {
+  id: string
+  supplier: SupplierRef
+  invoice_date: string
+  reference: string | null
+  source: string
+  line_count: number
+  total: number
+  printed_total: number | null
+  unmatched: number
+  status: 'complete' | 'needs_review'
+  review_reasons: string[]
+}
+
+export type EmailOut = { subject: string; sent_to: string[]; delivered: boolean }
+export type BillcomStatus = { configured: boolean; environment: 'sandbox' | 'production' | null; last_synced_at: string | null; webhook_path: string }
+export type BillcomSync = { pulled: number; added: number; skipped: number; questions_asked: number }
+
+export type BookkeeperClient = { restaurant_id: string; name: string; questions_open: number; last_digest: string | null; flagged_month: number }
+
+export const fetchPriceStatus = () => get<PriceStatus>(`${PRICES}/status`)
+export const fetchDigest = () => get<Digest>(`${PRICES}/digest`)
+export const rebuildDigest = () => send<Digest>('POST', `${PRICES}/digest/rebuild`)
+export const fetchTalkingPoints = () => get<TalkingPoints>(`${PRICES}/digest/talking-points`)
+
+export const listPriceItems = () => get<PriceItem[]>(`${PRICES}/items`)
+export const getPriceItem = (id: string) => get<PriceItemDetail>(`${PRICES}/items/${id}`)
+export const setPackSize = (id: string, pack_size: number, pack_unit?: string | null) =>
+  send<PriceItemDetail>('PATCH', `${PRICES}/items/${id}`, { pack_size, pack_unit: pack_unit ?? null })
+/** What the item is counted as in Inventory; null for "not counted". The owner's word over the name match. */
+export const setInventoryLink = (id: string, inventory_item_id: string | null) =>
+  send<PriceItemDetail>('PATCH', `${PRICES}/items/${id}`, { inventory_item_id })
+export const listStockLinks = () => get<StockRow[]>(`${PRICES}/stock`)
+/** "Not useful": out of the digest for four weeks. The only feedback there is. */
+export const hidePriceItem = (id: string) => send<PriceItem>('POST', `${PRICES}/items/${id}/hide`)
+export const unhidePriceItem = (id: string) => send<PriceItem>('POST', `${PRICES}/items/${id}/unhide`)
+/** Records the owner's decision to move an item. Nothing is ordered. */
+export const movePriceItem = (id: string, supplier_id: string) => send<PriceItem>('POST', `${PRICES}/items/${id}/move`, { supplier_id })
+
+export const listQuestions = () => get<AgentQuestion[]>(`${PRICES}/questions`)
+export const answerQuestion = (id: string, body: QuestionAnswer) => send<AgentQuestion>('POST', `${PRICES}/questions/${id}/answer`, body)
+
+export const fetchThread = () => get<ThreadMessage[]>(`${PRICES}/thread`)
+export const askAgent = (text: string, item_id?: string | null) =>
+  send<ThreadMessage[]>('POST', `${PRICES}/thread`, { text, item_id: item_id ?? null })
+
+export const createDraft = (item_id: string, kind?: DraftKind | null, supplier_id?: string | null) =>
+  send<OutreachDraft>('POST', `${PRICES}/drafts`, { item_id, kind: kind ?? null, supplier_id: supplier_id ?? null })
+export const getDraft = (id: string) => get<OutreachDraft>(`${PRICES}/drafts/${id}`)
+export const updateDraft = (id: string, patch: DraftPatch) => send<OutreachDraft>('PATCH', `${PRICES}/drafts/${id}`, patch)
+/** Marks it sent and remembers the rep. The mail itself goes from the owner's mail app. */
+export const sendDraft = (id: string) => send<OutreachDraft>('POST', `${PRICES}/drafts/${id}/send`)
+export const discardDraft = (id: string) => send<OutreachDraft>('POST', `${PRICES}/drafts/${id}/discard`)
+
+export const parseInvoiceText = (text: string) => send<ParsedInvoice>('POST', `${PRICES}/invoices/parse`, { text })
+export const saveInvoice = (body: NewInvoice) => send<InvoiceSaved>('POST', `${PRICES}/invoices`, body)
+export const listInvoices = () => get<InvoiceRow[]>(`${PRICES}/invoices`)
+/** "Looks right": an invoice that needed a check now counts. */
+export const confirmInvoice = (id: string) => send<InvoiceRow>('POST', `${PRICES}/invoices/${id}/confirm`)
+
+const READ_TYPES: Record<string, string> = { pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif' }
+
+/** What the server's reader accepts, from the file's own type or its extension. */
+export function readableMediaType(file: File): string | null {
+  const own = (file.type || '').toLowerCase()
+  if (Object.values(READ_TYPES).includes(own)) return own
+  const ext = (file.name.split('.').pop() ?? '').toLowerCase()
+  return READ_TYPES[ext] ?? null
+}
+
+function fileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error('Couldn’t read that file.'))
+    reader.onload = () => {
+      const url = String(reader.result ?? '')
+      resolve(url.slice(url.indexOf(',') + 1))
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
+/** A photo or PDF of one invoice, read into lines on the server. Nothing is saved. */
+export async function readInvoiceFile(file: File): Promise<ReadInvoice> {
+  const media_type = readableMediaType(file)
+  if (!media_type) throw new Error('That isn’t a PDF or a photo. Use a PDF, JPG, PNG, WebP or GIF.')
+  const data_base64 = await fileAsBase64(file)
+  return send<ReadInvoice>('POST', `${PRICES}/invoices/read`, { filename: file.name || null, media_type, data_base64 })
+}
+
+/** This week's digest, mailed to the signed-in person now. */
+export const emailDigest = () => send<EmailOut>('POST', `${PRICES}/digest/email`)
+
+export const fetchBillcomStatus = () => get<BillcomStatus>(`${PRICES}/billcom/status`)
+/** Pulls bills from Bill.com. Idempotent: a bill already in is skipped. */
+export const syncBillcom = () => send<BillcomSync>('POST', `${PRICES}/billcom/sync`)
+
+export const listBookkeeperClients = () => get<BookkeeperClient[]>(`${PRICES}/bookkeeper/clients`)
+export const listClientQuestions = (restaurantId: string) => get<AgentQuestion[]>(`${PRICES}/bookkeeper/clients/${restaurantId}/questions`)
+export const answerClientQuestion = (restaurantId: string, id: string, body: QuestionAnswer) =>
+  send<AgentQuestion>('POST', `${PRICES}/bookkeeper/clients/${restaurantId}/questions/${id}/answer`, body)
+
+
+// --- v2: feature flags and connections --------------------------------------------------------
+
+export type Flags = { flags: Record<string, boolean>; descriptions: Record<string, string> }
+export const fetchFlags = () => get<Flags>('/api/v1/platform/flags')
+export const setFlag = (flag: string, enabled: boolean) => send<Flags>('PUT', '/api/v1/platform/flags', { flag, enabled })
+
+export type Provider = {
+  provider: string
+  kind: 'pos' | 'accounting' | 'payroll' | 'ap' | 'email'
+  label: string
+  auth: 'oauth' | 'api_key' | 'none' | 'partner'
+  capabilities: string[]
+  available: boolean
+  notes: string | null
+}
+export type Connection = {
+  id: string
+  provider: string
+  kind: string
+  status: 'active' | 'error' | 'revoked'
+  last_sync_at: string | null
+  error: string | null
+  settings: Record<string, unknown>
+}
+export type Inbound = { address: string | null; allowed_senders: string[]; last_refused_sender: string | null }
+export type ConnectOverview = { providers: Provider[]; connections: Connection[]; inbound: Inbound; csv_profiles: Record<string, unknown>[] }
+export type CsvPlan = {
+  format: string
+  capability: 'sales_days' | 'sales_items' | 'labor_days'
+  mapping: Record<string, string>
+  headers: string[]
+  row_count: number
+  days: number
+  first_date: string | null
+  last_date: string | null
+  preview: Record<string, unknown>[]
+  problems: { line: number; message: string }[]
+  ok: boolean
+  fields: { field: string; required: boolean }[]
+}
+export type CsvIn = { text: string; capability?: string | null; mapping?: Record<string, string> | null; save_profile?: boolean }
+
+const CONNECT = '/api/v1/connect'
+export const fetchConnect = () => get<ConnectOverview>(CONNECT)
+export const csvPreview = (input: CsvIn) => send<CsvPlan>('POST', `${CONNECT}/csv/preview`, input)
+export const csvImport = (input: CsvIn) => send<{ written: Record<string, number>; plan: CsvPlan }>('POST', `${CONNECT}/csv/import`, input)
+export const setInbound = (allowed_senders: string[]) => send<Inbound>('PUT', `${CONNECT}/inbound`, { allowed_senders })
+export const oauthStart = (provider: string) => get<{ url: string }>(`${CONNECT}/oauth/${provider}/start`)
+export const syncNow = (provider: string) => send<{ queued: boolean }>('POST', `${CONNECT}/${provider}/sync`)
+export const disconnect = (connectionId: string) => send<{ ok: boolean }>('DELETE', `${CONNECT}/connections/${connectionId}`)
+export const pushInvoiceToAccounting = (invoiceId: string) => send<{ queued: boolean; already_pushed: boolean }>('POST', `${CONNECT}/accounting/push/${invoiceId}`)
+
+
+// --- v2: documents, recipes, agreed prices -----------------------------------------------------
+
+export type DocType = 'invoice' | 'price_list' | 'recipe' | 'prep_sheet' | 'license' | 'permit' | 'inspection' | 'warranty' | 'other'
+export type DocumentRow = {
+  id: string
+  doc_type: DocType
+  type_confidence: number | null
+  filename: string | null
+  media_type: string | null
+  source: 'upload' | 'email' | 'connector'
+  status: 'received' | 'extracted' | 'needs_review' | 'complete'
+  confidence: number | null
+  result_table: string | null
+  result_id: string | null
+  note: string | null
+  extracted_summary: Record<string, unknown>
+  file_url: string | null
+  created_at: string
+  updated_at: string
+}
+const DOCUMENTS = '/api/v1/documents'
+export const listDocuments = () => get<DocumentRow[]>(DOCUMENTS)
+export const uploadDocument = (filename: string, media_type: string, content: string, doc_type?: DocType | null) =>
+  send<DocumentRow>('POST', DOCUMENTS, { filename, media_type, content, doc_type: doc_type ?? null })
+export const setDocumentType = (id: string, doc_type: DocType) => send<DocumentRow>('POST', `${DOCUMENTS}/${id}/type`, { doc_type })
+
+export type DishRecipeLine = {
+  id: string
+  ingredient_text: string | null
+  item_id: string | null
+  item_name: string | null
+  sub_recipe_id: string | null
+  sub_recipe_name: string | null
+  qty: number
+  unit: string
+  cost: number | null
+}
+export type DishRecipe = {
+  id: string
+  name: string
+  pos_item_id: string | null
+  yield_qty: number
+  yield_unit: string
+  status: 'proposed' | 'confirmed'
+  source: string
+  lines: DishRecipeLine[]
+  plate_cost: number | null
+  plate_cost_week: string | null
+  unpriced: string[]
+  basis: { item_id?: string; item_name?: string; line_id?: string; per_unit?: number; qty?: number; unit?: string; cost?: number; sub_recipe_id?: string }[]
+  history: { week_of: string; cost: number }[]
+  sold_a_week: number | null
+  price_a_plate: number | null
+  margin_pct: number | null
+}
+export type DishRecipeLineIn = { ingredient_text?: string | null; item_id?: string | null; sub_recipe_id?: string | null; qty: number; unit: string }
+const RECIPES = '/api/v1/recipes'
+export const listDishRecipes = () => get<DishRecipe[]>(RECIPES)
+export const getDishRecipe = (id: string) => get<DishRecipe>(`${RECIPES}/${id}`)
+export const costDishRecipe = (id: string) => send<DishRecipe>('POST', `${RECIPES}/${id}/cost`)
+export const editDishRecipe = (id: string, lines: DishRecipeLineIn[], extra?: { name?: string; yield_qty?: number; yield_unit?: string }) =>
+  send<{ proposal_id: string }>('POST', `${RECIPES}/${id}/edit`, { lines, ...(extra ?? {}) })
+export const repriceDishRecipe = (id: string) => send<{ proposal_id: string; note: string }>('POST', `${RECIPES}/${id}/reprice`)
+export const runRecipeOnboarding = () => send<{ proposed: number }>('POST', `${RECIPES}/onboarding/run`)
+export const setAgreedPrice = (itemId: string, input: { supplier_id: string; per_pack?: number | null; unit_price?: number | null; effective_from?: string | null; cited?: string | null }) =>
+  send<{ proposed: boolean }>('POST', `${PRICES}/items/${itemId}/agreed-price`, input)
+
+
+// --- v2: forecast, prep sheets, workflows ------------------------------------------------------
+
+export type ForecastRow = { pos_item_id: string; pos_item_name: string; date: string; qty_pred: number; qty_lo: number; qty_hi: number }
+export type ForecastOut = { rows: ForecastRow[]; accuracy_last_week: number | null; computed_at: string | null }
+export const fetchForecast7 = () => get<ForecastOut>('/api/v1/forecast')
+export const runForecastNow = () => send<ForecastOut>('POST', '/api/v1/forecast/run')
+
+export type PrepSheetLine = { item_id: string; item_name: string; qty: number; unit: string; from: { recipe: string; plates: number }[] }
+export type PrepSheet = { id: string; date: string; status: 'proposed' | 'confirmed' | 'printed'; lines: PrepSheetLine[]; proposal_id: string | null }
+export const listPrepSheets = () => get<PrepSheet[]>('/api/v1/prep-sheets')
+export const getPrepSheet = (id: string) => get<PrepSheet>(`/api/v1/prep-sheets/${id}`)
+export const markPrepSheetPrinted = (id: string) => send<PrepSheet>('POST', `/api/v1/prep-sheets/${id}/printed`)
+
+export type WorkflowRow = { id: string; kind: string; cron: string; enabled: boolean; available: boolean; last_run_at: string | null }
+export const listWorkflows = () => get<WorkflowRow[]>('/api/v1/platform/workflows')
+export const setWorkflow = (kind: string, enabled: boolean, cron?: string | null) => send<WorkflowRow[]>('PUT', '/api/v1/platform/workflows', { kind, enabled, cron: cron ?? null })
+export const runWorkflowNow = (kind: string) => send<{ queued: boolean }>('POST', `/api/v1/platform/workflows/${kind}/run`)
+
+
+// --- v2: calendar and equipment ----------------------------------------------------------------
+
+export type CalendarItem = {
+  id: string
+  kind: string
+  title: string
+  due_on: string
+  recurrence: string | null
+  status: 'open' | 'done' | 'overdue'
+  days_left: number
+  source_document_id: string | null
+  proof_document_id: string | null
+  asset_id: string | null
+  note: string | null
+}
+export type Asset = {
+  id: string
+  name: string
+  category: string | null
+  vendor: string | null
+  purchased_on: string | null
+  warranty_until: string | null
+  service_interval_days: number | null
+  last_service_on: string | null
+}
+const CALENDAR = '/api/v1/calendar'
+export const fetchCalendar = () => get<{ items: CalendarItem[]; assets: Asset[] }>(CALENDAR)
+export const addCalendarItem = (input: { kind: string; title: string; due_on: string; recurrence?: string | null; note?: string | null }) =>
+  send<CalendarItem>('POST', `${CALENDAR}/items`, input)
+export const attachProof = (itemId: string, filename: string, media_type: string, content: string) =>
+  send<CalendarItem>('POST', `${CALENDAR}/items/${itemId}/proof`, { filename, media_type, content })
+export const addAsset = (input: { name: string; vendor?: string | null; warranty_until?: string | null; service_interval_days?: number | null; last_service_on?: string | null }) =>
+  send<Asset>('POST', `${CALENDAR}/assets`, input)
+export const scanCalendar = () => send<{ overdue: number; proposed: number }>('POST', `${CALENDAR}/scan`)

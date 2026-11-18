@@ -1,0 +1,22 @@
+{
+  "orders": [
+    {"id": "o1", "state": "COMPLETED", "closed_at": "2026-10-20T19:12:04Z", "total_money": {"amount": 5450, "currency": "USD"},
+     "total_tax_money": {"amount": 420}, "total_tip_money": {"amount": 800},
+     "line_items": [
+       {"catalog_object_id": "KALE-CAESAR", "name": "Kale Caesar", "quantity": "2", "total_money": {"amount": 2800}, "total_tax_money": {"amount": 224}},
+       {"catalog_object_id": "MARGHERITA", "name": "Margherita Pizza", "quantity": "1", "total_money": {"amount": 1430}, "total_tax_money": {"amount": 114}}
+     ]},
+    {"id": "o2", "state": "COMPLETED", "closed_at": "2026-10-20T21:40:00Z", "total_money": {"amount": 3200},
+     "total_tax_money": {"amount": 256}, "total_tip_money": {"amount": 0},
+     "line_items": [
+       {"catalog_object_id": "KALE-CAESAR", "name": "Kale Caesar", "quantity": "1", "total_money": {"amount": 1400}, "total_tax_money": {"amount": 112}},
+       {"catalog_object_id": "TIRAMISU", "name": "Tiramisu", "quantity": "2", "total_money": {"amount": 1600}, "total_tax_money": {"amount": 128}}
+     ]},
+    {"id": "o3", "state": "CANCELED", "closed_at": "2026-10-20T22:00:00Z", "total_money": {"amount": 9999}, "line_items": []},
+    {"id": "o4", "state": "COMPLETED", "closed_at": "2026-10-21T12:05:30Z", "total_money": {"amount": 1540},
+     "total_tax_money": {"amount": 120}, "total_tip_money": {"amount": 200},
+     "line_items": [
+       {"name": "Soup of the day", "quantity": "2", "total_money": {"amount": 1200}, "total_tax_money": {"amount": 96}}
+     ]}
+  ]
+}

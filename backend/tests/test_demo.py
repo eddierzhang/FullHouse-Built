@@ -36,12 +36,23 @@ def test_the_demo_gives_every_page_something_real_to_show(db):
     assert [p.name for p in db.query(Staff) if p.id not in scheduled] == ["Taylor Brooks"]
 
 
-def test_the_proposal_queue_covers_every_kind_including_one_missing_its_price(db):
+def test_the_proposal_queue_covers_every_kind_including_one_missing_its_price(db, monkeypatch):
+    monkeypatch.setattr("app.config.settings.demo_mode", True)  # as the public demo runs: mail goes to the log
     reset_demo_data(db)
 
     pending = db.query(AgentAction).filter_by(status="pending").all()
     assert sorted(a.action_type for a in pending) == [
-        "inventory_reorder", "menu_change", "purchase_order", "shift_change",
+        "inventory_reorder", "menu_change", "purchase_order", "purchase_order", "purchase_order", "purchase_order", "recipe", "recipe", "shift_change",
+    ]
+    # Five dishes already have a confirmed recipe; the best sellers without one, whose ingredients are on the
+    # invoices, each get a proposal.
+    assert sorted(a.payload["name"] for a in pending if a.action_type == "recipe") == ["Garlic Bread", "Tiramisu"]
+    # One purchase order is the agent's own; the other comes from the invoices: romaine is at its reorder
+    # point, and Sysco charged less for it than Green Valley last month. Tomatoes and chicken, which the
+    # agent already proposed, are not proposed twice.
+    from_prices = [a for a in pending if a.payload.get("source") == "prices"]
+    assert [(a.payload["item_name"], a.payload["supplier_name"], a.payload["packs"]) for a in from_prices] == [
+        ("Ciabatta", "Sysco Foods", 13), ("Romaine Lettuce", "Sysco Foods", 7),
     ]
     promotion = next(a for a in pending if a.action_type == "menu_change")
     assert missing_inputs(promotion) == ["new_price"]
@@ -71,7 +82,7 @@ def test_a_reset_undoes_whatever_visitors_did(db):
     after = reset_demo_data(db)
 
     assert before == after  # the same restaurant every time
-    assert db.query(InventoryItem).filter_by(name="Tomatoes").one().quantity_on_hand == 6
+    assert db.query(InventoryItem).filter_by(name="Tomatoes").one().quantity_on_hand == 30
     assert db.query(InventoryItem).count() == 12  # nothing duplicated
     # Loading the demo is not itself history.
     assert db.query(ChangeLog).count() == 0
@@ -132,3 +143,71 @@ def test_scripted_summaries_read_tool_results_as_sentences():
     assert describe("[]") == "nothing found"
     assert describe('{"days": 7, "revenue": 4950.5, "orders": 150}') == "days 7, revenue 4950.5, orders 150"
     assert describe("plain text") == "plain text"
+
+
+def test_every_page_of_the_demo_tells_the_same_story(db):
+    """Sales on the operations pages are the sales the digest's prime cost rests on, and the figures are a real bistro's."""
+    from datetime import date, timedelta
+
+    from app.calendar.models import CalendarItem
+    from app.documents.models import Document
+    from app.forecast.models import PrepSheet
+    from app.recipes.models import Recipe
+    from app.sales import pnl
+    from app.sales.models import PnlWeek, SalesDay
+
+    reset_demo_data(db)
+
+    week = db.query(PnlWeek).order_by(PnlWeek.week_of.desc()).first()
+    assert db.query(PnlWeek).count() == 3
+    orders = sum(o.total for o in db.query(Order) if week.week_of <= o.created_at.date() < week.week_of + timedelta(days=7))
+    assert round(orders, 2) == round(week.sales_net, 2)
+    for day in db.query(SalesDay):
+        assert round(sum(o.total for o in db.query(Order) if o.created_at.date() == day.date), 2) == day.net_sales
+    assert 18_000 < week.sales_net < 32_000
+    assert 18 < week.food_pct < 38
+    assert 28 < week.labor_pct < 34
+    assert pnl.last_complete_week(date.today()) == week.week_of
+    # Nothing a flag switches on opens empty.
+    assert db.query(Recipe).filter_by(status="confirmed").count() == 5
+    assert db.query(Document).count() >= 4
+    assert db.query(CalendarItem).count() == 4
+    assert db.query(PrepSheet).count() == 1
+    assert db.query(InventoryItem).count() and sum(i.quantity_on_hand * i.unit_cost for i in db.query(InventoryItem)) > 2_000
+    # What the invoices bought of the things recipes use is what the recipes say was used, a little over:
+    # the purchases on Savings & costs and the usage on Variance & waste are the same kitchen.
+    from app.insights import engine as insights
+    from app.stock import engine as stock
+
+    bought = {r["key"]: r["now"] for r in insights.spend(db, week.restaurant_id, 28)["by_category"]}
+    used = stock.variance(db, week.restaurant_id, 28)["used_dollars"]
+    assert 0.9 < (bought["food"] + bought["dry"]) / used < 1.25
+
+
+def test_the_demo_shows_autopilot_passing_one_order_and_holding_another(db, monkeypatch):
+    from app.ordering.models import AutopilotDecision, Outbox
+    from app.restaurant.models import PurchaseOrder
+
+    monkeypatch.setattr("app.config.settings.demo_mode", True)  # as the public demo runs: mail goes to the log
+    reset_demo_data(db)
+
+    decisions = {d.outcome: d for d in db.query(AutopilotDecision)}
+    assert set(decisions) == {"passed", "held"}
+    # Green Valley's order is inside its limits and waits out the cancel window, as a draft with its send queued.
+    farm = db.query(PurchaseOrder).filter_by(autopilot=True).one()
+    assert (farm.supplier_name, farm.status) == ("Green Valley Farms", "draft")
+    assert db.query(Outbox).filter_by(kind="po_email").one().status == "pending"
+    # Sysco's is over the owner's limit for one order: held, with the reason, for a person.
+    assert [r["rule"] for r in decisions["held"].rules if not r["ok"]] == ["per_order_cap"]
+    held = next(a for a in db.query(AgentAction).filter_by(status="pending") if (a.payload or {}).get("autopilot_held"))
+    assert "over your $750.00 limit" in held.payload["autopilot_held"][0]
+
+
+def test_the_demo_has_every_feature_on_except_voice_and_the_modules_still_being_built(db):
+    from app.platform import flags
+    from app.restaurant.models import Restaurant
+
+    reset_demo_data(db)
+
+    on = flags.all_for(db, db.query(Restaurant).one().id)
+    assert [flag for flag, enabled in on.items() if not enabled] == ["v3_voice", *flags.ML_FLAGS]

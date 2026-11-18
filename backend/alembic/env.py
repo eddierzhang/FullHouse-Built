@@ -13,6 +13,21 @@ from app.config import settings  # noqa: E402
 from app.agents import models as agent_models  # noqa: E402,F401
 from app.audit import models as audit_models  # noqa: E402,F401
 from app.auth import models as auth_models  # noqa: E402,F401
+from app.customers import models as customer_models  # noqa: E402,F401
+from app.prices import models as price_models  # noqa: E402,F401
+from app.platform import models as platform_models  # noqa: E402,F401
+from app.connectors import models as connector_models  # noqa: E402,F401
+from app.sales import models as sales_models  # noqa: E402,F401
+from app.documents import models as document_models  # noqa: E402,F401
+from app.recipes import models as recipe_models  # noqa: E402,F401
+from app.forecast import models as forecast_models  # noqa: E402,F401
+from app.calendar import models as calendar_models  # noqa: E402,F401
+from app.margin_labor import models as margin_labor_models  # noqa: E402,F401
+from app.stock import models as stock_models  # noqa: E402,F401
+from app.ordering import models as ordering_models  # noqa: E402,F401
+from app.receiving import models as receiving_models  # noqa: E402,F401
+from app.voice import models as voice_models  # noqa: E402,F401
+from app.notify import models as notify_models  # noqa: E402,F401
 from app.support import models as support_models  # noqa: E402,F401
 from app.restaurant import models as restaurant_models  # noqa: E402,F401
 from app.db.session import Base, normalize_database_url  # noqa: E402

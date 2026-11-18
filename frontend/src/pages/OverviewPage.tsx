@@ -1,11 +1,13 @@
-import { type Forecast, fetchForecast, fetchProfitSummary, listRuns } from '../api/client'
+import { type Forecast, fetchForecast, fetchProfitSummary, listPurchaseOrders, listRuns } from '../api/client'
 import type { AppContext } from '../app/context'
+import { fetchSavings } from '../api/insights'
 import { ActionList } from '../components/ActionList'
 import { ForecastCard } from '../components/ForecastCard'
 import { GettingStarted } from '../components/GettingStarted'
 import { Icon } from '../components/Icon'
 import { Empty, Freshness, LoadError, Loaded } from '../components/PageState'
 import { RunStatusBadge } from '../components/RunStatusBadge'
+import { TopFindings } from '../components/TopFindings'
 import { greeting, money, pct, relativeTime } from '../lib/format'
 import { type Load, useLoad } from '../lib/useLoad'
 import { openStatus } from '../restaurant/hours'
@@ -16,7 +18,12 @@ export function OverviewPage({ app }: { app: AppContext }) {
   const weekLoad = useLoad(() => (app.canManage ? fetchProfitSummary(7) : Promise.resolve(undefined)), [app.canManage])
   const forecastLoad = useLoad(() => (app.canManage ? fetchForecast(7) : Promise.resolve(undefined)), [app.canManage])
   const runsLoad = useLoad(() => listRuns(), [app.pendingActions.length])
+  const ordersLoad = useLoad(() => listPurchaseOrders('open'), [app.pendingActions.length])
+  // The running tally of what the digest found; only with the v3 navigation on.
+  const savings = useLoad(() => (app.canManage && app.flags.v3_nav ? fetchSavings() : Promise.resolve(null)), [app.canManage, app.flags.v3_nav])
   const week = weekLoad.data
+  const onOrder = ordersLoad.data ?? []
+  const overdue = onOrder.filter((o) => o.overdue).length
 
   const lowStock = app.inventory.filter((i) => i.quantity_on_hand <= i.reorder_threshold)
   const today = new Date().toLocaleDateString('en-US', {
@@ -45,6 +52,21 @@ export function OverviewPage({ app }: { app: AppContext }) {
         {app.canManage && weekLoad.status === 'error' && (
           <LoadError what="the last 7 days’ figures" error={weekLoad.error ?? ''} onRetry={weekLoad.reload} />
         )}
+        {app.canManage && app.flags.v3_nav && savings.data && savings.data.weeks.length > 0 && (
+          <a className="card savings-tally" href="#insights">
+            <span className="savings-tally-figure">{money(savings.data.found_to_date)}</span>
+            <span className="savings-tally-text">
+              <span className="strong">found on your invoices in {savings.data.weeks.length} {savings.data.weeks.length === 1 ? 'week' : 'weeks'}</span>
+              <span className="muted">
+                {money(savings.data.acted_to_date)} acted on · {money(savings.data.open_this_week)} still open this week
+              </span>
+            </span>
+            <span className="btn btn-ghost btn-sm">
+              See savings & costs <Icon name="arrowRight" size={14} />
+            </span>
+          </a>
+        )}
+        {app.canManage && <TopFindings app={app} />}
         <section className="grid grid-stats" aria-label="Key figures">
           {app.canManage && (
             <>
@@ -70,6 +92,13 @@ export function OverviewPage({ app }: { app: AppContext }) {
             <div className="stat-value">{lowStock.length}</div>
             <div className="stat-meta">
               {lowStock.length ? lowStock.map((i) => i.name).slice(0, 2).join(', ') : `of ${app.inventory.length} items`}
+            </div>
+          </a>
+          <a className={`card stat${overdue ? ' attention' : ''}`} href="#inventory" style={{ color: 'inherit', textDecoration: 'none' }}>
+            <div className="stat-label">On order</div>
+            <div className="stat-value">{ordersLoad.data ? onOrder.length : '—'}</div>
+            <div className="stat-meta">
+              {!ordersLoad.data ? ' ' : overdue ? `${overdue} overdue` : onOrder.length ? 'arriving as expected' : 'nothing on its way'}
             </div>
           </a>
         </section>

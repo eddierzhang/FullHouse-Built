@@ -10,9 +10,13 @@ Nothing personal goes to Sentry: no cookies, no request bodies, no
 passwords or tokens, and people are identified only by an opaque id.
 """
 
+import json
 import logging
 import os
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 
 from app.config import settings
 
@@ -34,14 +38,71 @@ def _clean_url(text: str) -> str:
     return _TOKEN_PATH.sub(r"\1[token]", _QUERY.sub("", text))
 
 
+#: What every log line carries while work is being done for a restaurant, a job or a run.
+_log_fields: ContextVar[dict] = ContextVar("log_fields", default={})
+
+
+@contextmanager
+def log_context(**fields) -> Iterator[None]:
+    """`with log_context(restaurant_id=..., job_id=...):` tags every line logged inside."""
+    current = {**_log_fields.get(), **{k: v for k, v in fields.items() if v is not None}}
+    token = _log_fields.set(current)
+    try:
+        yield
+    finally:
+        _log_fields.reset(token)
+
+
+class ContextFilter(logging.Filter):
+    """Copies the context fields onto each record, so formatters can print them."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        for key in ("restaurant_id", "job_id", "run_id"):
+            if not hasattr(record, key):
+                setattr(record, key, _log_fields.get().get(key))
+        return True
+
+
+class JsonFormatter(logging.Formatter):
+    """One JSON object per line: time, level, logger, message and the context fields."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        line = {
+            "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%S%z"), "level": record.levelname, "logger": record.name,
+            "msg": record.getMessage(),
+        }
+        for key in ("restaurant_id", "job_id", "run_id"):
+            value = getattr(record, key, None)
+            if value:
+                line[key] = value
+        if record.exc_info:
+            line["exc"] = self.formatException(record.exc_info)
+        return json.dumps(line, default=str)
+
+
+class TextFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        tags = " ".join(f"{k}={getattr(record, k)}" for k in ("restaurant_id", "job_id", "run_id") if getattr(record, k, None))
+        base = super().format(record)
+        return f"{base} [{tags}]" if tags else base
+
+
 def configure_logging() -> None:
-    """One readable line per record, INFO and up, unless the host set logging up already."""
+    """One line per record, INFO and up: readable text, or JSON with LOG_FORMAT=json."""
     root = logging.getLogger()
     if not root.handlers:
-        logging.basicConfig(
-            level=os.getenv("LOG_LEVEL", "INFO").upper(),
-            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        )
+        handler = logging.StreamHandler()
+        if settings.log_format == "json":
+            handler.setFormatter(JsonFormatter())
+        else:
+            handler.setFormatter(TextFormatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+        handler.addFilter(ContextFilter())
+        root.addHandler(handler)
+        root.setLevel(os.getenv("LOG_LEVEL", "INFO").upper())
+    else:
+        for handler in root.handlers:
+            if not any(isinstance(f, ContextFilter) for f in handler.filters):
+                handler.addFilter(ContextFilter())
     # The security log is always kept, whatever LOG_LEVEL says.
     logging.getLogger("fullhouse.security").setLevel(logging.INFO)
 

@@ -18,6 +18,25 @@ from app.audit.routes import router as changes_router
 from app.auth.deps import current_user
 from app.auth.routes import router as auth_router
 from app.config import settings
+from app.connectors.routes import public_router as connect_public_router
+from app.connectors.routes import router as connect_router
+from app.customers.routes import router as customers_router
+from app.calendar.routes import router as calendar_router
+from app.stock.routes import router as stock_router
+from app.ordering.routes import router as ordering_router
+from app.receiving.routes import router as receiving_router
+from app.voice.routes import router as voice_router
+from app.insights.routes import router as insights_router
+from app.notify.routes import router as notify_router
+from app.margin_labor.routes import router as margin_labor_router
+from app.documents.routes import router as documents_router
+from app.forecast.routes import router as forecast_router
+from app.recipes.routes import router as recipes_router
+from app.platform import handlers as _platform_handlers  # noqa: F401  registers the queue handlers
+from app.platform import jobs
+from app.platform.routes import router as platform_router
+from app.prices.routes import public_router as prices_public_router
+from app.prices.routes import router as prices_router
 from app.restaurant.routes import router as restaurant_router
 from app.restaurant.profile_routes import router as profile_router
 from app.support.alerts import configure_logging, configure_sentry
@@ -47,7 +66,9 @@ def _recover_orphaned_runs(db=None) -> int:
     owns_session = db is None
     db = db or SessionLocal()
     try:
-        orphans = db.query(AgentRun).filter(AgentRun.status.in_(("queued", "running"))).all()
+        # Queued runs now wait in the job queue and will be picked up; only runs caught
+        # mid-flight died with the last process.
+        orphans = db.query(AgentRun).filter(AgentRun.status == "running").all()
         if not orphans:
             return 0
         with actor_context(SYSTEM_ACTOR):
@@ -61,6 +82,32 @@ def _recover_orphaned_runs(db=None) -> int:
     finally:
         if owns_session:
             db.close()
+
+
+def _log_what_runs_here() -> None:
+    """One line in the log for each thing a key turns on, so a deployment can be read off its log."""
+    from app.prices import extract
+
+    try:
+        from app.agents.providers import get_provider
+
+        provider = get_provider()
+        if provider.key == "scripted":
+            assistant = "rule-based, no model (answers price questions from the invoices)"
+        else:
+            assistant = f"{provider.key} ({provider.resolve_model('claude-opus-5') or 'no model named'})"
+    except Exception as exc:  # noqa: BLE001 - reported, not fatal: the site works without a model
+        assistant = f"off: {exc}"
+    logger.info("assistant: %s", assistant)
+    logger.info("invoice reader: %s", extract.available() or "off")
+    if settings.resend_api_key:
+        mail = "Resend"
+    elif settings.smtp_configured:
+        mail = f"SMTP through {settings.smtp_host} as {settings.smtp_user}"
+    else:
+        mail = "printed to this log (no RESEND_API_KEY or SMTP_HOST)"
+    logger.info("digest mail: %s", mail)
+    logger.info("Bill.com: %s", f"{settings.billcom_environment}" if settings.billcom_configured else "not connected")
 
 
 @asynccontextmanager
@@ -81,11 +128,37 @@ async def lifespan(app: FastAPI):
                 "SECRET_KEY is not set: two-step sign-in secrets are encrypted with a development key. "
                 "Set a long random SECRET_KEY before real people use this site, and never change it."
             )
+    _log_what_runs_here()
+    _seed_platform()
     if settings.scheduler_enabled:
         scheduler.start()
+    if settings.worker_inprocess:
+        jobs.start_in_process()
     yield
     scheduler.shutdown()
+    jobs.stop_in_process()
     executor.shutdown()
+
+
+def _seed_platform() -> None:
+    """Providers the site offers, and leases left by a process that died."""
+    from app.connectors.registry import seed_providers
+    from app.db.session import SessionLocal
+
+    db = SessionLocal()
+    try:
+        seed_providers(db)
+        from app.platform import workflows
+        from app.restaurant.models import Restaurant
+
+        for (restaurant_id,) in db.query(Restaurant.id).filter(Restaurant.setup_completed_at.isnot(None)):
+            workflows.ensure_defaults(db, restaurant_id)
+        db.commit()
+        freed = jobs.recover_leases(db)
+        if freed:
+            logger.warning("re-queued %d job(s) whose worker went away", freed)
+    finally:
+        db.close()
 
 
 app = FastAPI(title="Restaurant Ops API", lifespan=lifespan)
@@ -104,7 +177,8 @@ SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
     "Referrer-Policy": "same-origin",
-    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+    # The microphone is for this site alone: push-to-talk (app.voice). Nothing embedded can ask for it.
+    "Permissions-Policy": "camera=(), microphone=(self), geolocation=()",
 }
 
 
@@ -135,9 +209,28 @@ app.include_router(agents_router, dependencies=signed_in)
 app.include_router(changes_router, dependencies=signed_in)
 app.include_router(profile_router, dependencies=signed_in)
 app.include_router(support_router, dependencies=signed_in)
+app.include_router(customers_router, dependencies=signed_in)
+app.include_router(prices_router, dependencies=signed_in)
+app.include_router(platform_router, dependencies=signed_in)
+app.include_router(connect_router, dependencies=signed_in)
+app.include_router(documents_router, dependencies=signed_in)
+app.include_router(recipes_router, dependencies=signed_in)
+app.include_router(forecast_router, dependencies=signed_in)
+app.include_router(calendar_router, dependencies=signed_in)
+app.include_router(stock_router, dependencies=signed_in)
+app.include_router(ordering_router, dependencies=signed_in)
+app.include_router(receiving_router, dependencies=signed_in)
+app.include_router(voice_router, dependencies=signed_in)
+app.include_router(insights_router, dependencies=signed_in)
+app.include_router(notify_router, dependencies=signed_in)
+app.include_router(margin_labor_router, dependencies=signed_in)
+# Webhooks, the cron route, mail links and OAuth returns: no session, their own checks.
+app.include_router(prices_public_router)
+app.include_router(connect_public_router)
 
 
 @app.get("/health")
+@app.get("/healthz")
 def health():
     """Up and able to reach the database -- what the host's health check and an
     uptime monitor need to know. A 503 when the database is unreachable, so

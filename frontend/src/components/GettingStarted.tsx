@@ -26,6 +26,8 @@ export function GettingStarted({ app }: { app: AppContext }) {
   const team = useLoad(() => listTeam(), [])
   const suppliers = useLoad(() => listSuppliers(), [])
 
+  // The demo restaurant is already set up; a setup checklist there only gets in the way.
+  if (app.runtime?.demo_mode) return null
   if (!app.canManage || dismissed || team.status !== 'ready' || suppliers.status !== 'ready') return null
 
   const steps: Step[] = [

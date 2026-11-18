@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   type AgentAction,
   type AgentDefinition,
+  type AgentQuestion,
   type InventoryItem,
   type Restaurant,
   type Runtime,
@@ -9,33 +10,59 @@ import {
   approveAction,
   canEditRestaurant,
   fetchChangeVersion,
+  fetchFlags,
   fetchHealth,
   fetchRuntime,
   listActions,
   listAgentDefinitions,
   listInventoryItems,
+  listQuestions,
   rejectAction,
   triggerRun,
 } from '../api/client'
 import { ActionDrawer } from '../components/ActionDrawer'
+import { CommandBar, type CommandPage } from '../components/CommandBar'
+import { TOUR_EVENT, Tour, tourSeen } from '../components/Tour'
+import { VoiceButton } from '../components/VoiceButton'
 import { FeedbackButton } from '../components/FeedbackButton'
 import { Icon, type IconName } from '../components/Icon'
 import { NewTaskModal } from '../components/NewTaskModal'
+import { NoticesBell } from '../components/NoticesBell'
+import { fetchNotices, type Notices } from '../api/notifications'
+import { AskField } from '../components/prices'
 import { Toast, type ToastState } from '../components/Toast'
 import { relativeTime } from '../lib/format'
 import { announceDataChanged } from '../lib/useLoad'
-import { type Route, useHashRoute } from '../lib/useHashRoute'
+import { PRICE_ROUTES, type Route, readHashParam, useHashRoute } from '../lib/useHashRoute'
 import { AgentsPage } from '../pages/AgentsPage'
+import { CalendarPage } from '../pages/CalendarPage'
+import { MenuSectionsPage, StaffSectionsPage } from '../pages/SectionsPage'
+import { InvoiceHubPage } from '../pages/InvoiceHubPage'
+import { ConnectPage } from '../pages/ConnectPage'
+import { PrepSheetPage } from '../pages/PrepSheetPage'
+import { PurchaseOrderPage } from '../pages/PurchaseOrderPage'
+import { RecipePage } from '../pages/RecipePage'
+import { CustomersPage } from '../pages/CustomersPage'
+import { LaborPage } from '../ml/LaborPage'
+import { MenuCostsPage } from '../ml/MenuCostsPage'
+import { OrderingPage } from '../ml/OrderingPage'
+import { UsagePage } from '../ml/UsagePage'
+import { DraftPage } from '../pages/DraftPage'
+import { ItemPage } from '../pages/ItemPage'
 import { HelpPage } from '../pages/HelpPage'
+import { AutopilotPage } from '../pages/AutopilotPage'
+import { CountPage } from '../pages/CountPage'
+import { InsightsPage } from '../pages/InsightsPage'
+import { VariancePage } from '../pages/VariancePage'
+import { ToolsPage } from '../pages/ToolsPage'
 import { HistoryPage } from '../pages/HistoryPage'
 import { ApprovalsPage } from '../pages/ApprovalsPage'
 import { InventoryPage } from '../pages/InventoryPage'
-import { MenuPage } from '../pages/MenuPage'
 import { OverviewPage } from '../pages/OverviewPage'
 import { ProfitPage } from '../pages/ProfitPage'
+import { ReceivePage } from '../pages/ReceivePage'
 import { RunsPage } from '../pages/RunsPage'
 import { ProfilePage } from '../pages/ProfilePage'
-import { StaffPage } from '../pages/StaffPage'
 import { SuppliersPage } from '../pages/SuppliersPage'
 import type { AppContext } from './context'
 
@@ -47,42 +74,62 @@ const CHANGE_POLL_MS = 10_000
 type NavItem = { route: Route; label: string; icon: IconName }
 
 /** Pages only owners and admins see: the profit figures are theirs. */
-const MANAGER_ROUTES = new Set<Route>(['profit'])
+const MANAGER_ROUTES = new Set<Route>(['profit', 'insights', 'autopilot'])
 
 /**
- * Grouped by what people come to do. The first group is the day's work --
- * checking in, stock, the schedule, what the agent recommends -- and is
- * also the phone's bottom bar; the rest is setup and the longer view.
+ * Grouped by what people come to do: the day's check-in and what the agent
+ * recommends; then one section each for stock, staffing, customers, the
+ * invoices and prices, and the menu. Today, Inventory, Schedule and
+ * Recommendations are also the phone's bottom bar. "Invoices & prices"
+ * follows an invoice through, in order: it arrives and is read (Invoices),
+ * the agent asks what it can't place (Questions), each confirmed line adds
+ * to an item's price history (Items), the weekly findings go out (Digest),
+ * and the loop closes in the conversation and drafts (Conversation). The
+ * rest is setup and the longer view.
  */
 const NAV: { label: string | null; items: NavItem[] }[] = [
   {
     label: null,
     items: [
       { route: 'overview', label: 'Today', icon: 'overview' },
-      { route: 'inventory', label: 'Inventory', icon: 'inventory' },
-      { route: 'staff', label: 'Schedule & staff', icon: 'staff' },
       { route: 'approvals', label: 'Recommendations', icon: 'approvals' },
+      { route: 'profit', label: 'Profit & forecast', icon: 'profit' },
     ],
   },
   {
-    label: 'Kitchen',
+    label: 'Inventory',
     items: [
-      { route: 'suppliers', label: 'Suppliers', icon: 'suppliers' },
-      { route: 'menu', label: 'Menu', icon: 'menu' },
+      { route: 'inventory', label: 'Inventory', icon: 'inventory' },
+      { route: 'suppliers', label: 'Suppliers & ordering', icon: 'suppliers' },
     ],
+  },
+  {
+    label: 'Invoices & prices',
+    items: [
+      { route: 'invoices', label: 'Invoices & prices', icon: 'suppliers' },
+    ],
+  },
+  {
+    label: 'Staffing',
+    items: [{ route: 'staff', label: 'Labor and staffing', icon: 'staff' }],
+  },
+  {
+    label: 'Customers',
+    items: [{ route: 'customers', label: 'Customer requests', icon: 'chat' }],
+  },
+  {
+    label: 'Menu',
+    items: [{ route: 'menu', label: 'Menu', icon: 'menu' }],
+  },
+  {
+    label: 'Records',
+    items: [{ route: 'history', label: 'History & undo', icon: 'clock' }],
   },
   {
     label: 'Agent',
     items: [
       { route: 'agents', label: 'Assistant Manager', icon: 'agents' },
       { route: 'runs', label: 'Agent activity', icon: 'runs' },
-    ],
-  },
-  {
-    label: 'Records',
-    items: [
-      { route: 'profit', label: 'Profit & forecast', icon: 'profit' },
-      { route: 'history', label: 'History & undo', icon: 'clock' },
     ],
   },
   {
@@ -101,6 +148,60 @@ const TABS: NavItem[] = [
   { route: 'staff', label: 'Schedule', icon: 'staff' },
   { route: 'approvals', label: 'Recommend', icon: 'approvals' },
 ]
+
+/** The v3 group (behind v3_nav): the charts and the calculators, beside the pages they draw from. */
+const INSIGHTS_GROUP: { label: string; items: NavItem[] } = {
+  label: 'Insights',
+  items: [
+    { route: 'insights', label: 'Savings & costs', icon: 'trend' },
+    { route: 'tools', label: 'Test a decision', icon: 'play' },
+  ],
+}
+
+/** Pages that are tabs of another page (SectionTabs): the sidebar marks their section as the current page. */
+const SECTION_OF: Partial<Record<Route, Route>> = { count: 'inventory', variance: 'inventory', receive: 'suppliers', autopilot: 'suppliers', 'ordering-prep': 'suppliers', digest: 'invoices', questions: 'invoices', items: 'invoices', thread: 'invoices', documents: 'invoices', 'menu-costs': 'menu', usage: 'menu', recipes: 'menu', prep: 'menu', channels: 'menu', labor: 'staff' }
+
+/** The Margin & Labor Engine's pages, each behind its own flag, with the spec's labels. */
+const MARGIN_LABOR: { flag: string; item: NavItem }[] = [
+]
+
+/** Words people type for a page that its name doesn't contain. */
+const PAGE_KEYWORDS: Partial<Record<Route, string>> = {
+  overview: 'home dashboard',
+  approvals: 'inbox approve proposals',
+  inventory: 'stock count low',
+  staff: 'shifts rota team',
+  digest: 'prices weekly savings',
+  thread: 'ask assistant chat messages',
+  profit: 'revenue sales margin money',
+  history: 'undo changes log',
+  insights: 'charts prime cost spend money',
+  tools: 'calculator par simulator what if tools run out switch supplier menu price',
+  count: 'counting stocktake shelves areas walk-in',
+  autopilot: 'auto order ordering pars order days limits send',
+  receive: 'delivery deliveries check in receiving packing slip',
+  variance: 'shrink waste missing loss spoiled',
+  connect: 'pos payroll square gusto quickbooks integrations',
+  profile: 'settings features team security',
+}
+
+/**
+ * The public demo's short menu: the pages a five-minute walk-through uses (what the invoices found, the
+ * what-if tools, counting, deliveries, autopilot). Every other page is still there: one click on "Show all
+ * pages" brings the whole menu back, and search reaches all of them either way.
+ */
+const DEMO_MENU = new Set<Route>(['overview', 'approvals', 'profit', 'insights', 'tools', 'inventory', 'suppliers', 'count', 'variance', 'receive', 'autopilot', 'invoices', 'questions', 'digest', 'help'])
+const FULL_MENU_KEY = 'fullhouse.nav.full'
+
+const COLLAPSED_KEY = 'fullhouse.nav.collapsed'
+function readCollapsed(): string[] {
+  try {
+    const raw = window.localStorage.getItem(COLLAPSED_KEY)
+    return raw ? (JSON.parse(raw) as string[]) : []
+  } catch {
+    return []
+  }
+}
 
 /** Whether the browser thinks it's online, kept current. */
 function useOnline(): boolean {
@@ -134,13 +235,47 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
   const [agents, setAgents] = useState<AgentDefinition[]>([])
   const [pendingActions, setPendingActions] = useState<AgentAction[]>([])
   const [inventory, setInventory] = useState<InventoryItem[]>([])
+  const [questions, setQuestions] = useState<AgentQuestion[]>([])
   const [runtime, setRuntime] = useState<Runtime | null>(null)
+  const [flags, setFlags] = useState<Record<string, boolean>>({})
+  const [notices, setNotices] = useState<Notices>({ unread: 0, items: [] })
 
   const [toastState, setToastState] = useState<ToastState>(null)
   const [taskAgent, setTaskAgent] = useState<string | null | undefined>(undefined)
   const [drawerAction, setDrawerAction] = useState<AgentAction | null>(null)
   const [busyActionId, setBusyActionId] = useState<string | null>(null)
   const [focusRunId, setFocusRunId] = useState<string | null>(null)
+  const [commandOpen, setCommandOpen] = useState(false)
+  // The demo's short menu, until someone asks for everything; remembered in this browser.
+  const [fullMenu, setFullMenu] = useState(() => {
+    try {
+      return window.localStorage.getItem(FULL_MENU_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
+  const toggleFullMenu = () =>
+    setFullMenu((held) => {
+      try {
+        window.localStorage.setItem(FULL_MENU_KEY, held ? '0' : '1')
+      } catch {
+        /* a private window forgets it */
+      }
+      return !held
+    })
+  const [tourOpen, setTourOpen] = useState(false)
+  // Sidebar groups a person has folded away; every group starts open.
+  const [collapsed, setCollapsed] = useState<string[]>(readCollapsed)
+  const toggleGroup = (label: string) =>
+    setCollapsed((held) => {
+      const next = held.includes(label) ? held.filter((l) => l !== label) : [...held, label]
+      try {
+        window.localStorage.setItem(COLLAPSED_KEY, JSON.stringify(next))
+      } catch {
+        /* a private window forgets it; nothing else depends on it */
+      }
+      return next
+    })
 
   const refresh = useCallback(() => {
     fetchHealth()
@@ -149,7 +284,10 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
     listAgentDefinitions().then(setAgents).catch(() => {})
     listActions('pending').then(setPendingActions).catch(() => {})
     listInventoryItems().then(setInventory).catch(() => {})
+    listQuestions().then(setQuestions).catch(() => {})
     fetchRuntime().then(setRuntime).catch(() => {})
+    fetchFlags().then((f) => setFlags(f.flags)).catch(() => {})
+    fetchNotices().then(setNotices).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -191,6 +329,35 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
 
   useEffect(() => setSidebarOpen(false), [route])
 
+  // Search from anywhere: Ctrl or Cmd K, or "/" when not typing in a field.
+  const navOn = flags.v3_nav === true
+  useEffect(() => {
+    if (!navOn) return
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null
+      const typing = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)
+      if ((e.key === 'k' || e.key === 'K') && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault()
+        setCommandOpen((open) => !open)
+      } else if (e.key === '/' && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault()
+        setCommandOpen(true)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [navOn])
+
+  // The tour: once per browser when the new navigation is on, and whenever Help asks for it.
+  useEffect(() => {
+    if (navOn && !tourSeen()) setTourOpen(true)
+  }, [navOn])
+  useEffect(() => {
+    const show = () => setTourOpen(true)
+    window.addEventListener(TOUR_EVENT, show)
+    return () => window.removeEventListener(TOUR_EVENT, show)
+  }, [])
+
   const toast = useCallback((title: string, subtitle?: string) => {
     setToastState({ title, subtitle })
     window.setTimeout(() => setToastState(null), 3200)
@@ -212,6 +379,7 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
     setRestaurant,
     apiStatus,
     canManage: canEditRestaurant(user),
+    flags,
     navigate,
     refresh,
     toast,
@@ -250,13 +418,41 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
   }
 
   const lowStock = inventory.filter((i) => i.quantity_on_hand <= i.reorder_threshold).length
+  const openQuestions = questions.filter((q) => q.status === 'open').length
   const counts: Partial<Record<Route, { value: number; attention: boolean }>> = {
+    invoices: { value: openQuestions, attention: openQuestions > 0 }, // questions are answered on the Invoices page
     approvals: { value: pendingActions.length, attention: pendingActions.length > 0 },
     inventory: { value: lowStock, attention: lowStock > 0 },
   }
+  // On the price pages the top bar holds the agent's field; elsewhere, the Assistant Manager's controls.
+  const pricePage = PRICE_ROUTES.has(route)
 
   const page = (() => {
     switch (route) {
+      case 'digest':
+        return <InvoiceHubPage app={app} section={route} />
+      case 'menu-costs':
+        return readHashParam() ? <MenuCostsPage app={app} /> : <MenuSectionsPage app={app} at={route} />
+      case 'usage':
+        return readHashParam() ? <UsagePage app={app} /> : <MenuSectionsPage app={app} at={route} />
+      case 'channels':
+        return <MenuSectionsPage app={app} at="menu" /> // Channels is taken out for now; its code stays in src/ml
+      case 'ordering-prep':
+        return <OrderingPage app={app} />
+      case 'labor':
+        return readHashParam() ? <LaborPage app={app} /> : <StaffSectionsPage app={app} user={user} at={route} />
+      case 'items':
+        return <InvoiceHubPage app={app} section={route} />
+      case 'item':
+        return <ItemPage app={app} />
+      case 'questions':
+        return <InvoiceHubPage app={app} section={route} />
+      case 'thread':
+        return <InvoiceHubPage app={app} section={route} />
+      case 'draft':
+        return <DraftPage app={app} />
+      case 'invoices':
+        return <InvoiceHubPage app={app} section={route} />
       case 'approvals':
         return <ApprovalsPage app={app} />
       case 'runs':
@@ -268,11 +464,41 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
       case 'suppliers':
         return <SuppliersPage app={app} />
       case 'menu':
-        return <MenuPage app={app} />
+        return <MenuSectionsPage app={app} at={route} />
       case 'staff':
-        return <StaffPage app={app} user={user} />
+        return <StaffSectionsPage app={app} user={user} at={route} />
+      case 'customers':
+        return <CustomersPage app={app} />
+      case 'connect':
+        return <ConnectPage app={app} user={user} />
+      case 'documents':
+        return <InvoiceHubPage app={app} section={route} />
+      case 'recipes':
+        return <MenuSectionsPage app={app} at={route} />
+      case 'recipe':
+        return <RecipePage app={app} />
+      case 'po':
+        return <PurchaseOrderPage app={app} />
+      case 'calendar':
+        return <CalendarPage app={app} />
+      case 'prep':
+        return readHashParam() ? <PrepSheetPage app={app} /> : <MenuSectionsPage app={app} at={route} />
+      case 'receive':
+        return flags.v3_receiving ? <ReceivePage app={app} /> : <InventoryPage app={app} user={user} />
+      case 'autopilot':
+        return flags.v3_autopilot && app.canManage ? <AutopilotPage app={app} /> : <InventoryPage app={app} user={user} />
+      case 'count':
+        return flags.v3_stock ? <CountPage app={app} /> : <InventoryPage app={app} user={user} />
+      case 'variance':
+        return flags.v3_stock ? <VariancePage app={app} /> : <InventoryPage app={app} user={user} />
+      case 'insights':
+        return app.canManage && navOn ? <InsightsPage app={app} /> : <OverviewPage app={app} />
+      case 'tools':
+        return navOn ? <ToolsPage app={app} /> : <OverviewPage app={app} />
       case 'profit':
         return app.canManage ? <ProfitPage app={app} /> : <OverviewPage app={app} />
+      case 'overview':
+        return <OverviewPage app={app} />
       case 'profile':
         return <ProfilePage app={app} user={user} />
       case 'history':
@@ -284,9 +510,66 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
     }
   })()
 
-  const nav = NAV.map((group) => ({ ...group, items: group.items.filter((item) => app.canManage || !MANAGER_ROUTES.has(item.route)) })).filter(
-    (group) => group.items.length > 0,
+  const allowed = (item: { route: Route }) => app.canManage || !MANAGER_ROUTES.has(item.route)
+  // Every group with the pages this person can open, flag-gated pages included: what the sidebar
+  // draws and what search offers.
+  const extra = (label: string | null): NavItem[] => {
+    const more: NavItem[] = []
+    if (label === 'Restaurant' && flags.v2_calendar) more.push({ route: 'calendar', label: 'Calendar', icon: 'clock' })
+    if (label === 'Restaurant' && flags.v2_connect) more.push({ route: 'connect', label: 'Connections', icon: 'suppliers' })
+    return more
+  }
+  // A restaurant with the margin and labor modules on keeps their pages in the short menu: they are its walk-through.
+  const inShortMenu = (r: Route) => (r === 'menu' && flags.ml_menu_costs === true) || (r === 'staff' && flags.ml_labor === true) || (r === 'ordering-prep' && flags.ml_ordering === true)
+  const marginLabor = MARGIN_LABOR.filter((entry) => flags[entry.flag]).map((entry) => entry.item)
+  // Today, then Inventory and Invoices & prices, then the newer groups, then the rest.
+  const allGroups = [...NAV.slice(0, 3), ...(navOn ? [INSIGHTS_GROUP] : []), ...(marginLabor.length ? [{ label: 'Margin & labor', items: marginLabor }] : []), ...NAV.slice(3)]
+    // Help is always the last entry of the sidebar, after the pages a flag adds to Restaurant.
+    .map((group) => ({ label: group.label, items: [...group.items, ...extra(group.label)].filter(allowed).sort((x, y) => Number(x.route === 'help') - Number(y.route === 'help')) }))
+    .filter((group) => group.items.length > 0)
+  // In the demo the sidebar starts short; search still offers every page.
+  const shortMenu = runtime?.demo_mode === true && !fullMenu
+  const groups = shortMenu
+    ? allGroups.map((group) => ({ label: group.label, items: group.items.filter((item) => DEMO_MENU.has(item.route) || inShortMenu(item.route)) })).filter((group) => group.items.length > 0)
+    : allGroups
+  const pageCount = allGroups.reduce((sum, group) => sum + group.items.length, 0)
+  const tabs = shortMenu && flags.v3_receiving ? TABS.map((tab) => (tab.route === 'staff' ? { route: 'receive' as Route, label: 'Deliveries', icon: 'suppliers' as IconName } : tab)) : TABS
+  const commandPages: CommandPage[] = allGroups.flatMap((group) =>
+    group.items.map((item) => ({ label: item.label, href: `#${item.route}`, group: group.label ?? 'Today', icon: item.icon, keywords: PAGE_KEYWORDS[item.route] })),
   )
+  // The tabs of Inventory and Suppliers have no sidebar entry of their own; search still reaches each one.
+  if (flags.v3_stock)
+    commandPages.push(
+      { label: 'Count stock', href: '#count', group: 'Inventory', icon: 'check', keywords: PAGE_KEYWORDS.count },
+      { label: 'Variance & waste', href: '#variance', group: 'Inventory', icon: 'trend', keywords: PAGE_KEYWORDS.variance },
+    )
+  // The sections of the Invoices page, by name.
+  commandPages.push(
+    { label: 'Digest', href: '#digest', group: 'Invoices', icon: 'profit', keywords: PAGE_KEYWORDS.digest },
+    { label: 'Questions', href: '#questions', group: 'Invoices', icon: 'approvals', keywords: PAGE_KEYWORDS.questions },
+    { label: 'Items', href: '#items', group: 'Invoices', icon: 'inventory', keywords: PAGE_KEYWORDS.items },
+    { label: 'Conversation', href: '#thread', group: 'Invoices', icon: 'chat', keywords: PAGE_KEYWORDS.thread },
+  )
+  if (flags.v2_documents) commandPages.push({ label: 'Documents', href: '#documents', group: 'Invoices', icon: 'clock', keywords: PAGE_KEYWORDS.documents })
+  // The parts of Menu and of Labor and staffing, by name.
+  if (flags.ml_menu_costs) commandPages.push({ label: 'Menu costs', href: '#menu-costs', group: 'Menu', icon: 'menu', keywords: PAGE_KEYWORDS['menu-costs'] })
+  if (flags.ml_usage) commandPages.push({ label: 'Usage', href: '#usage', group: 'Menu', icon: 'inventory', keywords: PAGE_KEYWORDS.usage })
+  if (flags.v2_documents) commandPages.push({ label: 'Recipes', href: '#recipes', group: 'Menu', icon: 'menu', keywords: PAGE_KEYWORDS.recipes })
+  if (flags.v2_orders) commandPages.push({ label: 'Prep sheets', href: '#prep', group: 'Menu', icon: 'inventory', keywords: PAGE_KEYWORDS.prep })
+  if (flags.ml_labor) commandPages.push({ label: 'Labor', href: '#labor', group: 'Staffing', icon: 'staff', keywords: PAGE_KEYWORDS.labor })
+  if (flags.ml_ordering) commandPages.push({ label: 'Ordering and prep', href: '#ordering-prep', group: 'Inventory', icon: 'suppliers', keywords: PAGE_KEYWORDS['ordering-prep'] })
+  if (flags.v3_autopilot && app.canManage) commandPages.push({ label: 'Ordering autopilot', href: '#autopilot', group: 'Inventory', icon: 'play', keywords: PAGE_KEYWORDS.autopilot })
+  if (flags.v3_receiving) commandPages.push({ label: 'Deliveries', href: '#receive', group: 'Inventory', icon: 'suppliers', keywords: PAGE_KEYWORDS.receive })
+  const navLink = (item: NavItem) => {
+    const count = counts[item.route]
+    return (
+      <a key={item.route} className="nav-link" href={`#${item.route}`} aria-current={route === item.route || SECTION_OF[route] === item.route ? 'page' : undefined}>
+        <Icon name={item.icon} />
+        {item.label}
+        {count && count.value > 0 && <span className={`nav-count${count.attention ? ' attention' : ''}`}>{count.value}</span>}
+      </a>
+    )
+  }
 
   return (
     <div className="app">
@@ -299,28 +582,38 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
           </span>
         </a>
 
-        {nav.map((group) => (
-          <nav key={group.label ?? 'home'} className="nav-group" aria-label={group.label ?? 'Home'}>
-            {group.label && <div className="nav-label">{group.label}</div>}
-            {group.items.map((item) => {
-              const count = counts[item.route]
-              return (
-                <a
-                  key={item.route}
-                  className="nav-link"
-                  href={`#${item.route}`}
-                  aria-current={route === item.route ? 'page' : undefined}
-                >
-                  <Icon name={item.icon} />
-                  {item.label}
-                  {count && count.value > 0 && (
-                    <span className={`nav-count${count.attention ? ' attention' : ''}`}>{count.value}</span>
-                  )}
-                </a>
-              )
-            })}
-          </nav>
-        ))}
+        {navOn && (
+          <button className="nav-search" onClick={() => setCommandOpen(true)}>
+            <Icon name="search" size={16} />
+            <span>Search</span>
+            <kbd className="hide-mobile">{navigator.platform.toLowerCase().includes('mac') ? '⌘K' : 'Ctrl K'}</kbd>
+          </button>
+        )}
+
+        {groups.map((group) => {
+          const label = group.label
+          const folded = navOn && !!label && collapsed.includes(label) && !group.items.some((item) => item.route === route)
+          return (
+            <nav key={label ?? 'main'} className="nav-group" aria-label={label ?? 'Today'}>
+              {label &&
+                (navOn ? (
+                  <button className="nav-label nav-label-button" aria-expanded={!folded} onClick={() => toggleGroup(label)}>
+                    {label}
+                    <Icon name="chevron" size={14} className={folded ? 'nav-chevron folded' : 'nav-chevron'} />
+                  </button>
+                ) : (
+                  <div className="nav-label">{label}</div>
+                ))}
+              {!folded && group.items.map(navLink)}
+            </nav>
+          )
+        })}
+
+        {runtime?.demo_mode && (
+          <button className="nav-more" onClick={toggleFullMenu} aria-pressed={fullMenu}>
+            {fullMenu ? 'Show the short menu' : `Show all ${pageCount} pages`}
+          </button>
+        )}
 
         <div className="sidebar-footer">
           <a className="sidebar-user" href="#profile" title="Your profile">
@@ -349,8 +642,8 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
                 AI assistant unavailable
               </div>
             ) : (
-              <div className="faint" style={{ marginTop: 4 }}>
-                {runtime.provider} · {runtime.model}
+              <div className="faint" style={{ marginTop: 4 }} title={runtime.provider === 'scripted' ? 'No model is connected. Price questions are answered by rule from the invoices.' : undefined}>
+                {runtime.provider === 'scripted' ? 'Rule-based assistant · no model' : `${runtime.provider} · ${runtime.model}`}
               </div>
             ))}
         </div>
@@ -381,18 +674,25 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
             </div>
           )}
           <div className="topbar-spacer" />
-          {pendingActions.length > 0 && route !== 'approvals' && (
+          {(notices.items.length > 0 || flags.v3_stock || flags.v3_autopilot || flags.v3_receiving) && <NoticesBell notices={notices} onChange={setNotices} />}
+          {navOn && (
+            <button className="btn btn-ghost btn-icon topbar-search" aria-label="Search" title="Search (Ctrl or ⌘ K)" onClick={() => setCommandOpen(true)}>
+              <Icon name="search" />
+            </button>
+          )}
+          {!pricePage && pendingActions.length > 0 && route !== 'approvals' && (
             <a className="btn btn-secondary hide-mobile" href="#approvals">
               <span className="dot" style={{ color: 'var(--danger)' }} />
               {pendingActions.length} to review
             </a>
           )}
-          {app.canManage && (
+          {!pricePage && app.canManage && (
             <button className="btn btn-primary" onClick={() => app.newTask()}>
               <Icon name="plus" size={16} />
               New task
             </button>
           )}
+          {pricePage && <AskField id="ask-desktop" className="pi-ask-top" onError={(m) => toast('Couldn’t ask that', m)} />}
         </header>
 
         {(!online || apiStatus === 'error') && (
@@ -428,8 +728,14 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
         }}
       />
 
+      {pricePage && (
+        <div className="pi-ask-bar">
+          <AskField id="ask-mobile" onError={(m) => toast('Couldn’t ask that', m)} />
+        </div>
+      )}
+
       <nav className="tabbar" aria-label="Daily tasks">
-        {TABS.map((tab) => {
+        {tabs.map((tab) => {
           const count = counts[tab.route]
           return (
             <a key={tab.route} className="tab" href={`#${tab.route}`} aria-current={route === tab.route ? 'page' : undefined}>
@@ -455,6 +761,9 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
         </button>
       </nav>
 
+      {flags.v3_voice && <VoiceButton app={app} />}
+      <CommandBar open={commandOpen} onClose={() => setCommandOpen(false)} pages={commandPages} canAsk onError={(m) => toast('Couldn’t ask that', m)} />
+      <Tour open={tourOpen && !commandOpen} onClose={() => setTourOpen(false)} margins={flags.ml_menu_costs === true && flags.ml_labor === true} />
       <ActionDrawer app={app} action={drawerAction} onClose={() => setDrawerAction(null)} />
       <Toast toast={toastState} />
     </div>

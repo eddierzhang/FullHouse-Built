@@ -33,6 +33,10 @@ class InventoryItemOut(BaseModel):
     #: Bought in packs: one `pack_unit` holds `pack_size` of `unit`; both null otherwise.
     pack_unit: str | None = None
     pack_size: float | None = None
+    #: Where it is kept, its place on the shelf and its usable share (app.stock).
+    storage_area_id: str | None = None
+    shelf_order: int = 0
+    yield_pct: float | None = None
     updated_at: datetime
 
     @computed_field
@@ -392,6 +396,87 @@ class StockChangeOut(BaseModel):
     item: InventoryItemOut
     #: Null when a stock count matched what was already on hand.
     adjustment: StockAdjustmentOut | None
+
+
+class PurchaseOrderLineOut(BaseModel):
+    id: str
+    item_id: str | None
+    inventory_item_id: str | None
+    description: str
+    qty: float
+    unit: str
+    units: float | None
+    unit_price_expected: float | None
+    received_qty: float | None
+    invoice_line_id: str | None
+
+
+class PurchaseOrderOut(BaseModel):
+    """An order with a supplier, wherever it is between drafting and receipt."""
+
+    id: str
+    lines: list[PurchaseOrderLineOut] = []
+    sent_at: datetime | None = None
+    sent_by: str | None = None
+    rep_email: str | None = None
+    #: Empty for an order with lines.
+    inventory_item_id: str | None
+    item_name: str
+    unit: str
+    quantity: float
+    packs: float | None
+    pack_unit: str | None
+    supplier_id: str | None
+    supplier_name: str | None
+    estimated_cost: float | None
+    status: Literal["draft", "ordered", "shipped", "received", "cancelled"]
+    ordered_at: datetime
+    expected_on: date | None
+    shipped_at: datetime | None
+    received_at: datetime | None
+    received_qty: float | None
+    #: Past its expected date and still not here.
+    overdue: bool
+    #: Received by the invoice for it arriving, rather than by hand.
+    received_by_invoice: bool
+    action_id: str | None
+    note: str | None
+    placed_by: str | None
+    received_by: str | None
+
+
+class PurchaseOrderCreate(BaseModel):
+    """An order placed outside Recommendations: by phone, email or a supplier's portal."""
+
+    inventory_item_id: str
+    supplier_id: str | None = None
+    #: In the item's unit, or in its packs with `in_packs`.
+    quantity: float = Field(gt=0, le=MAX_QUANTITY, allow_inf_nan=False)
+    in_packs: bool = False
+    expected_on: date | None = None
+    note: str | None = Field(default=None, max_length=255)
+
+
+class OrderShippedIn(BaseModel):
+    expected_on: date | None = None
+
+
+class OrderSendIn(BaseModel):
+    """Who to mail it to; unset means the supplier's remembered rep."""
+
+    to: str | None = Field(default=None, max_length=254)
+
+
+class OrderReceiveIn(BaseModel):
+    """What arrived, in the item's unit; unset means all of it."""
+
+    quantity: float | None = Field(default=None, ge=0, le=MAX_QUANTITY, allow_inf_nan=False)
+    note: str | None = Field(default=None, max_length=255)
+
+
+class OrderReceivedOut(BaseModel):
+    order: PurchaseOrderOut
+    item: InventoryItemOut
 
 
 class SupplierExposureOut(BaseModel):

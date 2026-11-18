@@ -62,6 +62,12 @@ class TriggerRunRequest(BaseModel):
     input: str | None = None
 
 
+class ActionExplanation(BaseModel):
+    issue: str
+    change: str
+    know: str
+
+
 class AgentActionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -78,6 +84,8 @@ class AgentActionOut(BaseModel):
     # failing after Approve is pressed.
     appliable: bool = True
     needs_input: list[str] = []
+    # Three plain sentences for the inbox: the issue, what approving changes, what to know (app.agents.explain).
+    explain: ActionExplanation | None = None
 
 
 class ApproveRequest(BaseModel):

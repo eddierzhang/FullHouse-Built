@@ -170,10 +170,12 @@ def _race(threaded_db, attempt, workers=2):
 
 def test_two_managers_approving_at_once_apply_it_once(threaded_db):
     action_id = _proposal(threaded_db)
+    both_read = threading.Barrier(2)
 
     def approve(session):
         action = agent_crud.get_action(session, action_id)
         assert action.status == "pending"  # both saw it pending -- the race the check alone missed
+        both_read.wait(timeout=10)  # ...and neither decides until both have: the race is made, not hoped for
         won = agent_crud.claim_pending(session, action, "approved")
         session.commit()
         return won

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { SectionTabs } from '../components/SectionTabs'
 import {
   ApiError,
   type SupplyChain,
@@ -420,6 +421,7 @@ export function SuppliersPage({ app }: { app: AppContext }) {
           </button>
         )}
       </div>
+      <SectionTabs app={app} section="suppliers" />
 
       <Loaded load={load} what="suppliers" placeholderHeight={320}>
         {board}

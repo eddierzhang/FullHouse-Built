@@ -7,6 +7,7 @@ from sqlalchemy import (
     Date,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -16,7 +17,9 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
-from app.db.types import UTCDateTime
+from decimal import Decimal
+
+from app.db.types import Dec, UTCDateTime
 
 
 def _uuid() -> str:
@@ -60,9 +63,119 @@ class InventoryItem(Base):
     #: cost all stay in `unit`, so nothing downstream has to convert. Both or neither.
     pack_unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
     pack_size: Mapped[float | None] = mapped_column(Float, nullable=True)
+    #: The level to order up to. Worked out from the forecast unless `par_pinned`, when the owner's figure stands.
+    par: Mapped[float | None] = mapped_column(Float, nullable=True)
+    par_pinned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="0")
+    safety_stock: Mapped[float | None] = mapped_column(Float, nullable=True)
+    #: Usable share of what is bought, 0-100 (trimmed romaine is less than the head). Null means all of it.
+    yield_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    #: Where it is kept and its place on the shelf, for count sheets (app.stock).
+    storage_area_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    shelf_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False, server_default="0")
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now, onupdate=_now, nullable=False)
 
     supplier: Mapped[Supplier | None] = relationship()
+
+
+#: A purchase order's life: drafted (approved, not yet sent), placed with the supplier, on its way,
+#: in the stock figures, or called off.
+DRAFT, ORDERED, SHIPPED, RECEIVED, CANCELLED = "draft", "ordered", "shipped", "received", "cancelled"
+#: The supplier said yes; and some of it arrived, with the rest still expected.
+CONFIRMED, PARTIAL = "confirmed", "partial"
+OPEN_ORDER_STATUSES = (DRAFT, ORDERED, CONFIRMED, SHIPPED, PARTIAL)
+
+
+class PurchaseOrder(Base):
+    """An order placed with a supplier, followed from approval to receipt.
+
+    Approving a reorder places the order; nothing reaches the stock figures
+    until it is received, either by hand on the Inventory page or by the
+    invoice for it arriving (app.prices.stock). `quantity` is in the item's
+    unit; `packs` and `pack_unit` say how it was ordered when that is known.
+    """
+
+    __tablename__ = "purchase_orders"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    restaurant_id: Mapped[str | None] = mapped_column(
+        ForeignKey("restaurants.id", name="fk_purchase_orders_restaurant_id_restaurants"), nullable=True, index=True
+    )
+    supplier_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("suppliers.id"), nullable=True)
+    #: The one stock item, for an order of one thing; an order with lines leaves it empty.
+    inventory_item_id: Mapped[str | None] = mapped_column(
+        String(32), ForeignKey("inventory_items.id", name="fk_purchase_orders_inventory_item_id_inventory_items"),
+        nullable=True, index=True,
+    )
+    #: As they read when the order was placed, so a renamed item or supplier doesn't rewrite the record.
+    item_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    supplier_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    quantity: Mapped[float] = mapped_column(Float, nullable=False)
+    unit: Mapped[str] = mapped_column(String(32), nullable=False)
+    packs: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pack_unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    estimated_cost: Mapped[float | None] = mapped_column(Float, nullable=True)
+    status: Mapped[str] = mapped_column(String(12), default=ORDERED, nullable=False, index=True)
+    ordered_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now, nullable=False)
+    #: When a person sent it to the supplier (by mail from here, or marked as placed by phone), and who.
+    sent_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    sent_by: Mapped[str | None] = mapped_column(String(254), nullable=True)
+    expected_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    shipped_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    received_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    #: What actually arrived, in `unit`; null until received.
+    received_qty: Mapped[float | None] = mapped_column(Float, nullable=True)
+    #: The invoice line that received it, when the invoice did (no FK: the two modules don't import each other).
+    invoice_line_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    #: The approved proposal it came from, if any.
+    action_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    #: Who placed it and who received it: an email, or the agent's key.
+    placed_by: Mapped[str | None] = mapped_column(String(254), nullable=True)
+    received_by: Mapped[str | None] = mapped_column(String(254), nullable=True)
+    #: When the supplier confirmed it (app.receiving reads their reply).
+    confirmed_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    #: The secret in this order's reply-to address, so a supplier's reply finds its order.
+    reply_token: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
+    #: Sent by the owner's autopilot policy rather than by a person (app.ordering).
+    autopilot: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="0")
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now, onupdate=_now, nullable=False)
+
+    item: Mapped[InventoryItem | None] = relationship()
+    supplier: Mapped[Supplier | None] = relationship()
+    lines: Mapped[list["PurchaseOrderLine"]] = relationship(back_populates="order", cascade="all, delete-orphan",
+                                                            order_by="PurchaseOrderLine.position")
+
+
+class PurchaseOrderLine(Base):
+    """One line of a drafted order: an item (as the invoices name it), how many packs, at what expected price."""
+
+    __tablename__ = "po_lines"
+    __table_args__ = (Index("ix_po_lines_restaurant_order", "restaurant_id", "po_id"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    restaurant_id: Mapped[str | None] = mapped_column(ForeignKey("restaurants.id", name="fk_po_lines_restaurant"), nullable=True)
+    po_id: Mapped[str] = mapped_column(ForeignKey("purchase_orders.id", name="fk_po_lines_order", ondelete="CASCADE"), nullable=False)
+    position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    #: The price item (what the invoices call it) and, when it is counted, the stock item.
+    item_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    inventory_item_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("inventory_items.id"), nullable=True)
+    description: Mapped[str] = mapped_column(String(200), nullable=False)
+    #: Packs ordered, and the pack's name; `units` is the quantity in the item's unit.
+    qty: Mapped[float] = mapped_column(Float, nullable=False)
+    unit: Mapped[str] = mapped_column(String(32), nullable=False)
+    # --- Margin & Labor Engine, Module C. Optional; older code does not read them. ---
+    #: The packs FullHouse suggested, kept beside what a person ordered.
+    suggested_qty: Mapped[Decimal | None] = mapped_column(Dec(), nullable=True)
+    #: What the suggestion rested on: the forecast run, the delivery period, the stock estimate, the pack rounding.
+    basis: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    units: Mapped[float | None] = mapped_column(Float, nullable=True)
+    unit_price_expected: Mapped[float | None] = mapped_column(Float, nullable=True)
+    received_qty: Mapped[float | None] = mapped_column(Float, nullable=True)
+    invoice_line_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    #: How the line arrived, once received: ok | short | over | substituted | damaged | missing.
+    receipt_status: Mapped[str | None] = mapped_column(String(12), nullable=True)
+
+    order: Mapped[PurchaseOrder] = relationship(back_populates="lines")
 
 
 class InventoryAdjustment(Base):
@@ -78,7 +191,9 @@ class InventoryAdjustment(Base):
     __tablename__ = "inventory_adjustments"
     # A retried request -- a double tap, a resend after the connection
     # dropped -- carries the same request id, and can't be recorded twice.
-    __table_args__ = (UniqueConstraint("restaurant_id", "request_id", name="uq_inventory_adjustments_request"),)
+    # A sale, delivery, count or receipt names where it came from; the same source cannot move stock twice.
+    __table_args__ = (UniqueConstraint("restaurant_id", "request_id", name="uq_inventory_adjustments_request"),
+                      Index("uq_inventory_adjustments_source", "restaurant_id", "source_key", unique=True))
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     restaurant_id: Mapped[str | None] = mapped_column(
@@ -102,6 +217,8 @@ class InventoryAdjustment(Base):
     actor_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     #: The client's Idempotency-Key for a hand-recorded change; null otherwise.
     request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #: Where an automatic movement came from ("sale:2026-11-16:MARGHERITA:<item>", "count:<id>:<item>"); null for a hand entry.
+    source_key: Mapped[str | None] = mapped_column(String(160), nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now, nullable=False, index=True)
 
     # Also what makes a flush insert a new item before its first adjustment.

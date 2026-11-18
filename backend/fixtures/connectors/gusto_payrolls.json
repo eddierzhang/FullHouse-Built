@@ -1,0 +1,11 @@
+[
+  {"payroll_uuid": "p1", "processed": true, "pay_period": {"start_date": "2026-10-13", "end_date": "2026-10-19"},
+   "totals": {"gross_pay": "4200.00"},
+   "employee_compensations": [
+     {"employee_uuid": "e1", "hourly_compensations": [{"name": "Regular Hours", "hours": "38.0"}, {"name": "Overtime", "hours": "2.0"}]},
+     {"employee_uuid": "e2", "hourly_compensations": [{"name": "Regular Hours", "hours": "30.0"}]}
+   ]},
+  {"payroll_uuid": "p2", "processed": false, "pay_period": {"start_date": "2026-10-20", "end_date": "2026-10-26"}, "totals": {"gross_pay": "9999.00"}},
+  {"payroll_uuid": "p3", "processed": true, "pay_period": {"start_date": "2026-10-20", "end_date": "2026-10-26"},
+   "totals": {"gross_pay": "4900.00", "hours": "84"}, "employee_compensations": []}
+]

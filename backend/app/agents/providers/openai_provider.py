@@ -37,6 +37,8 @@ MAX_TOOL_RESULT_CHARS = 8000
 #: delegating to three specialists makes several at once. A 429 is waited
 #: out this many times before the run fails.
 RATE_LIMIT_RETRIES = 4
+#: A tool call the model wrote wrongly is asked for again this many times before the run fails.
+MALFORMED_CALL_RETRIES = 2
 #: Longest single wait on a 429, whatever Retry-After asks for.
 MAX_RETRY_WAIT_SECONDS = 30.0
 
@@ -113,11 +115,21 @@ class OpenAICompatibleProvider(LLMProvider):
             except httpx.RequestError as exc:
                 raise ProviderError(f"Cannot reach the model API at {self.base_url} ({exc})") from exc
 
-            if response.status_code == 429 and attempt < RATE_LIMIT_RETRIES:
+            # 503 is the API saying it is overloaded for a moment (Gemini does at busy hours); it clears like a 429.
+            if response.status_code in (429, 503) and attempt < RATE_LIMIT_RETRIES:
                 self._sleep(_retry_after(response, attempt))
+                continue
+            # Groq answers 400 "tool_use_failed" when the model itself wrote a malformed tool call (a wrong
+            # name, broken JSON). The request was fine: asking again usually gets a well-formed call.
+            if response.status_code == 400 and "tool_use_failed" in response.text and attempt < MALFORMED_CALL_RETRIES:
                 continue
             break
 
+        if response.status_code == 503:
+            raise ProviderError(
+                f"The model ({model}) is overloaded and did not recover. Try again in a few minutes, "
+                f"or set LLM_MODEL to another model. Response: {response.text[:300]}"
+            )
         if response.status_code == 429:
             raise ProviderError(
                 "The model API's rate limit was hit and did not clear. On a free tier, wait a minute "
@@ -125,6 +137,11 @@ class OpenAICompatibleProvider(LLMProvider):
             )
         if response.status_code in (401, 403):
             raise ProviderError(f"The model API rejected LLM_API_KEY ({response.status_code}): {response.text[:300]}")
+        if response.status_code == 400 and "tool_use_failed" in response.text:
+            raise ProviderError(
+                f"The model ({model}) kept writing a tool call the API could not accept. Set LLM_MODEL to a "
+                f"stronger model. Response: {response.text[:300]}"
+            )
         if response.status_code >= 400:
             raise ProviderError(f"The model API returned {response.status_code}: {response.text[:500]}")
 
@@ -141,6 +158,16 @@ class OpenAICompatibleProvider(LLMProvider):
             except json.JSONDecodeError:
                 return {}
         return dict(raw or {})
+
+    @staticmethod
+    def _text(content: Any) -> str:
+        """The reply's words. Most APIs send a string; Mistral sends a list of chunks when the model reasons
+        first, and only the text chunks are the answer."""
+        if isinstance(content, list):
+            content = "".join(
+                chunk.get("text") or "" for chunk in content if isinstance(chunk, dict) and chunk.get("type") == "text"
+            )
+        return (content or "").strip()
 
     def run_agent_loop(
         self,
@@ -171,7 +198,7 @@ class OpenAICompatibleProvider(LLMProvider):
             if not choices:
                 raise ProviderError(f"The model API returned no choices: {json.dumps(response)[:300]}")
             message = choices[0].get("message") or {}
-            text = (message.get("content") or "").strip()
+            text = self._text(message.get("content"))
             if text:
                 emit("log", {"text": text})
 

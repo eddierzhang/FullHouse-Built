@@ -1,0 +1,53 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>
+endobj
+5 0 obj
+<< /Length 749 >>
+stream
+BT
+/F1 10 Tf
+12 TL
+40 760 Td
+(Chef's Warehouse) Tj T*
+(1 Harbor Way, Vernon CA) Tj T*
+() Tj T*
+(INVOICE #CW-55010) Tj T*
+(Date: 10/10/2026) Tj T*
+(Sold to: Botanica, 410 Olive St) Tj T*
+() Tj T*
+(DESCRIPTION                     QTY  PACK     PRICE     AMOUNT) Tj T*
+(KALE, GREEN 24CT                  8  CS       27.60     220.80) Tj T*
+(BROCCOLI CROWN 12 CT CS           6  CS       30.10     180.60) Tj T*
+(EVOO 4/1GAL                       2  CS       64.00     128.00) Tj T*
+(CONTAINER DELI 16OZ 500CT         1  CS       49.80      49.80) Tj T*
+(BREAD CIABATTA 24CT               3  CS       28.00      84.00) Tj T*
+() Tj T*
+(Total                                                   663.20) Tj T*
+() Tj T*
+(Thank you for your business.) Tj T*
+ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000309 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1109
+%%EOF

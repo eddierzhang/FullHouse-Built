@@ -78,7 +78,7 @@ export function LinkPage({ link, onSignedIn, onCancel }: { link: AccountLink; on
           <>
             <p className="auth-subtitle">
               {preview.kind === 'invite'
-                ? `You’ve been invited to ${preview.restaurant ?? 'a restaurant'} on FullHouse as ${preview.role === 'admin' ? 'an admin' : 'a team member'}.`
+                ? `You’ve been invited to ${preview.restaurant ?? 'a restaurant'} on FullHouse as ${preview.role === 'admin' ? 'an admin' : preview.role === 'bookkeeper' ? 'their bookkeeper' : 'a team member'}.`
                 : `For ${preview.name} (${preview.email}). Every other device signed in to this account will be signed out.`}
             </p>
             <form className="auth-form" onSubmit={onSubmit} noValidate>

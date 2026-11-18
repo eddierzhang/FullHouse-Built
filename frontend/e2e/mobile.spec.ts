@@ -27,7 +27,7 @@ test('on a phone, daily tasks are one tap away and stock can be logged', async (
   await noSidewaysScroll(page)
 
   // Each page in the bar opens and fits the screen.
-  for (const [tab, heading] of [['Schedule', 'Schedule & staff'], ['Recommend', 'Recommendations'], ['Inventory', 'Inventory']]) {
+  for (const [tab, heading] of [['Schedule', 'Labor and staffing'], ['Recommend', 'Recommendations'], ['Inventory', 'Inventory']]) {
     await tabs.getByRole('link', { name: new RegExp(`^${tab}`) }).click()
     await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible()
     await noSidewaysScroll(page)
@@ -51,9 +51,47 @@ test('on a phone, daily tasks are one tap away and stock can be logged', async (
   await save.tap()
   await expect(row).toContainText('7 bunch')
 
-  // Everything else is behind More.
+  // Everything else is behind More, the price pages among it.
   await tabs.getByRole('button', { name: 'More' }).tap()
   await expect(page.getByRole('link', { name: 'History & undo' })).toBeVisible()
+  await page.getByRole('link', { name: /^Invoices & prices/ }).tap()
+  await expect(page.locator('#sec-digest .pi-headline')).toHaveText(/^\$[\d,]+\.\d\d$/)
+  // The one way to the agent is pinned above the bar.
+  await expect(page.getByPlaceholder('Ask about prices, invoices, or suppliers').last()).toBeVisible()
+  await noSidewaysScroll(page)
+})
+
+test('on a phone, recommendations come one card at a time with Approve and Not now', async ({ page }) => {
+  expect((await page.request.post(`${API}/api/v1/auth/login`, { data: OWNER })).ok()).toBeTruthy()
+  await page.goto('/#approvals')
+  const progress = page.locator('.deck-progress')
+  await expect(progress).toContainText(/^1 of \d+/)
+  const card = page.getByRole('group', { name: /^Proposal 1 of/ })
+  await expect(card).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Approve' })).toBeVisible()
+  // Three parts under the proposal: the issue, what approving changes, what to know.
+  await expect(card.getByText('The issue', { exact: true })).toBeVisible()
+  await expect(card.getByText('If you approve', { exact: true })).toBeVisible()
+  await expect(card.getByText('Worth knowing', { exact: true })).toBeVisible()
+  const notNow = page.getByRole('button', { name: /^Not now/ })
+  await expect(notNow).toBeVisible()
+  expect((await notNow.boundingBox())!.height).toBeGreaterThanOrEqual(44)
+  await noSidewaysScroll(page)
+  const total = Number((await progress.innerText()).match(/of (\d+)/)![1])
+  if (total > 1) {
+    const first = await card.getAttribute('aria-label')
+    await notNow.tap()
+    await expect(progress).toContainText(`2 of ${total}`)
+    await expect(progress).toContainText('1 set aside')
+    expect(await page.getByRole('group', { name: /^Proposal 2 of/ }).getAttribute('aria-label')).not.toBe(first)
+  }
+  // The list is a tap away and remembered.
+  await page.getByRole('button', { name: 'List' }).tap()
+  await expect(page.getByRole('listitem').first()).toBeVisible()
+  await page.reload()
+  await expect(page.getByRole('listitem').first()).toBeVisible()
+  await page.getByRole('button', { name: 'One at a time' }).tap()
+  await expect(progress).toBeVisible()
 })
 
 test('on a phone, going offline says so plainly', async ({ page, context }) => {

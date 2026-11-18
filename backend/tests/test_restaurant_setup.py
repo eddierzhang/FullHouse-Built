@@ -1,3 +1,4 @@
+from zoneinfo import ZoneInfo
 from datetime import date, datetime, time, timedelta, timezone
 
 import pytest
@@ -124,7 +125,7 @@ def test_finishing_sets_up_the_agent(client, db):
     assert list(definitions) == ["maestro"]
     assert definitions["maestro"]["schedule_cron"] == "0 10 * * tue,wed,thu,fri,sat,sun"
     next_review = datetime.fromisoformat(definitions["maestro"]["next_run_at"])
-    assert next_review.astimezone(timezone(timedelta(hours=-7))).hour == 10  # 10:00 in Portland (PDT)
+    assert next_review.astimezone(ZoneInfo("America/Los_Angeles")).hour == 10  # 10:00 in Portland, summer or winter
     assert client.get("/api/v1/agents/runtime").json()["schedule_timezone"] == "America/Los_Angeles"
 
 
@@ -211,11 +212,14 @@ def test_scheduled_runs_fire_for_each_restaurant_on_its_own_clock(client, db, mo
     monkeypatch.setattr(db, "close", lambda: None)
     scheduler.sync_agent_schedules()
     jobs = {job.id: job for job in idle.get_jobs()}
-    assert set(jobs) == {f"agent:maestro:{mine['id']}", f"stock-check:{mine['id']}", f"agent:maestro:{other.id}"}
+    assert set(jobs) == {f"agent:maestro:{mine['id']}", f"stock-check:{mine['id']}", f"agent:maestro:{other.id}",
+                         f"digest-mail:{mine['id']}", f"digest-mail:{other.id}"}
+    # The Monday digest mail goes out on each restaurant's own clock too.
+    assert str(jobs[f"digest-mail:{other.id}"].trigger.timezone) == "America/Denver"
     assert str(jobs[f"agent:maestro:{mine['id']}"].trigger.timezone) == "America/Los_Angeles"
     assert str(jobs[f"agent:maestro:{other.id}"].trigger.timezone) == "America/Denver"
 
-    monkeypatch.setattr("app.agents.executor.submit", lambda run_id: None)
+    monkeypatch.setattr("app.agents.executor.submit", lambda run_id, db=None: None)
     run = db.get(AgentRun, scheduler.run_scheduled_agent("maestro", db, restaurant_id=other.id))
     assert run.restaurant_id == other.id
     assert run.input == "Scheduled run (0 6 * * *, America/Denver)."

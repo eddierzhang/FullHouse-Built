@@ -25,8 +25,8 @@ def definition(db):
 def no_real_runs(monkeypatch):
     """Keep `submit` from actually driving a model during these tests."""
     submitted: list[str] = []
-    monkeypatch.setattr(executor, "submit", submitted.append)
-    monkeypatch.setattr("app.agents.routes.executor.submit", submitted.append)
+    monkeypatch.setattr(executor, "submit", lambda run_id, db=None: submitted.append(run_id))
+    monkeypatch.setattr("app.agents.routes.executor.submit", lambda run_id, db=None: submitted.append(run_id))
     return submitted
 
 
@@ -178,11 +178,12 @@ def test_orphaned_runs_are_failed_at_startup(db, definition):
 
     recovered = _recover_orphaned_runs(db)
 
-    assert recovered == 2
+    # A run caught mid-flight died with the process; a queued one waits in the job queue for a worker.
+    assert recovered == 1
     db.expire_all()
     assert db.get(AgentRun, stuck.id).status == "failed"
     assert "restarted" in db.get(AgentRun, stuck.id).error
-    assert db.get(AgentRun, queued.id).status == "failed"
+    assert db.get(AgentRun, queued.id).status == "queued"
     assert db.get(AgentRun, done.id).status == "succeeded"  # untouched
 
 

@@ -16,7 +16,8 @@ from sqlalchemy.orm import Session
 
 from app.agents.models import AgentAction
 from app.restaurant import crud as restaurant_crud
-from app.restaurant.inventory import stock_change
+from app.restaurant import orders
+from app.restaurant.inventory import plural
 from app.restaurant.models import MenuItem, Shift, Staff
 
 
@@ -45,45 +46,98 @@ def _positive_quantity(payload: dict) -> float:
     return quantity
 
 
-def _restock(db: Session, payload: dict, source: str) -> str:
-    """Shared effect of `inventory_reorder` and `purchase_order`.
+def _place_order(db: Session, payload: dict, action: AgentAction | None) -> str:
+    """Shared effect of `inventory_reorder` and `purchase_order`: the order is placed.
 
-    Simplification worth knowing about: there is no purchase-order
-    lifecycle in the schema, so approval books the goods as received
-    immediately instead of ordering now and receiving on delivery.
+    Nothing reaches the stock figures yet. The order waits on the Inventory
+    page under "On order" until someone receives it, or until its invoice
+    arrives and receives it (app.prices.stock).
     """
     item_id = _require(payload, "inventory_item_id")
     quantity = _positive_quantity(payload)
-
-    # Locked first, so a stock change someone records at the same moment isn't lost.
-    from app.restaurant.inventory import lock_items
-
-    lock_items(db, [item_id])
     # The agent works for the site's restaurant; another's stock reads as missing.
     item = restaurant_crud.get_inventory_item(db, item_id)
     if item is None:
         raise ApplyError(f"No inventory item with id {item_id}")
-    db.refresh(item)  # the figure as it stands now that it's locked
-
-    previous = item.quantity_on_hand
-    item.quantity_on_hand = previous + quantity
-    db.add(item)
-    # Flushed while the reason applies, so the stock history says why.
-    with stock_change("reorder", source):
-        db.flush()
+    supplier = None
+    supplier_id = payload.get("supplier_id") or item.supplier_id
+    if supplier_id:
+        supplier = restaurant_crud.get_supplier(db, supplier_id)
+    packs = payload.get("packs")
+    try:
+        packs = float(packs) if packs is not None else None
+    except (TypeError, ValueError):
+        packs = None
+    cost = payload.get("estimated_cost")
+    try:
+        cost = float(cost) if cost is not None else None
+    except (TypeError, ValueError):
+        cost = None
+    try:
+        order = orders.place(
+            db, item, quantity, supplier=supplier, packs=packs, pack_unit=payload.get("pack_unit") if packs else None,
+            estimated_cost=cost, note=payload.get("note") or None, action_id=action.id if action else None,
+            supplier_name=payload.get("supplier_name") or None, status=orders.DRAFT,
+        )
+    except orders.OrderError as exc:
+        raise ApplyError(str(exc)) from exc
+    amount = f"{quantity:g} {item.unit}"
+    if packs and order.pack_unit:
+        amount = f"{packs:g} {plural(order.pack_unit, packs)} ({amount})"
+    where = f" from {order.supplier_name}" if order.supplier_name else ""
+    due = f", expected {order.expected_on.strftime('%a %b %-d')}" if order.expected_on else ""
     return (
-        f"{source}: {item.name} stock {previous:g} -> {item.quantity_on_hand:g} {item.unit} "
-        f"(+{quantity:g})"
+        f"Drafted an order for {amount} of {item.name}{where}{due}. Send it to the rep, or mark it placed, under On order on "
+        f"the Inventory page; stock is booked when it is received, there or by its invoice."
     )
 
 
-def apply_inventory_reorder(db: Session, payload: dict) -> str:
-    return _restock(db, payload, "Reorder received")
+def _draft_lines(db: Session, payload: dict, action: AgentAction | None) -> str:
+    """A drafted order of several lines to one supplier, from the weekly draft or the agent's tool."""
+    from app.restaurant.inventory import site_scope
+
+    supplier = restaurant_crud.get_supplier(db, _require(payload, "supplier_id"))
+    if supplier is None:
+        raise ApplyError("No such supplier")
+    try:
+        order = orders.draft_with_lines(db, site_scope(db), supplier, list(payload.get("lines") or []),
+                                        note=(payload.get("note") or "")[:255] or None, action_id=action.id if action else None)
+    except orders.OrderError as exc:
+        raise ApplyError(str(exc)) from exc
+    lines = len(order.lines)
+    cost = f", about {order.estimated_cost:.2f}" if order.estimated_cost else ""
+    return (f"Drafted an order of {lines} line{'s' if lines != 1 else ''} to {supplier.name}{cost}. Send it to the rep from On order "
+            f"on the Inventory page, or from the order's own page. Nothing has been sent.")
 
 
-def apply_purchase_order(db: Session, payload: dict) -> str:
-    supplier = payload.get("supplier_name") or payload.get("supplier_id") or "unknown supplier"
-    return _restock(db, payload, f"Purchase order from {supplier} received")
+def apply_inventory_reorder(db: Session, payload: dict, action: AgentAction | None = None) -> str:
+    return _place_order(db, payload, action)
+
+
+def apply_purchase_order(db: Session, payload: dict, action: AgentAction | None = None) -> str:
+    if payload.get("lines"):
+        return _draft_lines(db, payload, action)
+    return _place_order(db, payload, action)
+
+
+def apply_calendar_item(db: Session, payload: dict) -> str:
+    from app.calendar import engine as calendar
+    from app.restaurant.inventory import site_scope
+
+    try:
+        item = calendar.write_item(db, site_scope(db), payload)
+    except (KeyError, ValueError) as exc:
+        raise ApplyError(f"The proposal has no usable date: {exc}") from exc
+    extra = " The equipment was added to the register." if payload.get("asset") else ""
+    return f"On the calendar: {item.title}, {item.kind.replace('_', ' ')} due {item.due_on.isoformat()}.{extra}"
+
+
+def apply_prep_sheet(db: Session, payload: dict, action: AgentAction | None = None) -> str:
+    from app.forecast import prep
+    from app.restaurant.inventory import site_scope
+
+    sheet = prep.write_sheet(db, site_scope(db), payload, action.id if action else None)
+    return f"Prep sheet for {sheet.date.isoformat()} confirmed: {len(sheet.lines)} ingredients. Print it from its page."
 
 
 def apply_shift_change(db: Session, payload: dict) -> str:
@@ -212,11 +266,66 @@ def apply_menu_change(db: Session, payload: dict) -> str:
 #: action_type -> applier. A proposal whose type is absent here cannot be
 #: approved, which is intentional: better a loud failure than an approval
 #: that quietly changes nothing.
+def apply_recipe(db: Session, payload: dict) -> str:
+    """A confirmed recipe from the proposal's lines (the operator may have edited quantities or dropped lines)."""
+    from app.audit.context import get_actor
+    from app.recipes import engine as recipes
+    from app.restaurant.inventory import site_scope
+
+    restaurant_id = site_scope(db)
+    recipe = recipes.write_recipe(db, restaurant_id, payload, confirmed_by=get_actor().id)
+    priced = len([line for line in recipe.lines])
+    return f"Recipe confirmed: {recipe.name}, {priced} line{'s' if priced != 1 else ''}. Plate cost is computed with the next weekly run, or now from its page."
+
+
+def apply_agreed_price(db: Session, payload: dict) -> str:
+    """An agreed price on the books: from the proposal's effective date, superseding any earlier one for the pair."""
+    from datetime import date as _date
+
+    from app.audit.context import get_actor
+    from app.prices.models import AgreedPrice, PriceItem
+    from app.restaurant.inventory import site_scope
+
+    restaurant_id = site_scope(db)
+    item = db.get(PriceItem, _require(payload, "item_id"))
+    if item is None or item.restaurant_id != restaurant_id:
+        raise ApplyError("No such item for this restaurant")
+    supplier = restaurant_crud.get_supplier(db, _require(payload, "supplier_id"))
+    if supplier is None:
+        raise ApplyError("No such supplier")
+    try:
+        unit_price = float(_require(payload, "unit_price"))
+        effective = _date.fromisoformat(str(payload.get("effective_from") or _date.today().isoformat())[:10])
+    except (TypeError, ValueError) as exc:
+        raise ApplyError(f"Bad price or date in the proposal: {exc}") from exc
+    if unit_price <= 0:
+        raise ApplyError("An agreed price must be positive")
+    for earlier in db.query(AgreedPrice).filter(AgreedPrice.restaurant_id == restaurant_id, AgreedPrice.item_id == item.id,
+                                                AgreedPrice.supplier_id == supplier.id, AgreedPrice.effective_to.is_(None)):
+        if earlier.effective_from < effective:
+            earlier.effective_to = effective
+    db.add(AgreedPrice(restaurant_id=restaurant_id, supplier_id=supplier.id, item_id=item.id, unit_price=unit_price, base_unit=item.unit,
+                       effective_from=effective, source_document_id=payload.get("source_document_id"), confirmed_by=get_actor().id))
+    db.flush()
+    return f"Agreed price on the books: {item.name} from {supplier.name} at {unit_price:.4g} per {item.unit} from {effective.isoformat()}. The next digest checks every invoice against it."
+
+
+def apply_menu_reprice(db: Session, payload: dict) -> str:
+    """Nothing changes here: the owner changes the price in the POS. Approval records that they mean to."""
+    return (f"Noted: {payload.get('item_name', 'the dish')} to be repriced by about {float(payload.get('suggested_delta') or 0):.2f}. "
+            "Change it in your POS; FullHouse never writes to a menu.")
+
+
 APPLIERS = {
     "inventory_reorder": apply_inventory_reorder,
     "purchase_order": apply_purchase_order,
     "shift_change": apply_shift_change,
     "menu_change": apply_menu_change,
+    "recipe": apply_recipe,
+    "agreed_price": apply_agreed_price,
+    "menu_reprice": apply_menu_reprice,
+    "prep_sheet": apply_prep_sheet,
+    "calendar_item": apply_calendar_item,
 }
 
 
@@ -231,6 +340,8 @@ def apply_action(db: Session, action: AgentAction) -> str:
             f"No applier for action_type {action.action_type!r}; "
             f"known types: {', '.join(sorted(APPLIERS))}"
         )
+    if action.action_type in ("inventory_reorder", "purchase_order", "prep_sheet"):
+        return applier(db, action.payload or {}, action)
     return applier(db, action.payload or {})
 
 
