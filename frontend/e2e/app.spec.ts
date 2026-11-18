@@ -43,7 +43,7 @@ test.describe('signing in', () => {
   test('the landing page explains FullHouse and leads to signing in', async ({ page }) => {
     const errors = watchForErrors(page)
     await page.goto('/')
-    await expect(page.getByRole('heading', { level: 1 })).toContainText('what your suppliers changed')
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('keep more of every dollar')
     for (const section of ['How it works', 'What you get', 'Your restaurant stays yours']) {
       await expect(page.getByRole('heading', { name: section })).toBeVisible()
     }

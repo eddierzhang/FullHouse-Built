@@ -8,49 +8,49 @@ type Props = {
 
 const STEPS: { title: string; body: string }[] = [
   {
-    title: "It reads your invoices",
-    body: "From Bill.com, a forwarded email, a phone photo or a PDF. Every line is matched to one item, with the pack size worked out, so a case from one supplier compares with a case from another.",
+    title: "It reads what you already have",
+    body: "Supplier invoices from Bill.com, a forwarded email, a phone photo or a PDF, and sales from your point of sale. Every invoice line is matched to one item, so a case from one supplier compares with a case from another.",
   },
   {
-    title: "It asks instead of guessing",
-    body: "When a printed line could be two things, you get one short question with two taps to answer. Five a week at most. Anything it isn’t sure of stays out of the digest.",
+    title: "It finds where the money goes",
+    body: "A price that crept up. A short delivery nobody claimed. A dish that now costs too much to make. An order bigger than the week needs. Each one comes with its dollars a week and the invoices behind it.",
   },
   {
-    title: "Every Monday, one decision",
-    body: "What changed, what it cost you, and what to do about it: which items to move between suppliers, which price rises and short deliveries to raise with a rep. With the message to the rep already written.",
+    title: "You decide, and you send",
+    body: "It drafts the order, the message to the rep, the new price and the schedule. You approve, edit or dismiss. Nothing reaches a supplier, your staff or your point of sale unless you send it.",
   },
 ];
 
 const AREAS: { icon: IconName; title: string; body: string }[] = [
   {
     icon: "profit",
-    title: "The weekly digest",
-    body: "Dollars at stake this week in one number, then three lists: switch supplier, price went up, owed to you. Ranked by dollars.",
-  },
-  {
-    icon: "inventory",
-    title: "Every item, every price",
-    body: "Eight weeks of per-case prices by supplier, and the raw invoice lines as printed, so you can check any number yourself.",
-  },
-  {
-    icon: "chat",
-    title: "Ask, don’t browse",
-    body: "“What did I pay for kale last month.” “Which supplier is cheapest on paper goods.” Two sentences back, with the invoices it used.",
+    title: "One list of what to fix",
+    body: "A weekly digest ranked by dollars: switch supplier, price went up, owed to you. The dollars at stake this week sit in one number at the top.",
   },
   {
     icon: "suppliers",
-    title: "Messages to reps, drafted",
-    body: "A price challenge, a credit claim or a short-delivery dispute, in three sentences with the invoice lines attached. You edit it and send it from your own mail app.",
+    title: "Supplier prices, watched",
+    body: "Eight weeks of per-case prices by supplier, with the invoice lines as printed. A price challenge or credit claim is drafted for you to send.",
+  },
+  {
+    icon: "inventory",
+    title: "Stock and ordering",
+    body: "Stock follows deliveries and sales. Orders are drafted from what you sell and what is on hand, in whole cases, before each supplier’s cutoff.",
+  },
+  {
+    icon: "menu",
+    title: "What each dish costs",
+    body: "Recipes are costed from your latest invoices. When an ingredient rises, you see which dishes pass your food cost target and the price that would fix it.",
   },
   {
     icon: "staff",
-    title: "Talking points for the manager meeting",
-    body: "Five lines from the digest in your words, on request.",
+    title: "The schedule and labor",
+    body: "A draft schedule built from how busy each hour is expected to be, checked against the rules you set. You edit it and publish it.",
   },
   {
     icon: "approvals",
     title: "Inside your limits",
-    body: "The agent never sends an order, changes a supplier, pays anything or alters an invoice. An order goes out by itself only if you switch autopilot on for that supplier, inside limits you set, with time to stop it. It never claims a market price, only that a price changed or another supplier charged less.",
+    body: "The agent proposes; people approve. An order goes out by itself only if you switch autopilot on for that supplier, inside limits you set, with time to stop it.",
   },
 ];
 
@@ -175,18 +175,18 @@ export function LandingPage({ options }: Props) {
           <section className="landing-hero">
             <div>
               <p className="landing-eyebrow">
-                Price intelligence for small restaurants
+                The back office for independent restaurants
               </p>
               <h1 className="landing-headline">
-                Every week, know what your suppliers changed, what it cost you,
-                and <em>what to do about it.</em>
+                Run the back of the house in one place, and{" "}
+                <em>keep more of every dollar.</em>
               </h1>
               <p className="landing-lead">
-                FullHouse reads your supplier invoices, matches every line to
-                one item with the pack size worked out, and sends you one digest
-                each Monday: which items to move between suppliers, which price
-                rises and short deliveries to raise with a rep. An agent does
-                the reading, matching and drafting. You decide and send.
+                FullHouse keeps your invoices, stock, orders, menu costs and
+                schedule together, and each week shows where money is slipping
+                away: a supplier price that rose, a dish that costs too much to
+                make, an order bigger than the week needs. An agent does the
+                reading and the drafting. You decide and send.
               </p>
               {actions}
               <p className="landing-note">
@@ -262,7 +262,7 @@ export function LandingPage({ options }: Props) {
           </h2>
           <p>
             {canSignUp
-              ? "Connect Bill.com, forward an invoice, or snap a photo of one. The first digest comes the Monday after."
+              ? "Connect Bill.com, forward an invoice, or snap a photo of one. The first list of what to fix comes the Monday after."
               : "Sign in to see this week’s digest."}
           </p>
           {actions}
@@ -270,7 +270,7 @@ export function LandingPage({ options }: Props) {
       </main>
 
       <footer className="landing-footer">
-        <span>FullHouse · supplier prices, read for you, decided by you</span>
+        <span>FullHouse · the restaurant back office that helps you keep more of what you earn</span>
         <a href="#signin">Sign in</a>
       </footer>
     </div>
