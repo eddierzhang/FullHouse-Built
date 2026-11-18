@@ -91,8 +91,27 @@ def dev(_args) -> None:
     ])
 
 
+def _model_provider() -> tuple[str, str]:
+    """(provider, what to say about it) for the demo: a real model when a key is set in the environment or in
+    backend/.env, else the rule-based assistant. An Anthropic key means Claude; an LLM_API_KEY means the
+    OpenAI-compatible provider (Gemini by default)."""
+    held = dict(os.environ)
+    env_file = BACKEND / ".env"
+    if env_file.exists():
+        for line in env_file.read_text(encoding="utf-8").splitlines():
+            key, sep, value = line.partition("=")
+            if sep and not key.strip().startswith("#"):
+                held.setdefault(key.strip(), value.strip())
+    if held.get("ANTHROPIC_API_KEY"):
+        return "anthropic", "Claude answers questions (ANTHROPIC_API_KEY is set)"
+    if held.get("LLM_API_KEY"):
+        return "openai", f"{held.get('LLM_MODEL') or 'a model'} answers questions (LLM_API_KEY is set)"
+    return "scripted", "questions are answered by rule (no model key is set)"
+
+
 def demo(_args) -> None:
     """The single-container demo, without the container."""
+    provider, said = _model_provider()
     step("Building the frontend")
     run([NPM, "run", "build"], FRONTEND, env={"VITE_API_BASE": "same-origin"})
 
@@ -100,11 +119,11 @@ def demo(_args) -> None:
     env = {
         "DATABASE_URL": f"sqlite:///{database.as_posix()}",
         "DEMO_MODE": "true",
-        "LLM_PROVIDER": "scripted",
+        "LLM_PROVIDER": provider,
         "SCRIPTED_STEP_DELAY_SECONDS": "0.8",
         "STATIC_DIR": str(FRONTEND / "dist"),
     }
-    step("Loading the demo restaurant")
+    step(f"Loading the demo restaurant; {said}")
     run([python(), "-m", "alembic", "upgrade", "head"], BACKEND, env)
 
     step("Demo on http://localhost:8080 (Ctrl+C to stop)")
