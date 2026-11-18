@@ -1,6 +1,8 @@
 """Module D against the database, the schedule (spec sections 8.4, 8.5, 11 and 12): a draft generated from the people
 needed, edited, locked, regenerated around the lock and published, with wages kept to those with wage access."""
 
+import re
+
 import json
 from datetime import timedelta
 from decimal import Decimal as D
@@ -14,6 +16,9 @@ from app.platform import flags, jobs
 from app.platform.models import Event
 from test_margin_labor_labor import Floor
 from test_restaurant_details import _account, _other_client, _second_restaurant
+
+#: The rate 18.5 as a number of its own: not the seconds of a timestamp ("23:22:18.504720"), which follow a colon.
+RATE = re.compile(r"(?<![\d:.])18\.5")
 
 API = "/api/v1/margin-labor"
 RULES = {"weekly_overtime_hours": 40, "daily_overtime_hours": 8, "min_rest_hours": 10, "min_shift_hours": 4, "max_shift_hours": 8, "max_hours_per_day": 10,
@@ -168,9 +173,9 @@ def test_a_wage_reaches_only_those_with_wage_access_and_never_a_log(client, db):
     assert changed.aggregate_id == ana and changed.payload == {"changed_by": changed.payload["changed_by"]} and "@" in changed.payload["changed_by"]
     assert db.query(ChangeLog).filter(ChangeLog.entity_type == "employee_wages").count() == 0
     for row in db.query(ChangeLog):
-        assert "18.5" not in json.dumps([row.before, row.after], default=str) and "hourly_rate" not in json.dumps([row.before, row.after], default=str)
+        assert not RATE.search(json.dumps([row.before, row.after], default=str)) and "hourly_rate" not in json.dumps([row.before, row.after], default=str)
     for event in db.query(Event):
-        assert "18.5" not in json.dumps(event.payload, default=str)
+        assert not RATE.search(json.dumps(event.payload, default=str))
     # A rate left out of a save is left as it is.
     client.put(f"{API}/labor/team/{ana}", json={"role_keys": ["server"]})
     assert db.query(EmployeeWage).filter_by(staff_id=ana).one().hourly_rate == D("18.5000")

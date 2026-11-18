@@ -62,7 +62,10 @@ def order_quantity(days: list[tuple[Decimal, Decimal, Decimal]], shelf_life_days
     period = total + z * root
     need = period * (1 + loss)
     raw = need - est_on_hand_at_delivery
-    packs = 0 if raw <= 0 or pack_size <= 0 else int((raw / pack_size).to_integral_value(rounding=ROUND_CEILING))
+    # Packs come from the quantity as it is stored and shown (four places), so the inputs on the page give the
+    # same number of packs, and noise in the fifth place never adds a case.
+    shown = raw.quantize(QTY)
+    packs = 0 if shown <= 0 or pack_size <= 0 else int((shown / pack_size).to_integral_value(rounding=ROUND_CEILING))
     return OrderQty(len(used), total.quantize(QTY), root.quantize(QTY), z, period.quantize(QTY), need.quantize(QTY), raw.quantize(QTY), packs,
                     (pack_size * packs).quantize(QTY))
 
