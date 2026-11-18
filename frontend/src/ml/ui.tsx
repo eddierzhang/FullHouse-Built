@@ -1,4 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from 'react'
+import { PageTitle } from '../components/PageFrame'
 import { Icon, type IconName } from '../components/Icon'
 import { fetchWhy, type RawWhy } from './api'
 import { StepLines, Waterfall } from './charts'
@@ -19,7 +20,7 @@ export function HeaderSentence({ title, sentence, updated, state, children }: { 
   return (
     <header className="ml-header">
       <div className="ml-header-top">
-        <h1 className="page-title">{title}</h1>
+        <PageTitle>{title}</PageTitle>
         <div className="ml-header-meta">
           {updated && <span className="muted small">Updated {updated}</span>}
           {state && (
@@ -504,7 +505,7 @@ export function useDeferred() {
 export function Skeleton({ title }: { title: string }) {
   return (
     <div className="ml-skeleton" aria-busy="true" aria-label={`Loading ${title}`} data-testid="skeleton">
-      <h1 className="page-title">{title}</h1>
+      <PageTitle>{title}</PageTitle>
       <div className="ml-skel ml-skel-line" />
       <div className="ml-tiles">
         <div className="ml-skel ml-skel-tile" />
@@ -521,7 +522,7 @@ export function Skeleton({ title }: { title: string }) {
 export function LoadFailed({ title, what, onRetry }: { title: string; what: string; onRetry: () => void }) {
   return (
     <div>
-      <h1 className="page-title">{title}</h1>
+      <PageTitle>{title}</PageTitle>
       <StateBanner kind="error" text={`${what} did not load. The rest of FullHouse still works.`} action={{ label: 'Retry', onClick: onRetry }} />
     </div>
   )

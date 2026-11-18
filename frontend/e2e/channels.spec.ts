@@ -1,6 +1,10 @@
 import { expect, test } from '@playwright/test'
 import { API, expectAccessible, expectNoSidewaysScroll, expectPageRules, expectWhyPanel, ML, ML_STAFF, signIn } from './ml'
 
+// Channels is taken out of the app for now (no sidebar entry, no digest card). Its page and API are still in the
+// code; these tests run again when it comes back.
+test.skip(() => true, 'Channels is taken out for now')
+
 /**
  * Module E, Channels, in the Margin & Labor test kitchen. Fries sell for $5.00 on Uber Eats, which takes 33% and
  * $2.00 an order, with $1.00 of packaging: each loses 8.5 cents. Burgers and wings do well on DoorDash, where two

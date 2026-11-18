@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { PageFrame, PageTitle } from '../components/PageFrame'
 import { getPrepSheet, listPrepSheets, markPrepSheetPrinted } from '../api/client'
 import type { AppContext } from '../app/context'
 import { Icon } from '../components/Icon'
@@ -12,10 +13,10 @@ export function PrepSheetsPage({ app }: { app: AppContext }) {
   const load = useLoad(listPrepSheets, [])
   void app
   return (
-    <main className="page">
+    <PageFrame>
       <div className="page-header">
         <div>
-          <h1 className="page-title">Prep sheets</h1>
+          <PageTitle>Prep sheets</PageTitle>
           <p className="page-subtitle">What the forecast and your recipes call for, per ingredient, for the next days. Proposed by the agent, confirmed by you, printed for the kitchen.</p>
         </div>
       </div>
@@ -43,7 +44,7 @@ export function PrepSheetsPage({ app }: { app: AppContext }) {
           )
         }
       </Loaded>
-    </main>
+    </PageFrame>
   )
 }
 

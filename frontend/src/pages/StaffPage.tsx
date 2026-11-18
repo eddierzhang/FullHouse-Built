@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { PageFrame, PageTitle } from '../components/PageFrame'
 import {
   type Shift,
   type Staff,
@@ -206,10 +207,10 @@ export function StaffPage({ app, user }: { app: AppContext; user: User }) {
   const proposals = app.pendingActions.filter((a) => a.action_type === 'shift_change').length
 
   return (
-    <main className="page">
+    <PageFrame className="page">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Schedule & staff</h1>
+          <PageTitle embedded="Team and shifts">Schedule & staff</PageTitle>
           <p className="page-subtitle">{isManager ? 'The team and the schedule.' : 'Your shifts and the team schedule.'}</p>
         </div>
         <div className="row wrap">
@@ -583,6 +584,6 @@ export function StaffPage({ app, user }: { app: AppContext; user: User }) {
           </section>
         </div>
       </div>
-    </main>
+    </PageFrame>
   )
 }

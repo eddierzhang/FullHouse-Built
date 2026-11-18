@@ -5231,3 +5231,15 @@ button.ml-bars-row { cursor: pointer; }
 .pi-docs-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
 .pi-docs-head > div:first-child { flex: 1 1 260px; }
 .pi-section .card { font-size: 14px; line-height: 1.45; }
+
+/* A page made of several (Menu, Schedule & staff): jump links, then each part as a section. */
+.jump-links { display: flex; flex-wrap: wrap; gap: 8px; margin: -8px 0 24px; }
+.jump-links a { padding: 6px 12px; border: 1px solid var(--border-strong); border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--text); text-decoration: none; background: var(--surface); }
+.jump-links a:hover { border-color: var(--brand); }
+.page-section { scroll-margin-top: 80px; }
+.page-section + .page-section { margin-top: 40px; padding-top: 32px; border-top: 1px solid var(--border); }
+.section-title { font-size: 22px; }
+
+/* Contrast: initials on the soft brand tile and the green badge now pass WCAG AA at their small sizes. */
+.avatar { color: #94390f; }
+.badge-success { color: #1f6436; }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { PageFrame } from '../components/PageFrame'
 import type { AppContext } from '../app/context'
 import { readHashParam } from '../lib/useHashRoute'
 import { useLoad } from '../lib/useLoad'
@@ -54,8 +55,8 @@ function WeekPage({ app, weekOf }: { app: AppContext; weekOf: string }) {
   const [tab, setTab] = useState<'demand' | 'cost'>('demand')
   const data = load.data
   const title = 'Labor'
-  if (load.status === 'loading') return <main className="page ml-page"><Skeleton title={title} /></main>
-  if (!data) return <main className="page ml-page"><LoadFailed title={title} what="The labor week" onRetry={() => void load.reload()} /></main>
+  if (load.status === 'loading') return <PageFrame className="page ml-page"><Skeleton title={title} /></PageFrame>
+  if (!data) return <PageFrame className="page ml-page"><LoadFailed title={title} what="The labor week" onRetry={() => void load.reload()} /></PageFrame>
 
   const updated = data.computed_at ? `${dayLabel(data.computed_at)} ${timeLabel(data.computed_at)}` : undefined
   if (data.state === 'setup') {
@@ -65,10 +66,10 @@ function WeekPage({ app, weekOf }: { app: AppContext; weekOf: string }) {
         : { label: 'Set a standard', detail: 'A standard says how much one person handles an hour.', done: s.done, action: { label: 'Open standards', href: '#labor/standards' } },
     )
     return (
-      <main className="page ml-page">
+      <PageFrame className="page ml-page">
         <HeaderSentence title={title} sentence={weekSentence(data)} state="setup" />
         <SetupChecklist title="Before people needed can show" steps={steps} />
-      </main>
+      </PageFrame>
     )
   }
   const totals = data.totals!
@@ -106,7 +107,7 @@ function WeekPage({ app, weekOf }: { app: AppContext; weekOf: string }) {
     fix: { label: 'Open standards', href: '#labor/standards' },
   })
   return (
-    <main className={`page ml-page${data.stale ? ' ml-stale' : ''}`}>
+    <PageFrame className={`page ml-page${data.stale ? ' ml-stale' : ''}`}>
       <HeaderSentence title={title} sentence={weekSentence(data)} updated={updated} state={data.state}>
         <ConfidenceLabel weeks={data.weeks_of_data} needed={8} />
         <a className="btn btn-secondary btn-sm" href="#labor/today">
@@ -237,7 +238,7 @@ function WeekPage({ app, weekOf }: { app: AppContext; weekOf: string }) {
         </section>
       )}
       {why.panel}
-    </main>
+    </PageFrame>
   )
 }
 
@@ -261,8 +262,8 @@ function StandardsPage({ app }: { app: AppContext }) {
   const [editing, setEditing] = useState<string | null>(null)
   const data = load.data
   const title = 'Labor standards'
-  if (load.status === 'loading') return <main className="page ml-page"><Skeleton title={title} /></main>
-  if (!data) return <main className="page ml-page"><LoadFailed title={title} what="Labor standards" onRetry={() => void load.reload()} /></main>
+  if (load.status === 'loading') return <PageFrame className="page ml-page"><Skeleton title={title} /></PageFrame>
+  if (!data) return <PageFrame className="page ml-page"><LoadFailed title={title} what="Labor standards" onRetry={() => void load.reload()} /></PageFrame>
   const updated = data.computed_at ? `${dayLabel(data.computed_at)} ${timeLabel(data.computed_at)}` : undefined
   const shown = data.roles.find((r) => r.role_key === picked) ?? data.roles.find((r) => r.histogram.length > 0) ?? data.roles[0]
   const acc = data.accuracy
@@ -271,7 +272,7 @@ function StandardsPage({ app }: { app: AppContext }) {
   const worstMiss = worst ? percent(worst.wape) : ''
   const edit = editing ? data.roles.find((r) => r.role_key === editing) : undefined
   return (
-    <main className="page ml-page">
+    <PageFrame className="page ml-page">
       <a className="ml-back" href="#labor">
         Labor
       </a>
@@ -354,7 +355,7 @@ function StandardsPage({ app }: { app: AppContext }) {
         </div>
       </section>
       {edit && <EditStandard app={app} row={edit} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void load.reload() }} />}
-    </main>
+    </PageFrame>
   )
 }
 

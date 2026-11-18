@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { PageFrame } from '../components/PageFrame'
 import { approveAction, rejectAction } from '../api/client'
 import type { AppContext } from '../app/context'
 import { readHashParam } from '../lib/useHashRoute'
@@ -71,17 +72,17 @@ function MenuCostsList({ app }: { app: AppContext }) {
   const data = load.data
   const limit = useRowLimit(data?.dishes ?? [])
 
-  if (load.status === 'loading') return <main className="page ml-page"><Skeleton title={TITLE} /></main>
-  if (!data) return <main className="page ml-page"><LoadFailed title={TITLE} what="Menu costs" onRetry={() => void load.reload()} /></main>
+  if (load.status === 'loading') return <PageFrame className="page ml-page"><Skeleton title={TITLE} /></PageFrame>
+  if (!data) return <PageFrame className="page ml-page"><LoadFailed title={TITLE} what="Menu costs" onRetry={() => void load.reload()} /></PageFrame>
 
   const updated = data.computed_at ? `${dayLabel(data.computed_at)} ${timeLabel(data.computed_at)}` : undefined
   if (data.state === 'setup') {
     const steps: SetupStep[] = data.setup.map((s) => ({ label: STEPS[s.key].label, detail: STEPS[s.key].detail, done: s.done, action: { label: STEPS[s.key].action, href: STEPS[s.key].href } }))
     return (
-      <main className="page ml-page">
+      <PageFrame className="page ml-page">
         <HeaderSentence title={TITLE} sentence={headerSentence(data)} state="setup" />
         <SetupChecklist title="Before costs can show" steps={steps} />
-      </main>
+      </PageFrame>
     )
   }
 
@@ -166,7 +167,7 @@ function MenuCostsList({ app }: { app: AppContext }) {
   const pending = deferred.pendingId ? data.dishes.find((d) => d.recipe_id === deferred.pendingId) : undefined
 
   return (
-    <main className={`page ml-page${data.stale ? ' ml-stale' : ''}`}>
+    <PageFrame className={`page ml-page${data.stale ? ' ml-stale' : ''}`}>
       <HeaderSentence title={TITLE} sentence={headerSentence(data)} updated={updated} state="live" />
       {data.stale && data.last_sales_date && (
         <StateBanner kind="stale" text={`Sales were last imported ${dayLabel(data.last_sales_date)}. Import a newer export.`} action={{ label: 'Open connections', href: '#connect' }} />
@@ -308,6 +309,6 @@ function MenuCostsList({ app }: { app: AppContext }) {
       )}
       {pending && deferred.bar}
       {why.panel}
-    </main>
+    </PageFrame>
   )
 }

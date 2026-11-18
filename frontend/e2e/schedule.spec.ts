@@ -1,5 +1,8 @@
-import { expect, test } from '@playwright/test'
-import { expectAccessible, expectPageRules, ML, signIn } from './ml'
+import { expect, test, type Page } from '@playwright/test'
+import { expectAccessible, expectPageRules, ML, signIn, part } from './ml'
+
+/** This module's part of the combined page, or the whole document on any other page. */
+const view = (page: Page) => part(page, 'labor')
 
 /**
  * Module D, the schedule, in the Labor test kitchen: nine people, the owner's rules confirmed, 14 days of notice
@@ -14,14 +17,14 @@ test.beforeEach(async ({ page }) => signIn(page, OWNER))
 test('flow 2: generate a schedule, edit one shift, lock it, regenerate around it, and publish', async ({ page }) => {
   test.setTimeout(240_000)
   await page.goto('/#labor')
-  const panel = page.getByTestId('schedule')
+  const panel = view(page).getByTestId('schedule')
   await expect(panel).toContainText(/No schedule yet for the week of /)
   await panel.getByRole('button', { name: 'Generate' }).click()
   await expect(panel.getByText('Draft v1')).toBeVisible({ timeout: 90_000 })
   // The header now says what the draft costs against expected sales; the tiles say what is still open.
-  await expect(page.getByTestId('header-sentence')).toHaveText(/^Draft for [A-Z][a-z]{2} \d+: \d+ hours, \$[\d,]+, \d+\.\d% of expected sales\.$/)
-  await expectPageRules(page)
-  const tiles = page.getByTestId('stat-tile')
+  await expect(view(page).getByTestId('header-sentence')).toHaveText(/^Draft for [A-Z][a-z]{2} \d+: \d+ hours, \$[\d,]+, \d+\.\d% of expected sales\.$/)
+  await expectPageRules(view(page))
+  const tiles = view(page).getByTestId('stat-tile')
   await expect(tiles.nth(0)).toContainText('Scheduled hours')
   await expect(tiles.nth(1)).toContainText('Labor %')
   await expect(tiles.nth(2)).toContainText('Open shifts')
@@ -43,7 +46,7 @@ test('flow 2: generate a schedule, edit one shift, lock it, regenerate around it
   const bar = grid.getByRole('row', { name: new RegExp(who) }).getByRole('button').first()
   await bar.focus()
   await page.keyboard.press('Enter')
-  const dialog = page.getByRole('dialog', { name: 'Edit shift' })
+  const dialog = view(page).getByRole('dialog', { name: 'Edit shift' })
   await expect(dialog.getByLabel('Person')).not.toHaveValue('')
   const shiftId = await (async () => {
     const person = await dialog.getByLabel('Person').inputValue()
@@ -86,17 +89,17 @@ test('flow 2: generate a schedule, edit one shift, lock it, regenerate around it
 
   // Publish: the week starts inside the 14 days of notice the owner asked for, so it warns first.
   await panel.getByRole('button', { name: 'Publish' }).click()
-  const warn = page.getByRole('dialog', { name: 'Before you publish' })
+  const warn = view(page).getByRole('dialog', { name: 'Before you publish' })
   await expect(warn.getByTestId('publish-warnings')).toContainText(/The week starts in \d+ days\. Your rule asks for 14 days of notice\./)
   await expect(warn).toContainText('Publishing notifies nobody. Tell the team, or export the week.')
   await warn.getByRole('button', { name: 'Publish anyway' }).click()
-  const undo = page.getByRole('status').filter({ hasText: 'Schedule published.' })
+  const undo = view(page).getByRole('status').filter({ hasText: 'Schedule published.' })
   await undo.getByRole('button', { name: 'Undo' }).click() // nothing was sent
   expect((await (await page.request.get(WEEK)).json()).schedule.status).toBe('draft')
   await panel.getByRole('button', { name: 'Publish' }).click()
   await warn.getByRole('button', { name: 'Publish anyway' }).click()
   await expect(panel.getByText('Published v2')).toBeVisible({ timeout: 45_000 })
-  await expect(page.getByTestId('header-sentence')).toHaveText(/^Published for /)
+  await expect(view(page).getByTestId('header-sentence')).toHaveText(/^Published for /)
   const published = (await (await page.request.get(WEEK)).json()).schedule
   expect(published.status).toBe('published')
   // The export says who works when and holds no wage.
@@ -109,14 +112,14 @@ test('flow 2: generate a schedule, edit one shift, lock it, regenerate around it
 test('staff see the published week with hours only: no cost, no rate, and no way to change it', async ({ page }) => {
   await signIn(page, STAFF)
   await page.goto('/#labor')
-  await expect(page.getByTestId('header-sentence')).toHaveText(/^Published for [A-Z][a-z]{2} \d+: \d+ hours scheduled, \d+ needed\.$/)
-  const text = await page.locator('main').innerText()
+  await expect(view(page).getByTestId('header-sentence')).toHaveText(/^Published for [A-Z][a-z]{2} \d+: \d+ hours scheduled, \d+ needed\.$/)
+  const text = await view(page).innerText()
   expect(text).not.toMatch(/\$/)
   expect(text).not.toContain('Labor %')
-  const panel = page.getByTestId('schedule')
+  const panel = view(page).getByTestId('schedule')
   await expect(panel.locator('table.ml-grid').getByRole('row', { name: /Ana Rivera/ })).toBeVisible()
   for (const name of ['Regenerate', 'Publish', 'Rules', 'Add shift']) await expect(panel.getByRole('button', { name })).toHaveCount(0)
-  await expect(page.getByRole('tab', { name: 'Cost' })).toHaveCount(0)
+  await expect(view(page).getByRole('tab', { name: 'Cost' })).toHaveCount(0)
   const week = await (await page.request.get(WEEK)).json()
   expect(JSON.stringify(week)).not.toContain('hourly_rate')
   expect(week.schedule.cost_total).toBeUndefined()
@@ -125,13 +128,13 @@ test('staff see the published week with hours only: no cost, no rate, and no way
 
 test('below 1024 pixels the schedule is a read-only list by day, and the Cost tab shows labor share by day', async ({ page }) => {
   await page.goto('/#labor')
-  await page.getByRole('tab', { name: 'Cost' }).click()
-  const chart = page.getByTestId('primary-chart')
+  await view(page).getByRole('tab', { name: 'Cost' }).click()
+  const chart = view(page).getByTestId('primary-chart')
   await expect(chart.getByRole('heading')).toHaveText(/^[A-Z][a-z]+day has the highest labor share, \d+\.\d% of expected sales$/)
   await chart.getByRole('button', { name: 'View as table' }).click()
   await expect(chart.getByRole('row')).toHaveCount(8)
   await page.setViewportSize({ width: 900, height: 900 })
-  const panel = page.getByTestId('schedule')
+  const panel = view(page).getByTestId('schedule')
   await expect(panel.getByRole('list', { name: 'Shifts by day' })).toBeVisible()
   await expect(panel.locator('table.ml-grid')).toHaveCount(0)
   await expect(panel.getByRole('list', { name: 'Shifts by day' })).toContainText(/\d+:\d\d [ap]m to \d+:\d\d [ap]m, Server: /)

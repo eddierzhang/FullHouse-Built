@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { PageFrame } from '../components/PageFrame'
 import type { AppContext } from '../app/context'
 import { readHashParam } from '../lib/useHashRoute'
 import { useLoad } from '../lib/useLoad'
@@ -60,8 +61,8 @@ function UsageList({ app }: { app: AppContext }) {
   const data = load.data
   const limit = useRowLimit(data?.items ?? [])
 
-  if (load.status === 'loading') return <main className="page ml-page"><Skeleton title={TITLE} /></main>
-  if (!data) return <main className="page ml-page"><LoadFailed title={TITLE} what="Usage" onRetry={() => void load.reload()} /></main>
+  if (load.status === 'loading') return <PageFrame className="page ml-page"><Skeleton title={TITLE} /></PageFrame>
+  if (!data) return <PageFrame className="page ml-page"><LoadFailed title={TITLE} what="Usage" onRetry={() => void load.reload()} /></PageFrame>
 
   const updated = data.computed_at ? `${dayLabel(data.computed_at)} ${timeLabel(data.computed_at)}` : undefined
   const coverageWords = `Recipes cover ${percent(data.coverage)} of sales. Findings need ${percent(data.coverage_live)}.`
@@ -70,13 +71,13 @@ function UsageList({ app }: { app: AppContext }) {
       ? data.missing_recipes.slice(0, 6).map((m) => ({ label: `${m.has_recipe ? 'Price every line for' : 'Add a recipe for'} ${m.name}`, detail: m.share ? `${percent(m.share)} of sales, last 28 days` : undefined, done: false, action: { label: 'Open recipes', href: '#recipes' } }))
       : [{ label: 'Import sales', detail: 'Usage compares what sold with what was bought.', done: false, action: { label: 'Open connections', href: '#connect' } }]
     return (
-      <main className="page ml-page">
+      <PageFrame className="page ml-page">
         <HeaderSentence title={TITLE} sentence={usageSentence(data)} state="setup" />
         <div className="card ml-pad">
           <CoverageBar value={Number(data.coverage)} needed={Number(data.coverage_live)} label={coverageWords} />
         </div>
         <SetupChecklist title={data.has_sales ? 'Top sellers that need a costed recipe' : 'Before usage can show'} steps={steps} />
-      </main>
+      </PageFrame>
     )
   }
 
@@ -134,7 +135,7 @@ function UsageList({ app }: { app: AppContext }) {
   const check = checking ? data.items.find((i) => i.item_id === checking) : undefined
 
   return (
-    <main className={`page ml-page${data.stale ? ' ml-stale' : ''}`}>
+    <PageFrame className={`page ml-page${data.stale ? ' ml-stale' : ''}`}>
       <HeaderSentence title={TITLE} sentence={usageSentence(data)} updated={updated} state={data.state} />
       {data.stale && <StateBanner kind="stale" text={data.last_sales_date ? `Sales were last imported ${dayLabel(data.last_sales_date)}. Import a newer export.` : 'No sales are imported. Import an export.'} action={{ label: 'Open connections', href: '#connect' }} />}
       {data.state === 'learning' && (
@@ -248,7 +249,7 @@ function UsageList({ app }: { app: AppContext }) {
       )}
       {deferred.bar}
       {why.panel}
-    </main>
+    </PageFrame>
   )
 }
 
@@ -266,8 +267,8 @@ function IngredientPage({ app, itemId }: { app: AppContext; itemId: string }) {
   const why = useWhy()
   const [busy, setBusy] = useState(false)
   const data = load.data
-  if (load.status === 'loading') return <main className="page ml-page"><Skeleton title={TITLE} /></main>
-  if (!data) return <main className="page ml-page"><LoadFailed title={TITLE} what="This ingredient" onRetry={() => void load.reload()} /></main>
+  if (load.status === 'loading') return <PageFrame className="page ml-page"><Skeleton title={TITLE} /></PageFrame>
+  if (!data) return <PageFrame className="page ml-page"><LoadFailed title={TITLE} what="This ingredient" onRetry={() => void load.reload()} /></PageFrame>
 
   const unit = data.item.base_unit
   const current = data.current
@@ -286,7 +287,7 @@ function IngredientPage({ app, itemId }: { app: AppContext; itemId: string }) {
     }
   }
   return (
-    <main className="page ml-page">
+    <PageFrame className="page ml-page">
       <a className="ml-back" href="#usage">
         Usage
       </a>
@@ -336,6 +337,6 @@ function IngredientPage({ app, itemId }: { app: AppContext; itemId: string }) {
         </>
       )}
       {why.panel}
-    </main>
+    </PageFrame>
   )
 }

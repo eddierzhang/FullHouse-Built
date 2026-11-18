@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { PageFrame, PageTitle } from '../components/PageFrame'
 import { listDishRecipes, runRecipeOnboarding } from '../api/client'
 import type { AppContext } from '../app/context'
 import { Empty, Loaded } from '../components/PageState'
@@ -24,10 +25,10 @@ export function RecipesPage({ app }: { app: AppContext }) {
   }
 
   return (
-    <main className="page">
+    <PageFrame className="page">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Recipes</h1>
+          <PageTitle>Recipes</PageTitle>
           <p className="page-subtitle">What each dish costs to plate this week, from the prices on your invoices.</p>
         </div>
         {app.canManage && (
@@ -84,6 +85,6 @@ export function RecipesPage({ app }: { app: AppContext }) {
           )
         }
       </Loaded>
-    </main>
+    </PageFrame>
   )
 }

@@ -36,18 +36,17 @@ import { announceDataChanged } from '../lib/useLoad'
 import { PRICE_ROUTES, type Route, readHashParam, useHashRoute } from '../lib/useHashRoute'
 import { AgentsPage } from '../pages/AgentsPage'
 import { CalendarPage } from '../pages/CalendarPage'
+import { MenuSectionsPage, StaffSectionsPage } from '../pages/SectionsPage'
 import { InvoiceHubPage } from '../pages/InvoiceHubPage'
 import { ConnectPage } from '../pages/ConnectPage'
-import { PrepSheetPage, PrepSheetsPage } from '../pages/PrepSheetPage'
+import { PrepSheetPage } from '../pages/PrepSheetPage'
 import { PurchaseOrderPage } from '../pages/PurchaseOrderPage'
 import { RecipePage } from '../pages/RecipePage'
-import { RecipesPage } from '../pages/RecipesPage'
 import { CustomersPage } from '../pages/CustomersPage'
 import { DigestPage } from '../pages/DigestPage'
 import { LaborPage } from '../ml/LaborPage'
 import { MenuCostsPage } from '../ml/MenuCostsPage'
 import { OrderingPage } from '../ml/OrderingPage'
-import { ChannelsPage } from '../ml/ChannelsPage'
 import { UsagePage } from '../ml/UsagePage'
 import { DraftPage } from '../pages/DraftPage'
 import { ItemPage } from '../pages/ItemPage'
@@ -60,13 +59,11 @@ import { ToolsPage } from '../pages/ToolsPage'
 import { HistoryPage } from '../pages/HistoryPage'
 import { ApprovalsPage } from '../pages/ApprovalsPage'
 import { InventoryPage } from '../pages/InventoryPage'
-import { MenuPage } from '../pages/MenuPage'
 import { OverviewPage } from '../pages/OverviewPage'
 import { ProfitPage } from '../pages/ProfitPage'
 import { ReceivePage } from '../pages/ReceivePage'
 import { RunsPage } from '../pages/RunsPage'
 import { ProfilePage } from '../pages/ProfilePage'
-import { StaffPage } from '../pages/StaffPage'
 import { SuppliersPage } from '../pages/SuppliersPage'
 import type { AppContext } from './context'
 
@@ -166,15 +163,11 @@ const INSIGHTS_GROUP: { label: string; items: NavItem[] } = {
 }
 
 /** Pages that are tabs of another page (SectionTabs): the sidebar marks their section as the current page. */
-const SECTION_OF: Partial<Record<Route, Route>> = { count: 'inventory', variance: 'inventory', receive: 'suppliers', questions: 'invoices', items: 'invoices', thread: 'invoices', documents: 'invoices' }
+const SECTION_OF: Partial<Record<Route, Route>> = { count: 'inventory', variance: 'inventory', receive: 'suppliers', questions: 'invoices', items: 'invoices', thread: 'invoices', documents: 'invoices', 'menu-costs': 'menu', usage: 'menu', recipes: 'menu', prep: 'menu', channels: 'menu', labor: 'staff' }
 
 /** The Margin & Labor Engine's pages, each behind its own flag, with the spec's labels. */
 const MARGIN_LABOR: { flag: string; item: NavItem }[] = [
-  { flag: 'ml_menu_costs', item: { route: 'menu-costs', label: 'Menu costs', icon: 'menu' } },
-  { flag: 'ml_usage', item: { route: 'usage', label: 'Usage', icon: 'inventory' } },
   { flag: 'ml_ordering', item: { route: 'ordering-prep', label: 'Ordering and prep', icon: 'suppliers' } },
-  { flag: 'ml_labor', item: { route: 'labor', label: 'Labor', icon: 'staff' } },
-  { flag: 'ml_channels', item: { route: 'channels', label: 'Channels', icon: 'trend' } },
 ]
 
 /** Words people type for a page that its name doesn't contain. */
@@ -444,15 +437,15 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
       case 'digest':
         return <DigestPage app={app} />
       case 'menu-costs':
-        return <MenuCostsPage app={app} />
+        return readHashParam() ? <MenuCostsPage app={app} /> : <MenuSectionsPage app={app} at={route} />
       case 'usage':
-        return <UsagePage app={app} />
+        return readHashParam() ? <UsagePage app={app} /> : <MenuSectionsPage app={app} at={route} />
       case 'channels':
-        return <ChannelsPage app={app} />
+        return <MenuSectionsPage app={app} at="menu" /> // Channels is taken out for now; its code stays in src/ml
       case 'ordering-prep':
         return <OrderingPage app={app} />
       case 'labor':
-        return <LaborPage app={app} />
+        return readHashParam() ? <LaborPage app={app} /> : <StaffSectionsPage app={app} user={user} at={route} />
       case 'items':
         return <InvoiceHubPage app={app} section={route} />
       case 'item':
@@ -476,9 +469,9 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
       case 'suppliers':
         return <SuppliersPage app={app} />
       case 'menu':
-        return <MenuPage app={app} />
+        return <MenuSectionsPage app={app} at={route} />
       case 'staff':
-        return <StaffPage app={app} user={user} />
+        return <StaffSectionsPage app={app} user={user} at={route} />
       case 'customers':
         return <CustomersPage app={app} />
       case 'connect':
@@ -486,7 +479,7 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
       case 'documents':
         return <InvoiceHubPage app={app} section={route} />
       case 'recipes':
-        return <RecipesPage app={app} />
+        return <MenuSectionsPage app={app} at={route} />
       case 'recipe':
         return <RecipePage app={app} />
       case 'po':
@@ -494,7 +487,7 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
       case 'calendar':
         return <CalendarPage app={app} />
       case 'prep':
-        return readHashParam() ? <PrepSheetPage app={app} /> : <PrepSheetsPage app={app} />
+        return readHashParam() ? <PrepSheetPage app={app} /> : <MenuSectionsPage app={app} at={route} />
       case 'receive':
         return flags.v3_receiving ? <ReceivePage app={app} /> : <InventoryPage app={app} user={user} />
       case 'autopilot':
@@ -530,8 +523,6 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
     if (label === 'Inventory' && flags.v3_autopilot) more.push({ route: 'autopilot', label: 'Ordering autopilot', icon: 'play' })
     if (label === 'Restaurant' && flags.v2_calendar) more.push({ route: 'calendar', label: 'Calendar', icon: 'clock' })
     if (label === 'Restaurant' && flags.v2_connect) more.push({ route: 'connect', label: 'Connections', icon: 'suppliers' })
-    if (label === 'Menu' && flags.v2_documents) more.push({ route: 'recipes', label: 'Recipes', icon: 'menu' })
-    if (label === 'Menu' && flags.v2_orders) more.push({ route: 'prep', label: 'Prep sheets', icon: 'inventory' })
     return more
   }
   const marginLabor = MARGIN_LABOR.filter((entry) => flags[entry.flag]).map((entry) => entry.item)
@@ -562,6 +553,12 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
     { label: 'Conversation', href: '#thread', group: 'Invoices', icon: 'chat', keywords: PAGE_KEYWORDS.thread },
   )
   if (flags.v2_documents) commandPages.push({ label: 'Documents', href: '#documents', group: 'Invoices', icon: 'clock', keywords: PAGE_KEYWORDS.documents })
+  // The parts of Menu and of Schedule & staff, by name.
+  if (flags.ml_menu_costs) commandPages.push({ label: 'Menu costs', href: '#menu-costs', group: 'Menu', icon: 'menu', keywords: PAGE_KEYWORDS['menu-costs'] })
+  if (flags.ml_usage) commandPages.push({ label: 'Usage', href: '#usage', group: 'Menu', icon: 'inventory', keywords: PAGE_KEYWORDS.usage })
+  if (flags.v2_documents) commandPages.push({ label: 'Recipes', href: '#recipes', group: 'Menu', icon: 'menu', keywords: PAGE_KEYWORDS.recipes })
+  if (flags.v2_orders) commandPages.push({ label: 'Prep sheets', href: '#prep', group: 'Menu', icon: 'inventory', keywords: PAGE_KEYWORDS.prep })
+  if (flags.ml_labor) commandPages.push({ label: 'Labor', href: '#labor', group: 'Staffing', icon: 'staff', keywords: PAGE_KEYWORDS.labor })
   if (flags.v3_receiving) commandPages.push({ label: 'Deliveries', href: '#receive', group: 'Inventory', icon: 'suppliers', keywords: PAGE_KEYWORDS.receive })
   const navLink = (item: NavItem) => {
     const count = counts[item.route]

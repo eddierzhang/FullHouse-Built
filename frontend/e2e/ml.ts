@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright'
-import { expect, type Page } from '@playwright/test'
+import { expect, type Locator, type Page } from '@playwright/test'
 
 /** Shared by the Margin & Labor browser tests: their own restaurant, and the checks every module page must pass. */
 export const API = `http://127.0.0.1:${process.env.E2E_API_PORT ?? '8100'}`
@@ -12,8 +12,14 @@ export async function signIn(page: Page, who = ML_OWNER) {
   expect((await page.request.post(`${API}/api/v1/auth/login`, { data: who })).ok()).toBeTruthy()
 }
 
+/**
+ * A module's own part of a combined page (Menu, Schedule & staff). On any other page, such as a detail page or the
+ * digest, it is the whole document, so one locator serves a test that moves between them.
+ */
+export const part = (page: Page, id: string) => page.locator(`#sec-${id}, body:not(:has(#sec-${id}))`)
+
 /** Spec 10.3 and 12: one header sentence of at most 20 words with a digit, at most 3 tiles, exactly 1 chart above the table. */
-export async function expectPageRules(page: Page) {
+export async function expectPageRules(page: Page | Locator) {
   const sentence = (await page.getByTestId('header-sentence').innerText()).trim()
   expect(page.getByTestId('header-sentence')).toHaveCount(1)
   expect(sentence.split(/\s+/).length, sentence).toBeLessThanOrEqual(20)

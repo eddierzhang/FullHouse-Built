@@ -74,7 +74,8 @@ export function ModuleCards({ app }: { app: AppContext }) {
   useRestaurantClock(app.restaurant.timezone)
   const on = ML_FLAGS.some((flag) => app.flags[flag])
   const load = useLoad(() => (on ? fetchModuleCards() : Promise.resolve([] as ModuleCard[])), [on])
-  const cards = (load.data ?? []).map(words).filter((c): c is Shown => c !== null)
+  // Channels is taken out for now: its card is not shown.
+  const cards = (load.data ?? []).filter((card) => card.module !== 'channels').map(words).filter((c): c is Shown => c !== null)
   if (!on || cards.length === 0) return null
   return (
     <section className="ml-cards" aria-label="Margin and labor">
