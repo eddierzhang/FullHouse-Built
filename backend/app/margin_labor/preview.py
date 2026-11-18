@@ -136,7 +136,7 @@ def empty_ready(db: Session) -> bool:
 # --- the demo restaurant, with the Margin & Labor modules live ------------------------------------------
 
 #: The demo restaurant's team and rota, on its own clock: (name, title, role key, start, end, rest days with Monday = 0,
-#: hourly rate). Each role has a lunch person and a dinner person. The first six are the demo's own staff; the other
+#: hourly rate). Each role has a lunch person and a dinner person. Six are the demo's own staff; the other
 #: five join here, because six people cannot cover five roles from open to close at this restaurant's sales. Friday's
 #: host stand at dinner is left open: it is the gap the demo's schedule proposal offers to fill.
 ROTA = (
@@ -150,7 +150,17 @@ ROTA = (
     ("Sam Patel", "Host", "host", "16:30", "22:00", (1, 4), "15.00"),
     ("Leo Park", "Bartender", "bartender", "11:00", "16:30", (0,), "17.00"),
     ("Taylor Brooks", "Bartender", "bartender", "16:30", "22:00", (1,), "17.00"),
+    # A part-timer for the busy end of the week, who can serve or take the host stand.
+    ("Dana Kim", "Server", "server", "16:30", "22:00", (0, 1, 2, 3), "15.00"),
+    ("Omar Haddad", "Line Cook", "line_cook", "16:30", "22:00", (0, 1, 2), "20.00"),
+    ("Bea Lindqvist", "Bartender", "bartender", "11:00", "16:30", (1, 2, 3), "17.00"),
+    ("Ravi Menon", "Line Cook", "line_cook", "11:00", "16:30", (0, 1, 2, 3), "20.00"),
 )
+#: Hired two weeks ago: on the team for the schedule being drafted, with only two weeks of clock-ins behind them.
+NEW_HIRES = ("Omar Haddad", "Bea Lindqvist", "Ravi Menon")
+#: What else each person can cover when the schedule is drafted, beside their own role.
+ALSO = {"Maria Gonzalez": ("line_cook",), "Priya Shah": ("line_cook",), "Marcus Bell": ("head_chef",), "Jordan Lee": ("head_chef",), "Nina Ortiz": ("server",), "Sam Patel": ("server",),
+        "Leo Park": ("server", "host"), "Taylor Brooks": ("server", "host"), "Dana Kim": ("host", "bartender"), "Omar Haddad": ("head_chef",), "Ravi Menon": ("head_chef",), "Bea Lindqvist": ("server", "host"), "Alex Rivera": ("host",), "Chris Nguyen": ("host", "bartender")}
 
 
 def fill_demo(db: Session, solve_seconds: int = 6, checkpoint=None) -> str | None:
@@ -225,7 +235,7 @@ def fill_demo(db: Session, solve_seconds: int = 6, checkpoint=None) -> str | Non
             db.add(staff[name])
             db.flush()
         db.add(EmployeeWage(restaurant_id=rid, staff_id=staff[name].id, hourly_rate=Decimal(rate)))
-        db.add(EmployeeProfile(restaurant_id=rid, staff_id=staff[name].id, role_keys=[role]))
+        db.add(EmployeeProfile(restaurant_id=rid, staff_id=staff[name].id, role_keys=[role, *ALSO.get(name, ())]))
     # The bar has nothing on the menu to be measured by, so its standard is the owner's own: one bartender for 40 covers an hour.
     from app.margin_labor.models import LaborStandard
 
@@ -244,7 +254,7 @@ def fill_demo(db: Session, solve_seconds: int = 6, checkpoint=None) -> str | Non
     for back in range(56, 0, -1):  # eight weeks: a role needs four full weeks of clock-ins before its standard is learned
         day = today - timedelta(days=back)
         for name, _title, role, start, end, off, rate in ROTA:
-            if day.weekday() in off:
+            if day.weekday() in off or (name in NEW_HIRES and back > 14):
                 continue
             begin, finish = span(day, start, end)
             db.add(LaborPunch(restaurant_id=rid, employee_id=staff[name].id, employee_name=name, role_key=role, clock_in=begin.astimezone(timezone.utc),
@@ -285,6 +295,24 @@ def fill_demo(db: Session, solve_seconds: int = 6, checkpoint=None) -> str | Non
     # The modules on. Channels stays off: it is out of the app for now.
     for flag in flags.ML_FLAGS:
         flags.set_flag(db, rid, flag, flag != flags.ML_CHANNELS)
+    step()
+    # The two recipes the agent proposed for the top sellers are confirmed, as an owner would: recipes then cover
+    # enough of sales for Usage to report, and each dish has a cost.
+    from app.agents.appliers import ApplyError, apply_action
+    from app.agents.crud import mark_action_decided
+    from app.agents.models import AgentAction
+    from app.audit.context import Actor, actor_context
+
+    for action in db.query(AgentAction).filter(AgentAction.restaurant_id == rid, AgentAction.action_type == "recipe", AgentAction.status == "pending").all():
+        # The agent asks "Change any quantity before approving": the owner corrects the garlic, a clove's worth a plate, not a quarter pound.
+        payload = dict(action.payload or {})
+        payload["lines"] = [{**line, "qty": 0.02} if str(line.get("ingredient_text", "")).lower() == "garlic" and line.get("qty") == 0.25 else line for line in payload.get("lines", [])]
+        action.payload = payload
+        try:
+            with actor_context(Actor(type="human", id=user.id, agent_run_id=action.run_id, agent_action_id=action.id, restaurant_id=rid)):
+                mark_action_decided(db, action, "approved", applied_result=apply_action(db, action))
+        except ApplyError:
+            logger.warning("could not confirm the proposed recipe %s", (action.payload or {}).get("name"))
     step()
     menu_costs.recost(db, rid)
     step()

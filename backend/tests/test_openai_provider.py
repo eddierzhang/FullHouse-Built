@@ -121,6 +121,17 @@ def test_plain_answer_returns_text_and_tokens(api, tools):
     assert ("log", {"text": "Nothing to do."}) in seen
 
 
+def test_reply_in_chunks_keeps_only_the_text(api, tools):
+    """Mistral's reasoning models send content as a list of chunks."""
+    tool_list, _ = tools
+    api["scripted"].append((200, _answer([
+        {"type": "thinking", "thinking": [{"type": "text", "text": "work it out"}]},
+        {"type": "text", "text": "Stock is "},
+        {"type": "text", "text": "fine."},
+    ]), {}))
+    assert _run(_provider(api), tool_list).text == "Stock is fine."
+
+
 def test_request_shape(api, tools):
     tool_list, _ = tools
 
@@ -161,6 +172,25 @@ def test_rate_limit_is_waited_out(api, tools):
 
     assert result.text == "ok"
     assert api["slept"] == [3.0]
+
+
+def test_overloaded_model_is_waited_out_then_named(api, tools):
+    tool_list, _ = tools
+    api["scripted"] = [(503, {"error": "high demand"}, {}), (200, _answer("ok"), {})]
+    assert _run(_provider(api), tool_list).text == "ok"
+    api["scripted"] = [(503, {"error": "high demand"}, {})] * 10
+    with pytest.raises(ProviderError, match="overloaded"):
+        _run(_provider(api), tool_list)
+
+
+def test_malformed_tool_call_is_asked_for_again(api, tools):
+    tool_list, _ = tools
+    bad = (400, {"error": {"code": "tool_use_failed", "message": "attempted to call tool 'x' which was not in request.tools"}}, {})
+    api["scripted"] = [bad, (200, _answer("ok"), {})]
+    assert _run(_provider(api), tool_list).text == "ok"
+    api["scripted"] = [bad] * 10
+    with pytest.raises(ProviderError, match="stronger model"):
+        _run(_provider(api), tool_list)
 
 
 def test_persistent_rate_limit_fails_with_advice(api, tools):

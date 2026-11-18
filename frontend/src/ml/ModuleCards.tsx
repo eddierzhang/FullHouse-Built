@@ -21,7 +21,7 @@ function words(card: ModuleCard): Shown | null {
       key: card.module,
       title: 'Menu costs',
       sentence: `${n} ${n === 1 ? 'dish is' : 'dishes are'} over your ${percent(String(card.target))} food cost target.`,
-      number: `${dollars(String(card.weekly_dollars))} a week`,
+      number: Number(card.weekly_dollars) > 0 ? `${dollars(String(card.weekly_dollars))} a week` : undefined,
       trend: top.trend.map((v) => (v == null ? null : Number(v))),
       trendLabel: `${top.name}: cost per plate over 12 weeks`,
       href: `#menu-costs?review=${top.recipe_id}`,

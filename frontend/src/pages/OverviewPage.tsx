@@ -7,6 +7,7 @@ import { GettingStarted } from '../components/GettingStarted'
 import { Icon } from '../components/Icon'
 import { Empty, Freshness, LoadError, Loaded } from '../components/PageState'
 import { RunStatusBadge } from '../components/RunStatusBadge'
+import { TopFindings } from '../components/TopFindings'
 import { greeting, money, pct, relativeTime } from '../lib/format'
 import { type Load, useLoad } from '../lib/useLoad'
 import { openStatus } from '../restaurant/hours'
@@ -65,6 +66,7 @@ export function OverviewPage({ app }: { app: AppContext }) {
             </span>
           </a>
         )}
+        {app.canManage && <TopFindings app={app} />}
         <section className="grid grid-stats" aria-label="Key figures">
           {app.canManage && (
             <>

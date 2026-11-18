@@ -106,7 +106,7 @@ Every push to `main` redeploys the site, and migrations run automatically.
 
 A model adds free-form answers in the conversation and the reading of invoice photos. At
 [aistudio.google.com/apikey](https://aistudio.google.com/apikey), **Create API key**, and set `LLM_API_KEY` to it
-and `LLM_MODEL` to a model that reads images (`gemini-2.5-flash`; anything from Gemini's
+and `LLM_MODEL` to a model that reads images (`gemini-flash-latest`; anything from Gemini's
 [model list](https://ai.google.dev/gemini-api/docs/models)). The provider follows the key: an `LLM_API_KEY` means
 the OpenAI-compatible provider, an `ANTHROPIC_API_KEY` means Claude (paid). For another OpenAI-compatible API, add
 `LLM_BASE_URL`: Groq (`https://api.groq.com/openai/v1`, also free), OpenRouter, or a paid one. Photos are read

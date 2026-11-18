@@ -164,7 +164,7 @@ def test_the_filled_demo_has_every_module_on_and_one_set_of_books(anon_client, d
     # Dishes: Menu costs and the Dishes list show the same price and the same cost per plate.
     costs = client.get(f"{API}/menu-costs").json()
     menu = {m["name"]: m for m in client.get("/api/v1/restaurant/menu-items").json()}
-    assert costs["state"] == "live" and len(costs["dishes"]) == 5
+    assert costs["state"] == "live" and len(costs["dishes"]) == 7 and costs["header"]["dishes_over"] == 1  # Tiramisu, once its recipe is confirmed
     for dish in costs["dishes"]:
         assert menu[dish["name"]]["price"] == float(dish["price"]) and abs(menu[dish["name"]]["cost"] - float(dish["plate_cost"])) < 0.006, dish["name"]
 
@@ -178,17 +178,17 @@ def test_the_filled_demo_has_every_module_on_and_one_set_of_books(anon_client, d
     # Labor: a day's labor is its clock-ins at each person's rate, and prime cost is built on it.
     hours = sum((p.clock_out - p.clock_in).total_seconds() / 3600 for p in db.query(LaborPunch).filter_by(restaurant_id=rid, business_date=day))
     labor_day = db.query(LaborDay).filter_by(restaurant_id=rid, date=day).one()
-    assert labor_day.hours == round(hours, 2) and 600 < labor_day.dollars < 1200
+    assert labor_day.hours == round(hours, 2) and 700 < labor_day.dollars < 1800
     weeks = engine.prime_cost(db, rid)
-    assert weeks and all(20 < w["labor_pct"] < 32 for w in weeks)
+    assert weeks and all(24 < w["labor_pct"] < 34 for w in weeks)
 
-    # People: ten on the rota, each with shifts on the staff page; next week is drafted, this week is published.
+    # People: fourteen on the rota, each with shifts on the staff page; next week is drafted, this week is published.
     staff = {p["name"] for p in client.get("/api/v1/restaurant/staff").json()}
-    assert {row[0] for row in preview.ROTA} == staff and len(staff) == 10
+    assert {row[0] for row in preview.ROTA} == staff and len(staff) == 14
     week = client.get(f"{API}/labor/weeks/next").json()
     assert week["state"] in ("learning", "live") and {r["role_key"] for r in week["roles"]} == {"head_chef", "line_cook", "server", "host", "bartender"}
-    assert week["schedule"]["status"] == "draft" and 0.22 < float(week["schedule"]["labor_pct"]) < 0.34 and week["schedule"]["open_shifts"] < 20
-    assert client.get(f"{API}/ordering/drafts").json()["state"] == "live" and client.get(f"{API}/usage").json()["state"] == "learning"
+    assert week["schedule"]["status"] == "draft" and 0.26 < float(week["schedule"]["labor_pct"]) < 0.34 and week["schedule"]["open_shifts"] <= 5
+    assert client.get(f"{API}/ordering/drafts").json()["state"] == "live" and client.get(f"{API}/usage").json()["state"] == "live"
     assert ledger.out_of_balance(db, rid) == []
 
 

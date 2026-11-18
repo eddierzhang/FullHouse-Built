@@ -10,7 +10,7 @@
 #     (Render's free plan has no disk, so SQLite would be wiped on each deploy).
 #   - LLM_API_KEY and LLM_MODEL, optional: a free Gemini key from
 #     https://aistudio.google.com/apikey and a model that reads images, such as
-#     gemini-2.5-flash. Set, the assistant answers anything in the thread and
+#     gemini-flash-latest. Set, the assistant answers anything in the thread and
 #     photos of invoices are read. Blank, the site runs with no model: the
 #     assistant answers price questions by rule from the invoices, PDFs are
 #     read by rule, and the digest, questions and Monday mail all work.

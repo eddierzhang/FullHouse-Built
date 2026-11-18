@@ -46,7 +46,9 @@ export function headerSentence(data: MenuCosts): string {
   const target = percent(data.target)
   const n = data.header.dishes_over
   if (n === 0) return `No dishes are over your ${target} food cost target.`
-  return `${n} ${n === 1 ? 'dish is' : 'dishes are'} over your ${target} food cost target. Cost: about ${dollars(data.header.weekly_dollars)} a week.`
+  const over = `${n} ${n === 1 ? 'dish is' : 'dishes are'} over your ${target} food cost target.`
+  // The weekly cost is what a price rise added. A dish that was costed over target from the start has none to state.
+  return Number(data.header.weekly_dollars) > 0 ? `${over} Cost: about ${dollars(data.header.weekly_dollars)} a week.` : over
 }
 
 export function MenuCostsPage({ app }: { app: AppContext }) {

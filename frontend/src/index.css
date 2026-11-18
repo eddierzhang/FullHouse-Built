@@ -5272,3 +5272,13 @@ button.ml-bars-row { cursor: pointer; }
 .pi-try-chip { padding: 8px 14px; border: 1px solid var(--border-strong); border-radius: 999px; background: var(--surface); color: var(--ink); font: inherit; font-size: 14px; cursor: pointer; }
 .pi-try-chip:hover:not(:disabled) { border-color: var(--brand); }
 .pi-try-chip:disabled { opacity: 0.6; cursor: default; }
+
+/* Today: the three findings worth the most this week. */
+.top-findings { list-style: none; margin: 0; padding: 0; }
+.top-findings li + li { border-top: 1px solid var(--border); }
+.top-findings a { display: flex; align-items: center; gap: 14px; padding: 14px 20px; color: inherit; text-decoration: none; }
+.top-findings a:hover { background: var(--surface-muted, rgba(0, 0, 0, 0.02)); }
+.top-findings-rank { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--brand-soft); color: #94390f; font-weight: 700; font-size: 13px; }
+.top-findings-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.top-findings-dollars { flex: none; display: flex; flex-direction: column; align-items: flex-end; font-variant-numeric: tabular-nums; }
+.top-findings-dollars .strong { font-size: 18px; }
