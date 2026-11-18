@@ -102,17 +102,17 @@ const ASSURANCES: { title: string; body: string }[] = [
 
 /**
  * Three things FullHouse might put in front of an owner in one week, each from a different part of the back
- * office: a dish that costs too much to make, a slow night with one server too many, and a supplier charging
+ * office: dishes that cost too much to make, a slow night with one server too many, and a supplier charging
  * more than another. Example figures that add up; a picture, not a control.
  */
 const EXAMPLES: { badge: string; when: string; title: string; why: string; saves: string; action: string }[] = [
   {
     badge: "Menu cost",
     when: "Tuesday",
-    title: "Burger is over your food cost target",
-    why: "Ground beef rose 9% on Monday’s invoice. The burger now costs $3.94 a plate, 32.8% of its $12.00 price. Your target is 30%.",
-    saves: "$315 a week",
-    action: "Review price",
+    title: "3 dishes are over your food cost target",
+    why: "Ingredient prices rose on this week’s invoices. Three dishes now cost more than 30% of their menu price to make.",
+    saves: "$212 a week",
+    action: "Review prices",
   },
   {
     badge: "Labor",
@@ -153,12 +153,12 @@ function ExamplesPreview() {
           <dd>{first.saves}</dd>
         </div>
         <div>
-          <dt>Suggested price</dt>
-          <dd>$13.00</dd>
+          <dt>Dishes over target</dt>
+          <dd>3 of 24</dd>
         </div>
         <div>
-          <dt>Sold in 28 days</dt>
-          <dd>840</dd>
+          <dt>Largest price rise</dt>
+          <dd>9%</dd>
         </div>
       </dl>
       <div className="landing-preview-actions">
