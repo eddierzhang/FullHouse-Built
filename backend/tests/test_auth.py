@@ -215,8 +215,8 @@ def test_demo_offers_a_working_account(anon_client, db, monkeypatch):
     reset_demo_data(db)
 
     demo = anon_client.get("/api/v1/auth/options").json()["demo"]
-    assert demo == {"email": DEMO_EMAIL, "password": DEMO_PASSWORD}
-    assert anon_client.post("/api/v1/auth/login", json=demo).status_code == 200
+    assert (demo["email"], demo["password"]) == (DEMO_EMAIL, DEMO_PASSWORD) and demo["label"].startswith("Botanica")
+    assert anon_client.post("/api/v1/auth/login", json={"email": demo["email"], "password": demo["password"]}).status_code == 200
 
 
 def test_hashes_carry_their_parameters():

@@ -523,6 +523,8 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
     if (label === 'Restaurant' && flags.v2_connect) more.push({ route: 'connect', label: 'Connections', icon: 'suppliers' })
     return more
   }
+  // A restaurant with the margin and labor modules on keeps their pages in the short menu: they are its walk-through.
+  const inShortMenu = (r: Route) => (r === 'menu' && flags.ml_menu_costs === true) || (r === 'staff' && flags.ml_labor === true) || (r === 'ordering-prep' && flags.ml_ordering === true)
   const marginLabor = MARGIN_LABOR.filter((entry) => flags[entry.flag]).map((entry) => entry.item)
   // Today, then Inventory and Invoices & prices, then the newer groups, then the rest.
   const allGroups = [...NAV.slice(0, 3), ...(navOn ? [INSIGHTS_GROUP] : []), ...(marginLabor.length ? [{ label: 'Margin & labor', items: marginLabor }] : []), ...NAV.slice(3)]
@@ -532,7 +534,7 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
   // In the demo the sidebar starts short; search still offers every page.
   const shortMenu = runtime?.demo_mode === true && !fullMenu
   const groups = shortMenu
-    ? allGroups.map((group) => ({ label: group.label, items: group.items.filter((item) => DEMO_MENU.has(item.route)) })).filter((group) => group.items.length > 0)
+    ? allGroups.map((group) => ({ label: group.label, items: group.items.filter((item) => DEMO_MENU.has(item.route) || inShortMenu(item.route)) })).filter((group) => group.items.length > 0)
     : allGroups
   const pageCount = allGroups.reduce((sum, group) => sum + group.items.length, 0)
   const tabs = shortMenu && flags.v3_receiving ? TABS.map((tab) => (tab.route === 'staff' ? { route: 'receive' as Route, label: 'Deliveries', icon: 'suppliers' as IconName } : tab)) : TABS
@@ -762,7 +764,7 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
 
       {flags.v3_voice && <VoiceButton app={app} />}
       <CommandBar open={commandOpen} onClose={() => setCommandOpen(false)} pages={commandPages} canAsk onError={(m) => toast('Couldn’t ask that', m)} />
-      <Tour open={tourOpen && !commandOpen} onClose={() => setTourOpen(false)} />
+      <Tour open={tourOpen && !commandOpen} onClose={() => setTourOpen(false)} margins={flags.ml_menu_costs === true && flags.ml_labor === true} />
       <ActionDrawer app={app} action={drawerAction} onClose={() => setDrawerAction(null)} />
       <Toast toast={toastState} />
     </div>

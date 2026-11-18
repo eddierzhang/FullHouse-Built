@@ -57,11 +57,6 @@ const AREAS: { icon: IconName; title: string; body: string }[] = [
     body: "People needed by the half hour, from expected sales and your own standards. A draft schedule checked against the rules you set, then cut or extend suggestions during service.",
   },
   {
-    icon: "store",
-    title: "Delivery channels",
-    body: "What each item keeps on each delivery app after commission, fees, packaging and food cost, and the price at which it stops losing money.",
-  },
-  {
     icon: "clock",
     title: "Stock, deliveries and waste",
     body: "Stock follows deliveries and sales. Check a delivery in against its order, log waste in three taps, and count a shelf from your phone when you want to.",
@@ -254,7 +249,9 @@ export function LandingPage({ options }: Props) {
               </p>
               {actions}
               <p className="landing-note">
-                {options?.samples?.length
+                {options?.demo && options?.samples?.length
+                  ? "Two sample restaurants, reset every day, so try anything. Botanica shows invoices, stock and ordering. Corner Grill shows menu costs, usage and labor."
+                  : options?.samples?.length
                   ? "This preview has a small sample restaurant and an empty one, each with every feature switched on. Pick one on the next page."
                   : options?.demo
                   ? "The demo is a sample bistro with eight weeks of invoices, stock and orders. It resets every day, so try anything."

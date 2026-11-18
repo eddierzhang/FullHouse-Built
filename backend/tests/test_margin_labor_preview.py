@@ -117,3 +117,33 @@ def test_the_sample_restaurant_says_the_same_thing_on_every_page(client, db):
     assert [i["name"] for i in stock.values() if i["low_stock"]] == ["Chicken wings"]
     ids = {p["id"] for p in client.get("/api/v1/restaurant/staff").json()}
     assert len(shifts) == 9 * 7 and {s["staff_id"] for s in shifts} == ids
+
+
+def test_the_demo_offers_corner_grill_only_once_it_is_complete(anon_client, db, monkeypatch):
+    """In demo mode the sign-in page lists the sample restaurant when its seed has finished, never half-built."""
+    from app.auth.models import User
+    from app.config import settings
+    from app.margin_labor import preview
+    from app.restaurant.models import Restaurant
+
+    monkeypatch.setattr(settings, "demo_mode", True)
+    assert anon_client.get("/api/v1/auth/options").json()["samples"] == []
+    preview._restaurant(db, *preview.SAMPLE, ready=False)  # the seed has started
+    assert preview.ready(db) is False and anon_client.get("/api/v1/auth/options").json()["samples"] == []
+    user = db.query(User).filter(User.email == preview.SAMPLE[0]).one()
+    db.get(Restaurant, user.restaurant_id).setup_completed_at = datetime.now()
+    db.commit()
+    assert anon_client.get("/api/v1/auth/options").json()["samples"] == [
+        {"label": preview.SAMPLE_LABEL, "email": "demo@example.com", "password": "demo-kitchen"}]
+    assert preview.seed_sample(db) is None  # there already: a second reset thread does not write it twice
+
+
+def test_the_whole_sample_seed_runs_with_checkpoints_and_ends_marked_ready(db):
+    from app.bootstrap import setup
+    from app.margin_labor import preview
+    from app.margin_labor.models import Schedule
+
+    setup()
+    rid = preview.seed_sample(db, solve_seconds=3)
+    assert rid and preview.ready(db)
+    assert db.query(Schedule).filter_by(restaurant_id=rid, status="draft").count() == 1 and not flags.enabled(db, rid, flags.ML_CHANNELS)

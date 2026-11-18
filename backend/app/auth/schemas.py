@@ -90,6 +90,8 @@ class RoleIn(BaseModel):
 class DemoCredentials(BaseModel):
     email: str
     password: str
+    #: What this demo restaurant is good for, shown when the sign-in page offers more than one.
+    label: str | None = None
 
 
 class DemoCard(BaseModel):

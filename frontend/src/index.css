@@ -5257,3 +5257,7 @@ button.ml-bars-row { cursor: pointer; }
 .autopilot-outlook { min-width: 0; }
 .autopilot-outlook .table-wrap { overflow-x: auto; max-width: 100%; }
 .autopilot-supplier { min-width: 0; }
+
+/* Landing page: eight tiles sit four to a row on a wide screen, so no row is left short. */
+@media (min-width: 1100px) { .landing-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (min-width: 721px) and (max-width: 1099px) { .landing-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

@@ -290,7 +290,7 @@ def _spread(counts: dict[str, int], orders: int) -> list[dict[str, int]]:
     return out
 
 
-def seed_trading_days(db: Session, restaurant_id: str, today: date, tz: str, days: int = 70, scale: int = DEMO_SCALE, until: time | None = None) -> None:
+def seed_trading_days(db: Session, restaurant_id: str, today: date, tz: str, days: int = 70, scale: int = DEMO_SCALE, until: time | None = None, checkpoint=None) -> None:
     """Order-level sales and punches for a whole restaurant, the same every day and consistent with `seed_kitchen` at the
     same scale: dine-in orders every 15 minutes through lunch and dinner at menu prices, DoorDash orders (a burger and a
     wings; two in three have a payout row) and Uber Eats orders (fries, on contract rates), which add up to exactly what
@@ -343,6 +343,8 @@ def seed_trading_days(db: Session, restaurant_id: str, today: date, tz: str, day
 
     for back in range(days, 0, -1):
         trade(today - timedelta(days=back))
+        if checkpoint is not None and back % 7 == 0:
+            checkpoint()  # a week at a time, so a slow machine never holds the database for long
     if until is not None:
         trade(today, until)
     for platform, (commission, processing, fixed, packaging) in TERMS.items():
@@ -351,7 +353,7 @@ def seed_trading_days(db: Session, restaurant_id: str, today: date, tz: str, day
     db.flush()
 
 
-def seed_preview(db: Session, restaurant_id: str, today: date, tz: str, now_local: datetime | None = None) -> dict:
+def seed_preview(db: Session, restaurant_id: str, today: date, tz: str, now_local: datetime | None = None, checkpoint=None) -> dict:
     """Everything for one demo restaurant with all five modules live: the kitchen at three times the test volume, order-level
     sales through the day on three channels, punches, a team with rates, this week's schedule published, a beef price
     that rose two days ago, and today's sales so far running a little under the forecast."""
@@ -363,7 +365,9 @@ def seed_preview(db: Session, restaurant_id: str, today: date, tz: str, now_loca
     if now_local is not None:
         # After midnight the business date is still yesterday: the whole day has traded.
         until = time(23, 59) if now_local.date() > today else now_local.time()
-    seed_trading_days(db, restaurant_id, today, tz, until=until)
+    if checkpoint is not None:
+        checkpoint()
+    seed_trading_days(db, restaurant_id, today, tz, until=until, checkpoint=checkpoint)
     team = seed_team(db, restaurant_id)
     db.add(LaborRules(restaurant_id=restaurant_id, weekly_overtime_hours=40, daily_overtime_hours=8, min_rest_hours=10, min_shift_hours=4, max_shift_hours=8,
                       max_hours_per_day=10, max_consecutive_days=6, break_after_hours=6, break_minutes=30, min_paid_hours=1, advance_notice_days=3, allow_on_call=False,
@@ -386,7 +390,7 @@ STOCK_UNITS = {"Ground beef": ("kg", 1000), "Bun": ("each", 1), "Onion": ("kg", 
 CATEGORIES = {"Burger": "Mains", "Fries": "Sides", "House Salad": "Salads", "Wings": "Starters"}
 
 
-def seed_books(db: Session, restaurant_id: str, made: dict, today: date, tz: str, scale: int = DEMO_SCALE) -> dict:
+def seed_books(db: Session, restaurant_id: str, made: dict, today: date, tz: str, scale: int = DEMO_SCALE, checkpoint=None) -> dict:
     """The same restaurant on the older pages, written from what `seed_preview` and the recost already hold, so every
     page agrees: the Inventory items are the invoice items (stock on hand is the last Thursday delivery less what the
     recipes used since), the Menu dishes are the recipes (same price; cost is the current cost per plate), the
@@ -437,7 +441,9 @@ def seed_books(db: Session, restaurant_id: str, made: dict, today: date, tz: str
         db.flush()
         for name, amount in per_plate[dish].items():
             db.add(RecipeItem(menu_item_id=dishes[pos].id, inventory_item_id=stock[name].id, quantity=round(amount / STOCK_UNITS[name][1], 6)))
-    for sale in db.query(SalesOrder).filter_by(restaurant_id=restaurant_id).order_by(SalesOrder.opened_at).all():
+    for count, sale in enumerate(db.query(SalesOrder).filter_by(restaurant_id=restaurant_id).order_by(SalesOrder.opened_at).all(), start=1):
+        if checkpoint is not None and count % 250 == 0:
+            checkpoint()
         order = Order(restaurant_id=restaurant_id, status="completed", channel="dine_in" if sale.channel == "dine_in" else "delivery", total=float(sale.net),
                       created_at=sale.opened_at)
         db.add(order)

@@ -112,12 +112,18 @@ def options(db: Session = Depends(get_db)):
     if settings.demo_mode:
         from app.demo import DEMO_EMAIL, DEMO_PASSWORD
 
-        demo = schemas.DemoCredentials(email=DEMO_EMAIL, password=DEMO_PASSWORD)
+        demo = schemas.DemoCredentials(email=DEMO_EMAIL, password=DEMO_PASSWORD, label="Botanica: invoices, questions, stock counts and the ordering autopilot")
     samples = []
     for entry in settings.sample_accounts.split(";"):
         parts = [p.strip() for p in entry.split("|")]
         if len(parts) == 3 and all(parts):
             samples.append(schemas.SampleAccount(label=parts[0], email=parts[1], password=parts[2]))
+    if settings.demo_mode and not samples:
+        # The demo carries Corner Grill too, once its data is complete (app.margin_labor.preview).
+        from app.margin_labor import preview
+
+        if preview.ready(db):
+            samples.append(schemas.SampleAccount(label=preview.SAMPLE_LABEL, email=preview.SAMPLE[0], password=preview.PASSWORD))
     return schemas.AuthOptions(signup_enabled=_signup_open(db), demo=demo, demo_card=_demo_card(db) if demo else None, samples=samples)
 
 

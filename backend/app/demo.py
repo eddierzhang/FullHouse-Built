@@ -761,8 +761,17 @@ def reset_now() -> dict:
 
     db = SessionLocal()
     try:
+        from app.margin_labor import preview
+
+        preview.wait()  # never wipe the tables under a sample restaurant that is still being written
         for (run_id,) in db.query(AgentRun.id).filter(AgentRun.status.in_(("queued", "running"))):
             executor.request_cancel(run_id)
-        return reset_demo_data(db)
+        counts = reset_demo_data(db)
     finally:
         db.close()
+    from app.config import settings
+
+    if settings.demo_sample:
+        # Corner Grill comes back with every reset, on its own thread: the demo restaurant is usable meanwhile.
+        preview.seed_in_background()
+    return counts

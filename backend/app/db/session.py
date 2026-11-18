@@ -23,7 +23,8 @@ def normalize_database_url(url: str) -> str:
 
 def engine_options(url: str) -> dict[str, Any]:
     if url.startswith("sqlite"):
-        return {"connect_args": {"check_same_thread": False}}
+        # Wait up to 30 seconds for a writer instead of the default 5: the demo seeds a restaurant while it serves.
+        return {"connect_args": {"check_same_thread": False, "timeout": 30}}
     if url.startswith("postgresql"):
         # Sessions at zero offset: timestamps are bucketed into days in Python,
         # and a server in another zone would shift orders across midnight.

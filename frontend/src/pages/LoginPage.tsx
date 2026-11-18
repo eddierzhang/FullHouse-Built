@@ -178,7 +178,7 @@ export function LoginPage({ mode, onMode, unreachable, expired = false, onRetry,
         {options?.demo && !signingUp && (
           <div className="auth-demo">
             <div>
-              <div className="auth-demo-title">Trying the demo?</div>
+              <div className="auth-demo-title">{options.samples?.length && options.demo.label ? options.demo.label : 'Trying the demo?'}</div>
               <dl className="auth-demo-creds">
                 <dt>Email</dt>
                 <dd>
@@ -209,7 +209,7 @@ export function LoginPage({ mode, onMode, unreachable, expired = false, onRetry,
           (options?.samples ?? []).map((sample) => (
             <div className="auth-demo" key={sample.email}>
               <div>
-                <div className="auth-demo-title">Sample account: {sample.label}</div>
+                <div className="auth-demo-title">{options?.demo ? sample.label : `Sample account: ${sample.label}`}</div>
                 <dl className="auth-demo-creds">
                   <dt>Email</dt>
                   <dd>
