@@ -1,6 +1,7 @@
 import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from 'react'
 import { Icon, type IconName } from '../components/Icon'
 import { fetchWhy, type RawWhy } from './api'
+import { Waterfall } from './charts'
 import { confidenceWords, dayLabel, dollars, percent, rangeWords, timeLabel } from './format'
 
 /**
@@ -156,6 +157,8 @@ export type Why = {
   freshness: string
   /** A link to correct an input. */
   fix?: { label: string; href: string }
+  /** A figure that shows the working, where one helps: the fee waterfall for a channel. */
+  figure?: ReactNode
 }
 
 /**
@@ -186,6 +189,7 @@ export function WhyPanel({ why, onClose }: { why: Why | null; onClose: () => voi
         </div>
         <div className="ml-why-body">
           <div className="ml-why-result">{why.result}</div>
+          {why.figure && <div className="ml-why-figure">{why.figure}</div>}
           <dl className="ml-why-list">
             <dt>Formula</dt>
             <dd>{why.formula}</dd>
@@ -406,6 +410,9 @@ export function toWhy(raw: RawWhy): Why {
     dataBasis: raw.data_basis,
     freshness: `Computed ${dayLabel(raw.computed_at)} at ${timeLabel(raw.computed_at)}.${changed}`,
     fix: raw.fix ? { label: raw.fix.label, href: `#${raw.fix.route}` } : undefined,
+    figure: raw.waterfall ? (
+      <Waterfall start={{ label: raw.waterfall.start.label, amount: Number(raw.waterfall.start.amount) }} steps={raw.waterfall.steps.map((s) => ({ label: s.label, amount: Number(s.amount) }))} end={{ label: raw.waterfall.end.label, amount: Number(raw.waterfall.end.amount) }} format={(v) => dollars(v)} />
+    ) : undefined,
   }
 }
 
@@ -537,6 +544,17 @@ export function SidePanel({ title, onClose, children }: { title: string; onClose
       <div className="ml-why-body">{children}</div>
     </aside>
   )
+}
+
+/**
+ * A link can open a page with one item's panel showing ("#channels?review=abc"). The value is read once and the
+ * address is tidied, so a reload or a later visit shows the page, not the panel again.
+ */
+export function takeHashParam(name: string): string | null {
+  const [path, query] = window.location.hash.split('?')
+  const value = new URLSearchParams(query ?? '').get(name)
+  if (value !== null) window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${path}`)
+  return value
 }
 
 /** A status that never rests on colour: an icon and a word. */

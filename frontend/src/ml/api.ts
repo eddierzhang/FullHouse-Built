@@ -39,6 +39,7 @@ export type RawWhy = {
   computed_at: string
   inputs_changed_on: string | null
   fix: { label: string; route: string } | null
+  waterfall?: { start: { label: string; amount: string }; steps: { label: string; amount: string }[]; end: { label: string; amount: string } } | null
 }
 export const fetchWhy = (table: string, rowId: string, figure?: string) =>
   get<RawWhy>(`${BASE}/why/${table}/${rowId}${figure ? `?figure=${figure}` : ''}`)
@@ -225,3 +226,54 @@ export const fetchUsage = () => get<Usage>(`${BASE}/usage`)
 export const fetchUsageItem = (itemId: string) => get<UsageDetail>(`${BASE}/usage/${itemId}`)
 export const setUsageTracking = (itemId: string, track: boolean) => send<{ track_usage: boolean }>('PUT', `${BASE}/usage/${itemId}/tracking`, { track_usage: track })
 export const dismissFinding = (findingId: string) => send<{ id: string; status: string }>('POST', `${BASE}/findings/${findingId}/dismiss`)
+
+// --- Module E: Channels ------------------------------------------------------------------------------
+
+export type ChannelItem = {
+  row_id: string
+  pos_item_id: string
+  name: string
+  platform: string
+  price: string
+  fees: string
+  commission: string
+  processing: string
+  fixed: string
+  plate_cost: string | null
+  kept: string | null
+  kept_pct: string | null
+  units: string
+  match_rate: string | null
+  recipe_id: string | null
+  finding: {
+    id: string
+    weekly_dollars: string
+    target: string | null
+    proposal_id: string | null
+    proposal_status: 'pending' | 'approved' | 'rejected' | null
+    suggested_price: string | null
+    kept_at_suggested: string | null
+  } | null
+}
+export type ChannelTermsRow = { platform: string; commission_pct: string; processing_pct: string; fixed_fee_per_order: string; packaging_cost_per_order: string; effective_from?: string }
+export type Channels = {
+  state: ModuleState
+  setup: { key: string; done: boolean; count: number; of?: number; missing?: string[] }[]
+  window_start: string
+  window_end: string
+  today: string
+  computed_at: string | null
+  stale: boolean
+  last_order_date: string | null
+  match_rate: string | null
+  contract_rates: boolean
+  platforms: string[]
+  terms: ChannelTermsRow[]
+  header: { items: number; weekly_dollars: string; platform: string | null; delivery_items: number; losing: boolean } | null
+  tiles: { channel: string; platform: string | null; label: string; units: string; kept_pct: string | null; kept: string | null; price: string | null }[]
+  chart: { series: string[]; items: { pos_item_id: string; name: string; values: Record<string, string> }[] } | null
+  items: ChannelItem[]
+}
+export const fetchChannels = () => get<Channels>(`${BASE}/channels`)
+export const saveChannelTerms = (body: ChannelTermsRow) => send<{ terms: ChannelTermsRow[] }>('PUT', `${BASE}/channels/terms`, body)
+export const requestChannelReprice = (rowId: string) => send<{ proposal_id: string }>('POST', `${BASE}/channels/${rowId}/reprice`)

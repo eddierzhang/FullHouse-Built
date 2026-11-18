@@ -25,6 +25,7 @@ import {
   useWhy,
   ViewAsTable,
   type Why,
+  takeHashParam,
 } from './ui'
 
 const TITLE = 'Menu costs'
@@ -58,16 +59,12 @@ export function MenuCostsPage({ app }: { app: AppContext }) {
   return param ? <DishCostPage app={app} recipeId={param} /> : <MenuCostsList app={app} />
 }
 
-function reviewFromHash(): string | null {
-  return new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('review')
-}
-
 function MenuCostsList({ app }: { app: AppContext }) {
   const load = useLoad(fetchMenuCosts, [])
   const why = useWhy()
   const deferred = useDeferred()
   const [tab, setTab] = useState<'cost' | 'map'>('cost')
-  const [reviewing, setReviewing] = useState<string | null>(reviewFromHash)
+  const [reviewing, setReviewing] = useState<string | null>(() => takeHashParam('review'))
   const [decided, setDecided] = useState<Record<string, 'approved' | 'rejected'>>({})
   const [busy, setBusy] = useState(false)
   const data = load.data

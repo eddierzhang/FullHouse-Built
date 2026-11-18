@@ -5,7 +5,7 @@ import { useLoad } from '../lib/useLoad'
 import { dismissFinding, fetchUsage, fetchUsageItem, setUsageTracking, type Usage, type UsageChecks, type UsageDetail, type UsageItem } from './api'
 import { CoverageBar, GapLines, SortedBars, Sparkline } from './charts'
 import { amount, dayLabel, dollars, percent, timeLabel } from './format'
-import { HeaderSentence, LoadFailed, SetupChecklist, type SetupStep, SidePanel, Skeleton, StateBanner, StatTile, StatusWord, TileRow, useDeferred, useRowLimit, useWhy, ViewAsTable, type Why } from './ui'
+import { HeaderSentence, LoadFailed, SetupChecklist, type SetupStep, SidePanel, Skeleton, StateBanner, StatTile, StatusWord, TileRow, useDeferred, useRowLimit, useWhy, ViewAsTable, type Why, takeHashParam } from './ui'
 
 const TITLE = 'Usage'
 
@@ -50,15 +50,11 @@ function Checks({ checks, unit, gap }: { checks: UsageChecks | null; unit: strin
   )
 }
 
-function checksFromHash(): string | null {
-  return new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('checks')
-}
-
 function UsageList({ app }: { app: AppContext }) {
   const load = useLoad(fetchUsage, [])
   const why = useWhy()
   const deferred = useDeferred()
-  const [checking, setChecking] = useState<string | null>(checksFromHash)
+  const [checking, setChecking] = useState<string | null>(() => takeHashParam('checks'))
   const [dismissed, setDismissed] = useState<Record<string, boolean>>({})
   const data = load.data
   const limit = useRowLimit(data?.items ?? [])

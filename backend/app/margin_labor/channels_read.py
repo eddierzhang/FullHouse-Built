@@ -46,7 +46,7 @@ def overview(db: Session, restaurant_id: str, now: datetime | None = None) -> di
            "computed_at": max((r.updated_at for r in rows), default=None),
            "stale": bool(last_order is not None and (world.today - last_order).days > STALE_ORDER_DAYS), "last_order_date": last_order,
            "match_rate": _s(match_rate), "contract_rates": bool(match_rate is not None and match_rate < MATCHED_ENOUGH),
-           "platforms": sorted({o.platform for o in platform_orders}), "terms": terms_out(terms, end),
+           "platforms": sorted({o.platform for o in platform_orders}), "terms": terms_out(terms, world.today),  # the rates in effect now: what the editor shows
            "header": None, "tiles": [], "chart": None, "items": []}
     if state == "setup":
         return out
@@ -75,7 +75,8 @@ def overview(db: Session, restaurant_id: str, now: datetime | None = None) -> di
     flagged_platforms = sorted({i["platform"] for i in flagged})
     out["items"] = items
     out["header"] = {"items": len(flagged), "weekly_dollars": str(sum((Decimal(i["finding"]["weekly_dollars"]) for i in flagged), Decimal(0))),
-                     "platform": flagged_platforms[0] if len(flagged_platforms) == 1 else None, "delivery_items": len(items)}
+                     "platform": flagged_platforms[0] if len(flagged_platforms) == 1 else None, "delivery_items": len(items),
+                     "losing": any(Decimal(i["kept"]) < 0 for i in flagged)}
 
     # One tile per channel (and platform), the three that sell most: what an item keeps, as a share of its price.
     by_channel: dict[tuple[str, str], dict] = {}

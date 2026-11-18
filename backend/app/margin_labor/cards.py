@@ -36,7 +36,8 @@ def _channels(db: Session, restaurant_id: str) -> dict | None:
         return None
     top = next(i for i in out["items"] if i["finding"])
     return {"module": "channels", "state": "live", "route": "channels", "items": out["header"]["items"], "platform": out["header"]["platform"],
-            "weekly_dollars": out["header"]["weekly_dollars"], "top": {"row_id": top["row_id"], "name": top["name"], "platform": top["platform"]}}
+            "weekly_dollars": out["header"]["weekly_dollars"], "losing": out["header"]["losing"],
+            "top": {"row_id": top["row_id"], "name": top["name"], "platform": top["platform"]}}
 
 
 def _usage(db: Session, restaurant_id: str) -> dict | None:

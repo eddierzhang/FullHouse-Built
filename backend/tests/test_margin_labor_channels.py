@@ -184,13 +184,15 @@ def test_new_rates_start_today_and_the_old_ones_still_price_the_orders_they_appl
     assert [(t.effective_from, t.effective_to, t.commission_pct) for t in terms] == [
         (terms[0].effective_from, k.today - timedelta(days=1), D("0.300000")), (k.today, None, D("0.100000"))]
     assert k.row("FRIES", platform="Uber Eats").unit_contribution == D("-0.0850")  # the window's orders were under the old rates
+    shown = {t["platform"]: t["commission_pct"] for t in client.get(f"{API}/channels").json()["terms"]}
+    assert shown == {"DoorDash": "0.250000", "Uber Eats": "0.100000"}  # the page shows the rates in effect today
 
 
 def test_the_page_tiles_chart_and_why_panel_read_the_rows(client, db):
     k = Kitchen(client, db)
     out = client.get(f"{API}/channels")
     body = out.json()
-    assert body["header"] == {"items": 1, "weekly_dollars": "32.5500", "platform": "Uber Eats", "delivery_items": 3}
+    assert body["header"] == {"items": 1, "weekly_dollars": "32.5500", "platform": "Uber Eats", "delivery_items": 3, "losing": True}
     assert [(t["label"], t["kept_pct"], t["units"]) for t in body["tiles"]] == [("Dine in", "0.780537", "168.0000"), ("DoorDash", "0.478376", "168.0000"), ("Uber Eats", "-0.017000", "28.0000")]
     assert [(i["name"], i["platform"], i["price"], i["plate_cost"], i["kept"], i["units"]) for i in body["items"]] == [
         ("Fries", "Uber Eats", "5.0000", "0.4350", "-0.0850", "28.0000"), ("Wings", "DoorDash", "12.0000", "2.8000", "5.4560", "84.0000"),

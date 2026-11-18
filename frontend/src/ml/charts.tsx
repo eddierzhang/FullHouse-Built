@@ -645,3 +645,70 @@ export function CoverageBar({ value, needed, label }: { value: number; needed: n
     </div>
   )
 }
+
+
+export type GroupRow = { key: string; label: string; values: Record<string, number | undefined> }
+
+const FILLS = ['solid', 'hatch', 'dots', 'outline'] as const
+
+/**
+ * A few bars per item from a shared zero line, one for each channel: what an item keeps dine-in beside what it
+ * keeps on each platform. Every bar carries its figure, and each series has its own fill pattern as well as its
+ * own name, so the chart reads without colour. Four series at most.
+ */
+export function GroupedBars({ rows, series, unit, format, onPick }: { rows: GroupRow[]; series: string[]; unit: string; format: (v: number) => string; onPick?: (key: string) => void }) {
+  const shown = series.slice(0, 4)
+  const all = rows.flatMap((r) => shown.map((s) => r.values[s]).filter((v): v is number => v != null))
+  if (rows.length === 0 || all.length === 0) return <p className="muted">Nothing to show.</p>
+  const low = Math.min(0, ...all)
+  const high = niceMax(Math.max(1e-9, ...all))
+  const span = high - (low < 0 ? -niceMax(-low) : 0)
+  const floor = high - span
+  const at = (v: number) => `${((v - floor) / span) * 100}%`
+  return (
+    <div className="ml-groups">
+      <div className="ml-coverage-key">
+        {shown.map((name, i) => (
+          <span key={name}>
+            <span className={`ml-group-swatch ml-fill-${FILLS[i]}`} /> {name}
+          </span>
+        ))}
+      </div>
+      <ul className="ml-bars-list">
+        {rows.map((row) => (
+          <li key={row.key} className="ml-group">
+            {onPick ? (
+              <button className="ml-group-label ml-why-link" onClick={() => onPick(row.key)}>
+                {row.label}
+              </button>
+            ) : (
+              <span className="ml-group-label">{row.label}</span>
+            )}
+            <div className="ml-group-bars">
+              {shown.map((name, i) => {
+                const v = row.values[name]
+                if (v == null) return null
+                return (
+                  <div key={name} className="ml-group-row" title={`${row.label}, ${name}: ${format(v)} (${unit}). Source: orders, payouts and invoices`}>
+                    <span className="ml-bars-track">
+                      <span className="ml-bars-zero" style={{ left: at(0) }} />
+                      <span className={`ml-group-fill ml-fill-${FILLS[i]}`} style={v >= 0 ? { left: at(0), width: `${(v / span) * 100}%` } : { left: at(v), width: `${(-v / span) * 100}%` }} />
+                    </span>
+                    <span className="ml-bars-value">
+                      {format(v)} <span className="muted small">{name}</span>
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </li>
+        ))}
+      </ul>
+      <div className="ml-group-axis">
+        <span>{format(floor)}</span>
+        <span className="ml-axis-unit">{unit}</span>
+        <span>{format(high)}</span>
+      </div>
+    </div>
+  )
+}

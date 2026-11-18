@@ -47,6 +47,17 @@ function words(card: ModuleCard): Shown | null {
       button: 'See checks',
     }
   }
+  if (card.module === 'channels') {
+    if (card.state === 'setup') {
+      const missing = card.missing ?? []
+      return { key: card.module, title: 'Channels', sentence: `${missing.length} ${missing.length === 1 ? 'step is' : 'steps are'} left to turn on Channels.`, href: '#channels', button: 'Open' }
+    }
+    const n = Number(card.items)
+    const where = (card.platform as string | null) ?? 'delivery platforms'
+    const what = card.losing ? (n === 1 ? 'item loses money' : 'items lose money') : n === 1 ? 'item keeps too little' : 'items keep too little'
+    const top = card.top as { row_id: string }
+    return { key: card.module, title: 'Channels', sentence: `${n} ${what} on ${where}.`, number: `${dollars(String(card.weekly_dollars))} a week`, href: `#channels?review=${top.row_id}`, button: 'Review price' }
+  }
   return null
 }
 

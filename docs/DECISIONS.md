@@ -56,4 +56,15 @@ One line per decision made where `docs/SPEC-margin-labor.md` was silent, or wher
 | 2026-11-17 | Rows under $5 a week are collapsed into one line; the level is a setting | Spec 10.4 gives the example and no number for Usage |
 | 2026-11-17 | Usage is recomputed when sales, an invoice price or a recipe changes, and on the first read of a new week; there is no new scheduled workflow | Additive only: the workflow table is counted by an existing test, and a pure recompute on change covers the weekly run |
 | 2026-11-17 | One confirmed dish per POS item is used for expected use: the first by name | Two confirmed recipes on one POS item would double the expected use |
+| 2026-11-17 | Per-unit channel figures are averaged weighted by units sold | "Average per item" has to be dollars per unit sold for the weekly impact formula to hold |
+| 2026-11-17 | A matched platform order uses its payout row's commission and fees, plus the contract's packaging; an unmatched one uses the contract's rates, fixed fee and packaging | A payout report never contains the restaurant's own packaging cost; the platform's fixed fees are already inside what it reports |
+| 2026-11-17 | Cost per plate on an order's business date is the recipe at that day's prices; if it was not fully priced then, the cost now | An invoice can arrive after the first orders in the window |
+| 2026-11-17 | With no dine-in sales of an item, "half of its dine-in contribution" is half of the target (dine-in menu price less cost per plate) | The spec's rule needs a dine-in figure |
+| 2026-11-17 | The reprice uses the contract's commission and processing rates, else the rates the payouts actually took | The spec's formula needs both rates |
+| 2026-11-17 | The first rates saved for a platform cover its history; later ones start the day they are saved, and earlier rates keep pricing the orders they applied to | A window's orders were sold under the rates of their day |
+| 2026-11-17 | The Channels table puts the platform under the item name: seven columns, not eight | Spec 10.3 caps a table at seven; its own list for Channels has eight |
+| 2026-11-17 | The Channels header says "keeps too little" when a flagged item still keeps something, and "loses money" when one is below zero | A finding also opens under half of the dine-in amount; the sentence has to be true |
+| 2026-11-17 | `channel_reprice` is registered beside the older proposal kinds from the new module; approving records the intent and changes nothing | Ground rules 1 and 7 |
+| 2026-11-17 | A link that opens a page with a panel showing is read once and removed from the address | Otherwise a reload reopens the panel over the page |
+| 2026-11-17 | `test_stock_outlook...` now names the date it checks | The demo is seeded on the UTC date and the outlook used the server's; they differ after midnight UTC on a server west of it. The product mismatch itself is left as it was and is listed in the report |
 

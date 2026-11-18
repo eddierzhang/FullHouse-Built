@@ -31,6 +31,7 @@ export const ROUTES = [
   // Margin & Labor Engine: one page per module (behind the ml_* flags).
   'menu-costs',
   'usage',
+  'channels',
   'approvals',
   'runs',
   'agents',

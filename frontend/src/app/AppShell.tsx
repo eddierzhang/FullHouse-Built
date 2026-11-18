@@ -45,6 +45,7 @@ import { RecipesPage } from '../pages/RecipesPage'
 import { CustomersPage } from '../pages/CustomersPage'
 import { DigestPage } from '../pages/DigestPage'
 import { MenuCostsPage } from '../ml/MenuCostsPage'
+import { ChannelsPage } from '../ml/ChannelsPage'
 import { UsagePage } from '../ml/UsagePage'
 import { DraftPage } from '../pages/DraftPage'
 import { InvoicesPage } from '../pages/InvoicesPage'
@@ -173,6 +174,7 @@ const INSIGHTS_GROUP: { label: string; items: NavItem[] } = {
 const MARGIN_LABOR: { flag: string; item: NavItem }[] = [
   { flag: 'ml_menu_costs', item: { route: 'menu-costs', label: 'Menu costs', icon: 'menu' } },
   { flag: 'ml_usage', item: { route: 'usage', label: 'Usage', icon: 'inventory' } },
+  { flag: 'ml_channels', item: { route: 'channels', label: 'Channels', icon: 'trend' } },
 ]
 
 /** Words people type for a page that its name doesn't contain. */
@@ -445,6 +447,8 @@ export function AppShell({ user, restaurant, setRestaurant, onSignOut }: Props) 
         return <MenuCostsPage app={app} />
       case 'usage':
         return <UsagePage app={app} />
+      case 'channels':
+        return <ChannelsPage app={app} />
       case 'items':
         return <ItemsPage app={app} />
       case 'item':
