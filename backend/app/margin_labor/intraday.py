@@ -307,7 +307,9 @@ def today(db: Session, restaurant_id: str, user, now: datetime | None = None) ->
             hour, minutes = (minute // 60) % 24, minute % 60
             steps.append({"label": f"{hour % 12 or 12}:{minutes:02d}", "need": needs[minute][0], "need_if_busy": needs[minute][1], "scheduled": len(day.scheduled(role_key, minute))})
         out["coverage"][role_key] = steps
-    open_ = db.query(LaborAdjustment).filter(LaborAdjustment.restaurant_id == restaurant_id, LaborAdjustment.business_date == day.day, LaborAdjustment.status == "proposed").order_by(LaborAdjustment.created_at).all()
+    open_ = db.query(LaborAdjustment).filter(LaborAdjustment.restaurant_id == restaurant_id, LaborAdjustment.business_date == day.day, LaborAdjustment.status == "proposed",
+                                              # read as of an earlier moment, the page shows only what had been suggested by then
+                                              LaborAdjustment.created_at <= day.now).order_by(LaborAdjustment.created_at).all()
     if open_ and wage_access:  # suggestions go to the manager only
         row = open_[0]
         out["suggestion"] = {"id": row.id, "kind": row.kind, "role_key": row.role_key, "role": roles.get(row.role_key, row.role_key), "suggested_time": row.suggested_time,

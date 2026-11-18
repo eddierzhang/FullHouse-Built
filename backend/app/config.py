@@ -103,7 +103,7 @@ class Settings:
     # Public demo: replace the data with the demo restaurant at startup and
     # again on this schedule (UTC), so visitors' changes never accumulate.
     demo_mode: bool = os.getenv("DEMO_MODE", "false").strip().lower() in ("1", "true", "yes")
-    #: Whether the demo also carries Corner Grill, the sample restaurant with the Margin & Labor modules live.
+    #: Whether the demo has the Margin & Labor modules switched on, and an empty restaurant beside it (app.margin_labor.preview).
     demo_sample: bool = os.getenv("DEMO_SAMPLE", "true").lower() in ("1", "true", "yes")
     #: Sample accounts the sign-in page offers with one click, as "Label|email|password" separated by ";". For a
     #: preview on sample data only: it prints the passwords on a public page. Empty everywhere else.

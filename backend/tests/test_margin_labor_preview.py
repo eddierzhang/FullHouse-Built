@@ -119,23 +119,77 @@ def test_the_sample_restaurant_says_the_same_thing_on_every_page(client, db):
     assert len(shifts) == 9 * 7 and {s["staff_id"] for s in shifts} == ids
 
 
-def test_the_demo_offers_corner_grill_only_once_it_is_complete(anon_client, db, monkeypatch):
-    """In demo mode the sign-in page lists the sample restaurant when its seed has finished, never half-built."""
-    from app.auth.models import User
+def test_the_demo_offers_an_empty_start_once_the_empty_restaurant_is_there(anon_client, db, monkeypatch):
+    """Signing in to the demo is a choice: pages filled in, or nothing in them."""
     from app.config import settings
+    from app.demo import reset_demo_data
     from app.margin_labor import preview
-    from app.restaurant.models import Restaurant
 
     monkeypatch.setattr(settings, "demo_mode", True)
-    assert anon_client.get("/api/v1/auth/options").json()["samples"] == []
-    preview._restaurant(db, *preview.SAMPLE, ready=False)  # the seed has started
-    assert preview.ready(db) is False and anon_client.get("/api/v1/auth/options").json()["samples"] == []
-    user = db.query(User).filter(User.email == preview.SAMPLE[0]).one()
-    db.get(Restaurant, user.restaurant_id).setup_completed_at = datetime.now()
+    reset_demo_data(db)
     db.commit()
-    assert anon_client.get("/api/v1/auth/options").json()["samples"] == [
-        {"label": preview.SAMPLE_LABEL, "email": "demo@example.com", "password": "demo-kitchen"}]
-    assert preview.seed_sample(db) is None  # there already: a second reset thread does not write it twice
+    options = anon_client.get("/api/v1/auth/options").json()
+    assert options["demo"]["empty"] is None and options["samples"] == []
+    preview.seed_empty(db)
+    empty = anon_client.get("/api/v1/auth/options").json()["demo"]["empty"]
+    assert empty["email"] == "empty@example.com"
+    assert anon_client.post("/api/v1/auth/login", json={"email": empty["email"], "password": empty["password"]}).status_code == 200
+    assert anon_client.get("/api/v1/restaurant/menu-items").json() == [] and anon_client.get("/api/v1/restaurant/staff").json() == []
+
+
+def test_the_filled_demo_has_every_module_on_and_one_set_of_books(anon_client, db, monkeypatch):
+    """`fill_demo` switches the modules on from the demo's own data, so the older pages and the new ones agree."""
+    from datetime import timedelta
+
+    from app.auth.models import User
+    from app.config import settings
+    from app.demo import DEMO_EMAIL, DEMO_PASSWORD, reset_demo_data
+    from app.insights import engine
+    from app.margin_labor import preview
+    from app.margin_labor.models import LaborPunch, SalesOrder
+    from app.restaurant.models import Order
+    from app.sales.models import LaborDay, SalesDay
+    from app.stock import ledger
+
+    monkeypatch.setattr(settings, "demo_mode", True)
+    reset_demo_data(db)
+    db.commit()
+    rid = preview.fill_demo(db, solve_seconds=3, checkpoint=db.commit)
+    db.commit()
+    assert rid == db.query(User).filter(User.email == DEMO_EMAIL).one().restaurant_id
+    assert all(flags.enabled(db, rid, f) for f in flags.ML_FLAGS if f != flags.ML_CHANNELS) and not flags.enabled(db, rid, flags.ML_CHANNELS)
+    client = anon_client
+    assert client.post("/api/v1/auth/login", json={"email": DEMO_EMAIL, "password": DEMO_PASSWORD}).status_code == 200
+
+    # Dishes: Menu costs and the Dishes list show the same price and the same cost per plate.
+    costs = client.get(f"{API}/menu-costs").json()
+    menu = {m["name"]: m for m in client.get("/api/v1/restaurant/menu-items").json()}
+    assert costs["state"] == "live" and len(costs["dishes"]) == 5
+    for dish in costs["dishes"]:
+        assert menu[dish["name"]]["price"] == float(dish["price"]) and abs(menu[dish["name"]]["cost"] - float(dish["plate_cost"])) < 0.006, dish["name"]
+
+    # Sales: a day's point-of-sale orders are the demo's own orders, and are what the daily sales row says.
+    service = labor.Service(db, rid)
+    day = service.today - timedelta(days=3)
+    pos = float(db.query(func.sum(SalesOrder.net)).filter_by(restaurant_id=rid, business_date=day).scalar())
+    old = sum(o.total for o in db.query(Order).filter(Order.restaurant_id == rid, Order.status == "completed") if o.created_at.date() == day)
+    assert round(pos, 2) == round(old, 2) == db.query(SalesDay).filter_by(restaurant_id=rid, date=day).one().net_sales
+
+    # Labor: a day's labor is its clock-ins at each person's rate, and prime cost is built on it.
+    hours = sum((p.clock_out - p.clock_in).total_seconds() / 3600 for p in db.query(LaborPunch).filter_by(restaurant_id=rid, business_date=day))
+    labor_day = db.query(LaborDay).filter_by(restaurant_id=rid, date=day).one()
+    assert labor_day.hours == round(hours, 2) and 600 < labor_day.dollars < 1200
+    weeks = engine.prime_cost(db, rid)
+    assert weeks and all(20 < w["labor_pct"] < 32 for w in weeks)
+
+    # People: ten on the rota, each with shifts on the staff page; next week is drafted, this week is published.
+    staff = {p["name"] for p in client.get("/api/v1/restaurant/staff").json()}
+    assert {row[0] for row in preview.ROTA} == staff and len(staff) == 10
+    week = client.get(f"{API}/labor/weeks/next").json()
+    assert week["state"] in ("learning", "live") and {r["role_key"] for r in week["roles"]} == {"head_chef", "line_cook", "server", "host", "bartender"}
+    assert week["schedule"]["status"] == "draft" and 0.22 < float(week["schedule"]["labor_pct"]) < 0.34 and week["schedule"]["open_shifts"] < 20
+    assert client.get(f"{API}/ordering/drafts").json()["state"] == "live" and client.get(f"{API}/usage").json()["state"] == "learning"
+    assert ledger.out_of_balance(db, rid) == []
 
 
 def test_the_whole_sample_seed_runs_with_checkpoints_and_ends_marked_ready(db):

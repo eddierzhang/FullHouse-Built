@@ -14,12 +14,13 @@ repository and the spec disagree on names, layout or libraries, the repository w
 the spec wins. Never weaken a ground rule to make a feature work: stop and ask.
 
 All eight phases are built, each behind its flag (`ml_menu_costs`, `ml_usage`, `ml_ordering`, `ml_labor`, `ml_channels`),
-off by default and off in the demo. Backend: `backend/app/margin_labor/` (pure arithmetic in `costing.py`,
+off by default. Backend: `backend/app/margin_labor/` (pure arithmetic in `costing.py`,
 `usage_math.py`, `channel_math.py`, `forecasting.py`, `ordering_math.py`, `labor_math.py`, `scheduling.py`,
 `intraday_math.py`; jobs and readers beside them; routes under `/api/v1/margin-labor`). Frontend: `frontend/src/ml/`.
 Tests: `backend/tests/test_margin_labor_*.py`; browser tests in `frontend/e2e/` run in two seeded restaurants of their
 own (`scripts/seed_e2e_margin_labor.py`). `python -m app.margin_labor.backtest` replays the forecast on three fixtures.
-Since 2026-11-18 the sidebar is consolidated at Eddie's request: Menu costs and Usage are sections of the Menu page,
+The demo (`DEMO_MODE`) has the modules on except Channels: `app/margin_labor/preview.py` fills them from the demo
+restaurant's own data after each reset and adds an empty restaurant; sign-in offers either. Since 2026-11-18 the sidebar is consolidated at Eddie's request: Menu costs and Usage are sections of the Menu page,
 Labor is a section of Labor and staffing (`frontend/src/pages/SectionsPage.tsx`), and Channels is hidden for now (see
 the 2026-11-18 lines of `docs/DECISIONS.md`). Before that, additive only: no existing table, page or route was replaced (see the first 2026-11-17 lines of `docs/DECISIONS.md`).
 

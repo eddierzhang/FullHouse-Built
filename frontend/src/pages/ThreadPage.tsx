@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
-import { type ThreadMessage, discardDraft, fetchThread } from '../api/client'
+import { type ThreadMessage, askAgent, discardDraft, fetchThread } from '../api/client'
 import type { AppContext } from '../app/context'
 import { Loaded } from '../components/PageState'
 import { AgentMessage, SourceChips, messageTime } from '../components/prices'
 import { useLoad } from '../lib/useLoad'
+
+/** Questions that show what the agent does with the invoices: a price beside a cheaper supplier, a price that moved, and notes for a supplier meeting. */
+const TRY = ['What did I pay for tomatoes last week?', 'What did I pay for chicken breast?', 'Give me talking points for my supplier meeting']
 
 /** How often to look again while the agent is still answering. */
 const PENDING_POLL_MS = 1500
@@ -70,6 +73,20 @@ function DraftInThread({ message, app, onChanged }: { message: ThreadMessage; ap
 export function ThreadPage({ app, active = false }: { app: AppContext; active?: boolean }) {
   const thread = useLoad(fetchThread, [])
   const pending = thread.data?.some((m) => m.status === 'pending') ?? false
+  const [asking, setAsking] = useState<string | null>(null)
+  // One tap asks it, exactly as if it had been typed in the field.
+  const ask = async (question: string) => {
+    setAsking(question)
+    try {
+      await askAgent(question)
+      await thread.reload()
+      window.scrollTo({ top: document.body.scrollHeight })
+    } catch (err) {
+      app.toast('Couldn’t ask that', err instanceof Error ? err.message : String(err))
+    } finally {
+      setAsking(null)
+    }
+  }
 
   useEffect(() => {
     if (!pending) return
@@ -92,6 +109,14 @@ export function ThreadPage({ app, active = false }: { app: AppContext; active?: 
   return (
     <section className="pi-section" id="sec-thread" aria-label="Conversation">
         <h2 className="pi-h1">Conversation</h2>
+        <div className="pi-try" aria-label="Questions to try">
+          <span className="pi-label">Try asking</span>
+          {TRY.map((question) => (
+            <button key={question} type="button" className="pi-try-chip" disabled={asking !== null} onClick={() => void ask(question)}>
+              {question}
+            </button>
+          ))}
+        </div>
         <Loaded load={thread} what="the conversation" placeholderHeight={200}>
           {(messages) =>
             messages.length === 0 ? (

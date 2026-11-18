@@ -92,6 +92,8 @@ class DemoCredentials(BaseModel):
     password: str
     #: What this demo restaurant is good for, shown when the sign-in page offers more than one.
     label: str | None = None
+    #: The same demo with nothing in it: every feature on, every page empty. None until it is ready.
+    empty: "DemoCredentials | None" = None
 
 
 class DemoCard(BaseModel):

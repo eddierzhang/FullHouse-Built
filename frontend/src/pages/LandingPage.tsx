@@ -249,8 +249,8 @@ export function LandingPage({ options }: Props) {
               </p>
               {actions}
               <p className="landing-note">
-                {options?.demo && options?.samples?.length
-                  ? "Two sample restaurants, reset every day, so try anything. Botanica shows invoices, stock and ordering. Corner Grill shows menu costs, usage and labor."
+                {options?.demo?.empty
+                  ? "The demo is a sample bistro with weeks of invoices, sales and schedules. Start with its pages filled in, or empty. It resets every day, so try anything."
                   : options?.samples?.length
                   ? "This preview has a small sample restaurant and an empty one, each with every feature switched on. Pick one on the next page."
                   : options?.demo

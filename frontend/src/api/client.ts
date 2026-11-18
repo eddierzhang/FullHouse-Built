@@ -658,7 +658,7 @@ export type AuthOptions = {
   /** Whether a new restaurant can sign up here. A restaurant's team joins by invite either way. */
   signup_enabled: boolean
   /** The public demo's shared account; null on real deployments. */
-  demo: { email: string; password: string; label?: string | null } | null
+  demo: { email: string; password: string; label?: string | null; empty?: { email: string; password: string } | null } | null
   /** The demo's own top digest card, previewed on the landing page; null on real deployments. */
   demo_card?: { item_name: string; sentence: string; impact: number; total: number; items: number } | null
   /** Sample accounts a preview on sample data offers on its sign-in page; empty everywhere else. */

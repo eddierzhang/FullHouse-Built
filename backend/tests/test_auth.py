@@ -215,7 +215,7 @@ def test_demo_offers_a_working_account(anon_client, db, monkeypatch):
     reset_demo_data(db)
 
     demo = anon_client.get("/api/v1/auth/options").json()["demo"]
-    assert (demo["email"], demo["password"]) == (DEMO_EMAIL, DEMO_PASSWORD) and demo["label"].startswith("Botanica")
+    assert (demo["email"], demo["password"]) == (DEMO_EMAIL, DEMO_PASSWORD) and demo["empty"] is None
     assert anon_client.post("/api/v1/auth/login", json={"email": demo["email"], "password": demo["password"]}).status_code == 200
 
 

@@ -772,6 +772,7 @@ def reset_now() -> dict:
     from app.config import settings
 
     if settings.demo_sample:
-        # Corner Grill comes back with every reset, on its own thread: the demo restaurant is usable meanwhile.
-        preview.seed_in_background()
+        # Menu costs, usage, ordering and labor are switched on from the demo's own data, and the empty restaurant
+        # is put beside it, on a thread: the demo is usable meanwhile.
+        preview.fill_in_background()
     return counts
