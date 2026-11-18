@@ -1,5 +1,7 @@
-"""One demo restaurant for the Margin & Labor preview (`python dev.py margin-labor`): every module switched on and
-populated, behind a single sign-in. Sample data only; the two restaurants the browser tests use are not made here."""
+"""The restaurant for the preview on 8090 (`python dev.py margin-labor`): every feature switched on and nothing in
+it, behind a single sign-in. No recipes, dishes, invoices, stock, suppliers, sales or staff: an empty slate to fill in.
+
+`PREVIEW_SAMPLE=1` fills it with sample data instead (every module populated), as it was before 2026-11-18."""
 
 import os
 import sys
@@ -20,7 +22,7 @@ from app.restaurant.models import Restaurant  # noqa: E402
 
 EMAIL = "demo@example.com"
 PASSWORD = "demo-kitchen"
-NAME = "Sample Kitchen"
+NAME = "Your Restaurant"
 
 
 def seed() -> None:
@@ -43,6 +45,9 @@ def seed() -> None:
             flags.set_flag(db, restaurant.id, flag, True)
         flags.set_flag(db, restaurant.id, flags.V3_VOICE, False)
         db.commit()
+        if os.getenv("PREVIEW_SAMPLE", "") not in ("1", "true"):
+            print(f"Seeded an empty restaurant: {EMAIL} / {PASSWORD}")
+            return
         service = labor.Service(db, restaurant.id)
         fixtures.seed_preview(db, restaurant.id, service.today, service.conf.timezone, datetime.now(timezone.utc).astimezone(service.tz))
         db.commit()
