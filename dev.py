@@ -117,8 +117,8 @@ def demo(_args) -> None:
 def margin_labor(_args) -> None:
     """The Margin & Labor Engine on sample data, on its own port and its own throwaway database.
 
-    Two sample restaurants with every module switched on: sign in as ml@example.com (Menu costs, Usage, Ordering and
-    prep, Channels) or labor@example.com (Labor), password ml-password. Nothing here touches the demo or your data.
+    One sample restaurant with every module switched on and populated: sign in as demo@example.com, password
+    demo-kitchen (the sign-in page has a button for it). Nothing here touches the demo or your data.
     """
     step("Building the frontend")
     run([NPM, "run", "build"], FRONTEND, env={"VITE_API_BASE": "same-origin"})
@@ -131,15 +131,14 @@ def margin_labor(_args) -> None:
         # Lets the Labor Today page be read as of a time of day, to see a service in progress at any hour.
         "ALLOW_TIME_TRAVEL": "true",
         # The sign-in page offers the two sample accounts with one click.
-        "SAMPLE_ACCOUNTS": "Kitchen: menu costs, usage, ordering, channels|ml@example.com|ml-password;Floor: labor and schedules|labor@example.com|ml-password",
+        "SAMPLE_ACCOUNTS": "Sample Kitchen, every feature on|demo@example.com|demo-kitchen",
         "STATIC_DIR": str(FRONTEND / "dist"),
     }
-    step("Loading the sample restaurants")
+    step("Loading the sample restaurant (about half a minute: it drafts next week's schedule)")
     run([python(), "-m", "alembic", "upgrade", "head"], BACKEND, env)
-    for script in ("scripts/seed_data.py", "scripts/seed_e2e.py", "scripts/seed_e2e_margin_labor.py"):
-        run([python(), script], BACKEND, env)
+    run([python(), "scripts/seed_preview.py"], BACKEND, env)
 
-    step("Margin & Labor on http://localhost:8090 (Ctrl+C to stop). Sign in: ml@example.com or labor@example.com, password ml-password")
+    step("Margin & Labor on http://localhost:8090 (Ctrl+C to stop). Sign in: demo@example.com, password demo-kitchen")
     _serve([subprocess.Popen(
         [str(python()), "-m", "uvicorn", "app.main:app", "--port", "8090"], cwd=BACKEND,
         env={**os.environ, **env},

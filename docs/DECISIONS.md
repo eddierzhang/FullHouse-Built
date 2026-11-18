@@ -116,4 +116,4 @@ One line per decision made where `docs/SPEC-margin-labor.md` was silent, or wher
 | 2026-11-17 | The week being planned is the Monday after today; on a Monday, next Monday | This week is already under way |
 | 2026-11-17 | Every time on the new pages is shown on the restaurant's clock, not the browser's | Spec 10.5; found when a test machine in another time zone showed 4:45 for 7:45 |
 | 2026-11-17 | Schedule generation reads its inputs, releases the database, solves, then writes | On SQLite the solve otherwise held the write lock for up to 30 seconds and every other request waited |
-
+| 2026-11-18 | The 8090 preview (`python dev.py margin-labor`) is one sample restaurant with all five modules live (`scripts/seed_preview.py`, `fixtures.seed_preview`); the two e2e restaurants stay for the browser tests only | One sign-in where every page is populated; the test restaurants keep their exact golden figures because the kitchen fixture's `scale` defaults to 1 |

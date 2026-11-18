@@ -170,7 +170,12 @@ def generate(db: Session, restaurant_id: str, week_of: date, now: datetime | Non
 
 def _proposal(db: Session, service: labor.Service, schedule: Schedule) -> None:
     """One open `schedule_draft` proposal per week being scheduled; a regenerate updates it."""
+    from app.agents.crud import get_definition_by_key
+    from app.agents.definitions import AGENT_KEY
     from app.restaurant.po_draft import _system_run
+
+    if get_definition_by_key(db, AGENT_KEY) is None:
+        return  # a site with no agent set up yet: the draft is still on the Labor page, with no proposal beside it
 
     note = (f"Draft schedule for the week of {words.day(schedule.week_of)}, version {schedule.version}: {words.qty(schedule.hours_total)} hours. "
             "Review it on the Labor page. Publishing notifies nobody: you tell the team.")

@@ -41,7 +41,7 @@ WEEKLY = {"Ground beef": 32, "Bun": 18, "Onion": 10, "Sauce base": 5, "Potato": 
 EXTRA = {"Chicken wings": 20}
 
 
-def seed_deliveries(db: Session, restaurant_id: str, supplier, items: dict, week_end: date, weeks: int = 12, extra_weeks: int | None = None) -> None:
+def seed_deliveries(db: Session, restaurant_id: str, supplier, items: dict, week_end: date, weeks: int = 12, extra_weeks: int | None = None, scale: int = 1) -> None:
     """A delivery every Thursday, and wings again every Monday, for the `weeks` ending on the Sunday `week_end`."""
     def invoice(day: date, packs: dict, reference: str) -> None:
         row = Invoice(restaurant_id=restaurant_id, supplier_id=supplier.id, invoice_date=day, status="complete", reference=reference,
@@ -54,12 +54,12 @@ def seed_deliveries(db: Session, restaurant_id: str, supplier, items: dict, week
 
     for k in range(weeks - 1, -1, -1):
         if extra_weeks is None or k < extra_weeks:
-            invoice(week_end - timedelta(days=6 + 7 * k), EXTRA, f"MF-M{k:02d}")
-        invoice(week_end - timedelta(days=3 + 7 * k), WEEKLY, f"MF-T{k:02d}")
+            invoice(week_end - timedelta(days=6 + 7 * k), {n: q * scale for n, q in EXTRA.items()}, f"MF-M{k:02d}")
+        invoice(week_end - timedelta(days=3 + 7 * k), {n: q * scale for n, q in WEEKLY.items()}, f"MF-T{k:02d}")
     db.flush()
 
 
-def seed_kitchen(db: Session, restaurant_id: str, today: date, sales_days: int = 90, first_invoice_days_ago: int = 40, deliveries: bool = True) -> dict:
+def seed_kitchen(db: Session, restaurant_id: str, today: date, sales_days: int = 90, first_invoice_days_ago: int = 40, deliveries: bool = True, scale: int = 1) -> dict:
     """Write the kitchen for one restaurant. Returns the rows by name."""
     supplier = Supplier(name=SUPPLIER, restaurant_id=restaurant_id, lead_time_days=2)
     db.add(supplier)
@@ -95,11 +95,11 @@ def seed_kitchen(db: Session, restaurant_id: str, today: date, sales_days: int =
                               yield_pct=Decimal(yield_pct)))
         db.add(PosItem(restaurant_id=restaurant_id, pos_item_id=pos_id, name=name, category="Food", price=Decimal(price)))
         for back in range(1, sales_days + 1):
-            db.add(SalesItem(restaurant_id=restaurant_id, date=today - timedelta(days=back), pos_item_id=pos_id, pos_item_name=name, qty=sold,
-                             net=float(Decimal(price) * sold), source="pos"))
+            db.add(SalesItem(restaurant_id=restaurant_id, date=today - timedelta(days=back), pos_item_id=pos_id, pos_item_name=name, qty=sold * scale,
+                             net=float(Decimal(price) * sold * scale), source="pos"))
     db.flush()
     if deliveries:
-        seed_deliveries(db, restaurant_id, supplier, items, today - timedelta(days=today.weekday() + 1))
+        seed_deliveries(db, restaurant_id, supplier, items, today - timedelta(days=today.weekday() + 1), scale=scale)
     return {"supplier": supplier, "items": items, "recipes": recipes, "invoice": invoice}
 
 
@@ -177,14 +177,20 @@ def seed_service(db: Session, restaurant_id: str, today: date, tz: str, days: in
                 db.flush()
                 db.add(SalesOrderLine(restaurant_id=restaurant_id, order_id=order.id, line_no=1, business_date=day, pos_item_id="BURGER", pos_item_name="Burger",
                                       qty=Decimal(covers), net=net))
-        for role, (lunch, dinner, busy_dinner) in STAFFING.items():
-            for service, (start, end), heads in (("L", LUNCH_SHIFT, lunch), ("D", DINNER_SHIFT, busy_dinner if busy else dinner)):
-                for head in range(heads):
-                    db.add(LaborPunch(restaurant_id=restaurant_id, employee_name=f"{role.replace('_', ' ').title()} {head + 1}", role_key=role,
-                                      clock_in=datetime.combine(day, start, tzinfo=local).astimezone(timezone.utc),
-                                      clock_out=datetime.combine(day, end, tzinfo=local).astimezone(timezone.utc), business_date=day, source="csv",
-                                      external_id=f"SV-{day.isoformat()}-{role}-{service}{head}"))
+        _punches(db, restaurant_id, day, local)
     db.flush()
+
+
+def _punches(db: Session, restaurant_id: str, day: date, local) -> None:
+    """One day's clock-ins: two servers at lunch, three at dinner (four on Friday and Saturday), and the cooks."""
+    busy = day.weekday() in (4, 5)
+    for role, (lunch, dinner, busy_dinner) in STAFFING.items():
+        for service, (start, end), heads in (("L", LUNCH_SHIFT, lunch), ("D", DINNER_SHIFT, busy_dinner if busy else dinner)):
+            for head in range(heads):
+                db.add(LaborPunch(restaurant_id=restaurant_id, employee_name=f"{role.replace('_', ' ').title()} {head + 1}", role_key=role,
+                                  clock_in=datetime.combine(day, start, tzinfo=local).astimezone(timezone.utc),
+                                  clock_out=datetime.combine(day, end, tzinfo=local).astimezone(timezone.utc), business_date=day, source="csv",
+                                  external_id=f"SV-{day.isoformat()}-{role}-{service}{head}"))
 
 
 #: name -> (role on the staff list, hourly rate or None). One cook has no rate on file: the role's median costs her shifts.
@@ -261,3 +267,96 @@ def seed_today(db: Session, restaurant_id: str, day: date, tz: str, until: time,
             db.add(SalesOrderLine(restaurant_id=restaurant_id, order_id=order.id, line_no=1, business_date=day, pos_item_id="BURGER", pos_item_name="Burger",
                                   qty=Decimal(guests), net=net))
     db.flush()
+
+
+# --- one restaurant with everything: the preview demo ---------------------------------------------------
+
+DEMO_SCALE = 3
+
+
+def _spread(counts: dict[str, int], orders: int) -> list[dict[str, int]]:
+    """Share each dish's units evenly across `orders` orders, the same way every time."""
+    units = sorted(((k + 0.5) / n, pos) for pos, n in counts.items() for k in range(n))
+    out: list[dict[str, int]] = [{} for _ in range(orders)]
+    for index, (_at, pos) in enumerate(units):
+        out[index % orders][pos] = out[index % orders].get(pos, 0) + 1
+    return out
+
+
+def seed_trading_days(db: Session, restaurant_id: str, today: date, tz: str, days: int = 70, scale: int = DEMO_SCALE) -> None:
+    """Order-level sales and punches for a whole restaurant, the same every day and consistent with `seed_kitchen` at the
+    same scale: dine-in orders every 15 minutes through lunch and dinner at menu prices, DoorDash orders (a burger and a
+    wings; two in three have a payout row) and Uber Eats orders (fries, on contract rates), which add up to exactly what
+    the kitchen's daily sales say was sold."""
+    local = zone(tz)
+    names = {pos: name for name, (pos, _p, _s, _l) in DISHES.items()}
+    price = {pos: Decimal(p) for _name, (pos, p, _s, _l) in DISHES.items()}
+    sold = {pos: n * scale for _name, (pos, _p, n, _l) in DISHES.items()}
+    doordash, uber = 3 * scale, scale
+    dine_in = {"BURGER": sold["BURGER"] - doordash, "FRIES": sold["FRIES"] - uber, "SALAD": sold["SALAD"], "WINGS": sold["WINGS"] - doordash}
+    slots = [(LUNCH[0], n, LUNCH[2]) for n in range(LUNCH[1])] + [(DINNER[0], n, DINNER[2]) for n in range(DINNER[1])]
+    baskets = _spread(dine_in, len(slots))
+
+    def order(day: date, external: str, at: datetime, channel: str, platform: str | None, lines: list[tuple[str, int, Decimal]], covers: int | None) -> None:
+        net = sum((p * q for _pos, q, p in lines), Decimal(0))
+        row = SalesOrder(restaurant_id=restaurant_id, connection_key="fixture", external_id=external, opened_at=at.astimezone(timezone.utc),
+                         closed_at=(at + timedelta(minutes=45)).astimezone(timezone.utc), business_date=day, channel=channel, platform=platform, covers=covers,
+                         gross=net, net=net, status="closed")
+        db.add(row)
+        db.flush()
+        for number, (pos, qty, each) in enumerate(lines, start=1):
+            db.add(SalesOrderLine(restaurant_id=restaurant_id, order_id=row.id, line_no=number, business_date=day, pos_item_id=pos, pos_item_name=names[pos],
+                                  qty=Decimal(qty), net=each * qty))
+
+    for back in range(days, 0, -1):
+        day = today - timedelta(days=back)
+        busy = day.weekday() in (4, 5)
+        for index, (start, n, covers) in enumerate(slots):
+            covers = BUSY_DINNER_COVERS if busy and start == DINNER[0] else covers
+            at = datetime.combine(day, start, tzinfo=local) + timedelta(minutes=15 * n)
+            order(day, f"IN-{day.isoformat()}-{index:02d}", at, "dine_in", None, [(pos, qty, price[pos]) for pos, qty in sorted(baskets[index].items())], covers)
+        for n in range(doordash):
+            at = datetime.combine(day, time(12, 0) if n % 2 == 0 else time(18, 0), tzinfo=local) + timedelta(minutes=10 * n)
+            order(day, f"DD-{day.isoformat()}-{n}", at, "delivery_platform", "DoorDash", [("BURGER", 1, Decimal("13.00")), ("WINGS", 1, Decimal("12.00"))], None)
+            if n % 3 != 2:
+                db.add(ChannelPayout(restaurant_id=restaurant_id, platform="DoorDash", external_order_id=f"DD-{day.isoformat()}-{n}", gross=Decimal("25.00"),
+                                     commission=Decimal("6.25"), fees=Decimal("0.75"), payout=Decimal("18.00"),
+                                     paid_at=datetime.combine(day + timedelta(days=2), time(12, 0), tzinfo=timezone.utc)))
+        for n in range(uber):
+            at = datetime.combine(day, time(12, 15) if n % 2 == 0 else time(18, 45), tzinfo=local) + timedelta(minutes=20 * n)
+            order(day, f"UE-{day.isoformat()}-{n}", at, "delivery_platform", "Uber Eats", [("FRIES", 1, Decimal("5.00"))], None)
+        _punches(db, restaurant_id, day, local)
+    for platform, (commission, processing, fixed, packaging) in TERMS.items():
+        db.add(ChannelTerms(restaurant_id=restaurant_id, platform=platform, commission_pct=Decimal(commission), processing_pct=Decimal(processing),
+                            fixed_fee_per_order=Decimal(fixed), packaging_cost_per_order=Decimal(packaging), effective_from=date(2000, 1, 1)))
+    db.flush()
+
+
+def seed_preview(db: Session, restaurant_id: str, today: date, tz: str, now_local: datetime | None = None) -> dict:
+    """Everything for one demo restaurant with all five modules live: the kitchen at three times the test volume, order-level
+    sales through the day on three channels, punches, a team with rates, this week's schedule published, a beef price
+    that rose two days ago, and today's sales so far running a little under the forecast."""
+    from app.margin_labor.models import LaborRules
+
+    made = seed_kitchen(db, restaurant_id, today, scale=DEMO_SCALE)
+    seed_schedule(db, restaurant_id, made["supplier"].id, minimum="150")
+    seed_trading_days(db, restaurant_id, today, tz)
+    team = seed_team(db, restaurant_id)
+    db.add(LaborRules(restaurant_id=restaurant_id, weekly_overtime_hours=40, daily_overtime_hours=8, min_rest_hours=10, min_shift_hours=4, max_shift_hours=8,
+                      max_hours_per_day=10, max_consecutive_days=6, break_after_hours=6, break_minutes=30, min_paid_hours=1, advance_notice_days=3, allow_on_call=False,
+                      confirmed_by="the owner", confirmed_at=datetime.now(timezone.utc)))
+    seed_week_schedule(db, restaurant_id, team, today - timedelta(days=today.weekday()), tz)
+    # Ground beef went from $12.00 to $22.00 a kilo two days ago: the burger passes the food cost target.
+    beef = made["items"]["Ground beef"]
+    rise = Invoice(restaurant_id=restaurant_id, supplier_id=made["supplier"].id, invoice_date=today - timedelta(days=2), status="complete", reference="MF-2040", total=44.0)
+    db.add(rise)
+    db.flush()
+    db.add(InvoiceLine(restaurant_id=restaurant_id, invoice_id=rise.id, supplier_id=made["supplier"].id, line_no=1, description="Ground beef", qty=2, unit_price=22.0,
+                       extended=44.0, item_id=beef.id, pack_size=1000))
+    if now_local is not None:
+        # After midnight the business date is still yesterday: the whole day has traded.
+        until = time(23, 59) if now_local.date() > today else now_local.time()
+        if until >= time(11, 30):
+            seed_today(db, restaurant_id, today, tz, until, 0.85)
+    db.flush()
+    return {**made, "team": team}
