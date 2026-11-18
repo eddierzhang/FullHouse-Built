@@ -19,7 +19,9 @@ off by default and off in the demo. Backend: `backend/app/margin_labor/` (pure a
 `intraday_math.py`; jobs and readers beside them; routes under `/api/v1/margin-labor`). Frontend: `frontend/src/ml/`.
 Tests: `backend/tests/test_margin_labor_*.py`; browser tests in `frontend/e2e/` run in two seeded restaurants of their
 own (`scripts/seed_e2e_margin_labor.py`). `python -m app.margin_labor.backtest` replays the forecast on three fixtures.
-Additive only: no existing table, page or route was replaced (see the first 2026-11-17 lines of `docs/DECISIONS.md`).
+Since 2026-11-18 the sidebar is consolidated at Eddie's request: Menu costs and Usage are sections of the Menu page,
+Labor is a section of Schedule & staff (`frontend/src/pages/SectionsPage.tsx`), and Channels is hidden for now (see
+the 2026-11-18 lines of `docs/DECISIONS.md`). Before that, additive only: no existing table, page or route was replaced (see the first 2026-11-17 lines of `docs/DECISIONS.md`).
 
 ### Ground rules (spec section 2)
 

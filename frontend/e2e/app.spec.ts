@@ -112,6 +112,7 @@ test.describe('navigation', () => {
     expect(names).toEqual([
       'Today',
       'Recommendations',
+      'Profit & forecast',
       'Inventory',
       'Suppliers',
       'Invoices',
@@ -121,7 +122,6 @@ test.describe('navigation', () => {
       'Menu',
       'Assistant Manager',
       'Agent activity',
-      'Profit & forecast',
       'History & undo',
       'Profile',
       'Help',

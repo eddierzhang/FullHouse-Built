@@ -94,6 +94,7 @@ const NAV: { label: string | null; items: NavItem[] }[] = [
     items: [
       { route: 'overview', label: 'Today', icon: 'overview' },
       { route: 'approvals', label: 'Recommendations', icon: 'approvals' },
+      { route: 'profit', label: 'Profit & forecast', icon: 'profit' },
     ],
   },
   {
@@ -131,10 +132,7 @@ const NAV: { label: string | null; items: NavItem[] }[] = [
   },
   {
     label: 'Records',
-    items: [
-      { route: 'profit', label: 'Profit & forecast', icon: 'profit' },
-      { route: 'history', label: 'History & undo', icon: 'clock' },
-    ],
+    items: [{ route: 'history', label: 'History & undo', icon: 'clock' }],
   },
   {
     label: 'Restaurant',
@@ -195,7 +193,7 @@ const PAGE_KEYWORDS: Partial<Record<Route, string>> = {
  * what-if tools, counting, deliveries, autopilot). Every other page is still there: one click on "Show all
  * pages" brings the whole menu back, and search reaches all of them either way.
  */
-const DEMO_MENU = new Set<Route>(['overview', 'approvals', 'insights', 'tools', 'inventory', 'suppliers', 'count', 'variance', 'receive', 'autopilot', 'invoices', 'questions', 'digest', 'help'])
+const DEMO_MENU = new Set<Route>(['overview', 'approvals', 'profit', 'insights', 'tools', 'inventory', 'suppliers', 'count', 'variance', 'receive', 'autopilot', 'invoices', 'questions', 'digest', 'help'])
 const FULL_MENU_KEY = 'fullhouse.nav.full'
 
 const COLLAPSED_KEY = 'fullhouse.nav.collapsed'
