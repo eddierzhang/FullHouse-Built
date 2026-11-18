@@ -518,3 +518,121 @@ class LaborRequirement(_Row, Base):
     #: weekly, or intraday for the rest of a day revised during service.
     kind: Mapped[str] = mapped_column(String(10), default="weekly", nullable=False)
     run_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+
+# --- Module D: schedules ------------------------------------------------------------------------------
+
+
+class LaborRules(_Row, Base):
+    """The restaurant's labor rules, one row. Configuration, not code, and not legal advice: every value is empty
+    until the owner confirms it, and an empty rule is not enforced."""
+
+    __tablename__ = "labor_rules"
+    __table_args__ = (UniqueConstraint("restaurant_id", name="uq_labor_rules_restaurant"),)
+
+    restaurant_id: Mapped[str] = _tenant("labor_rules")
+    weekly_overtime_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
+    daily_overtime_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
+    min_rest_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
+    min_shift_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
+    max_shift_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
+    max_hours_per_day: Mapped[float | None] = mapped_column(Float, nullable=True)
+    max_consecutive_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    break_after_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
+    break_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    min_paid_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
+    advance_notice_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    allow_on_call: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    minor_rules: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    confirmed_by: Mapped[str | None] = mapped_column(String(254), nullable=True)
+    confirmed_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+
+
+class EmployeeProfile(_Row, Base):
+    """What scheduling needs to know about a person on the staff list, beside the list itself. No wage is here."""
+
+    __tablename__ = "employee_profiles"
+    __table_args__ = (UniqueConstraint("restaurant_id", "staff_id", name="uq_employee_profiles_staff"),)
+
+    restaurant_id: Mapped[str] = _tenant("employee_profiles")
+    staff_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    external_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    role_keys: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    min_weekly_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
+    max_weekly_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
+    desired_weekly_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
+    is_minor: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class EmployeeWage(_Row, Base):
+    """A person's hourly rate. Restricted: readable only by owners and managers, kept out of the audit log's
+    values, the application logs and every agent prompt. It is used for one thing, the cost of a schedule."""
+
+    __tablename__ = "employee_wages"
+    __table_args__ = (UniqueConstraint("restaurant_id", "staff_id", name="uq_employee_wages_staff"),)
+
+    restaurant_id: Mapped[str] = _tenant("employee_wages")
+    staff_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    hourly_rate: Mapped[Decimal] = mapped_column(Dec(), nullable=False)
+
+
+class EmployeeAvailability(_Row, Base):
+    __tablename__ = "employee_availability"
+    __table_args__ = (Index("ix_employee_availability_restaurant_staff", "restaurant_id", "staff_id"),)
+
+    restaurant_id: Mapped[str] = _tenant("employee_availability")
+    staff_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    weekday: Mapped[int] = mapped_column(Integer, nullable=False)  # Monday = 0
+    start_time: Mapped[str] = mapped_column(String(5), nullable=False)
+    end_time: Mapped[str] = mapped_column(String(5), nullable=False)
+
+
+class EmployeeTimeOff(_Row, Base):
+    __tablename__ = "employee_time_off"
+    __table_args__ = (Index("ix_employee_time_off_restaurant_staff", "restaurant_id", "staff_id"),)
+
+    restaurant_id: Mapped[str] = _tenant("employee_time_off")
+    staff_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    start_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    end_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+
+
+class Schedule(_Row, Base):
+    """One week's schedule: a draft a manager edits, then publishes. FullHouse does not notify staff."""
+
+    __tablename__ = "schedules"
+    __table_args__ = (UniqueConstraint("restaurant_id", "week_of", name="uq_schedules_week"),)
+
+    restaurant_id: Mapped[str] = _tenant("schedules")
+    week_of: Mapped[date] = mapped_column(Date, nullable=False)
+    status: Mapped[str] = mapped_column(String(10), default="draft", nullable=False)  # draft|published
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    proposal_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    hours_total: Mapped[Decimal] = mapped_column(Dec(), default=Decimal(0), nullable=False)
+    cost_total: Mapped[Decimal | None] = mapped_column(Dec(), nullable=True)
+    labor_pct_p50: Mapped[Decimal | None] = mapped_column(Dec(10, 6), nullable=True)
+    generated_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    published_by: Mapped[str | None] = mapped_column(String(254), nullable=True)
+    #: {"unset_rules": [...], "seconds": n}
+    notes: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+
+
+class ScheduleShift(_Row, Base):
+    """One shift of a schedule. `staff_id` is empty for an open shift."""
+
+    __tablename__ = "schedule_shifts"
+    __table_args__ = (Index("ix_schedule_shifts_restaurant_schedule", "restaurant_id", "schedule_id"),)
+
+    restaurant_id: Mapped[str] = _tenant("schedule_shifts")
+    schedule_id: Mapped[str] = mapped_column(ForeignKey("schedules.id", name="fk_schedule_shifts_schedule", ondelete="CASCADE"), nullable=False)
+    staff_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    role_key: Mapped[str] = mapped_column(String(40), nullable=False)
+    business_date: Mapped[date] = mapped_column(Date, nullable=False)
+    start_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    end_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    kind: Mapped[str] = mapped_column(String(8), default="regular", nullable=False)  # regular|flex
+    break_minutes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    note: Mapped[str] = mapped_column(String(200), default="", nullable=False)

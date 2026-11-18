@@ -700,3 +700,272 @@ def labor_standard_reset(role_key: str, user: User = Depends(manager), db: Sessi
     labor.forecast_labor(db, restaurant_id)
     db.commit()
     return labor_read.standards_page(db, restaurant_id)
+
+
+# --- Module D: Labor (schedule generation, edits and publishing) --------------------------------------
+
+
+def _schedule_body(db: Session, restaurant_id: str, schedule, user: User) -> dict:
+    from app.margin_labor import schedule_read
+
+    return schedule_read.out(db, restaurant_id, schedule, user)
+
+
+@router.post("/labor/weeks/{week_of}/generate")
+def labor_generate(week_of: _date, idempotency_key: str | None = Header(default=None), user: User = Depends(manager), db: Session = Depends(get_db)) -> dict:
+    """Queue the week's schedule to be generated, or regenerated around its locked shifts. Returns a job id to watch."""
+    restaurant_id = _module(db, user, flags.ML_LABOR)
+    monday = week_of - timedelta(days=week_of.weekday())
+    job = jobs.enqueue(db, "derive", f"derive:{restaurant_id}:schedule_generate:{monday.isoformat()}",
+                       {"restaurant_id": restaurant_id, "job": "schedule_generate", "week_of": monday.isoformat()}, restaurant_id=restaurant_id, max_attempts=1)
+    db.commit()
+    return {"job_id": job.id, "week_of": monday}
+
+
+@router.get("/jobs/{job_id}")
+def job_status(job_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """A queued job's status: queued, running, done or failed."""
+    from app.platform.models import Job
+
+    restaurant_id = _scope(db, user)
+    job = db.get(Job, job_id)
+    if job is None or job.restaurant_id != restaurant_id:
+        raise HTTPException(404, "No such job.")
+    return {"job_id": job.id, "status": {"queued": "queued", "active": "running", "done": "done", "failed": "failed"}.get(job.status, job.status),
+            "error": "The job failed. Try again." if job.status == "failed" else None}
+
+
+class ShiftIn(BaseModel):
+    schedule_id: str = Field(min_length=1, max_length=32)
+    date: _date | None = None
+    #: Minutes from local midnight of the shift's business date, on the half hour.
+    start: int | None = Field(default=None, ge=0, le=1800)
+    end: int | None = Field(default=None, ge=30, le=1800)
+    role_key: str | None = Field(default=None, max_length=40, pattern="^[a-z0-9_]+$")
+    staff_id: str | None = Field(default=None, max_length=32)
+    #: True to make it an open shift.
+    unassign: bool = False
+    locked: bool | None = None
+    note: str | None = Field(default=None, max_length=200)
+
+
+def _shift_change(db: Session, restaurant_id: str, user: User, change) -> dict:
+    from app.margin_labor import schedule as schedules
+
+    try:
+        out = change()
+    except LookupError as err:
+        db.rollback()
+        raise HTTPException(404, str(err)) from err
+    except schedules.ScheduleError as err:
+        db.rollback()  # a refused edit leaves nothing behind
+        raise HTTPException(422, str(err)) from err
+    db.commit()
+    schedule = out[0] if isinstance(out, tuple) else out
+    return _schedule_body(db, restaurant_id, schedule, user)
+
+
+@router.post("/labor/shifts")
+def labor_shift_add(body: ShiftIn, user: User = Depends(manager), db: Session = Depends(get_db)) -> dict:
+    """Add a shift to a schedule. Returns the schedule with its totals worked out again."""
+    from app.margin_labor import schedule as schedules
+
+    restaurant_id = _module(db, user, flags.ML_LABOR)
+    return _shift_change(db, restaurant_id, user, lambda: schedules.save_shift(
+        db, restaurant_id, body.schedule_id, None, day=body.date, start=body.start, end=body.end, role_key=body.role_key,
+        staff_id=None if body.unassign or body.staff_id is None else body.staff_id, locked=body.locked, note=body.note))
+
+
+@router.patch("/labor/shifts/{shift_id}")
+def labor_shift_edit(shift_id: str, body: ShiftIn, user: User = Depends(manager), db: Session = Depends(get_db)) -> dict:
+    """Change a shift's times, role, person, lock or note. A lock keeps it through a regenerate."""
+    from app.margin_labor import schedule as schedules
+
+    restaurant_id = _module(db, user, flags.ML_LABOR)
+    staff = None if body.unassign else (body.staff_id if body.staff_id is not None else "keep")
+    return _shift_change(db, restaurant_id, user, lambda: schedules.save_shift(
+        db, restaurant_id, body.schedule_id, shift_id, start=body.start, end=body.end, role_key=body.role_key, staff_id=staff, locked=body.locked, note=body.note))
+
+
+@router.delete("/labor/shifts/{shift_id}")
+def labor_shift_remove(shift_id: str, schedule_id: str, user: User = Depends(manager), db: Session = Depends(get_db)) -> dict:
+    from app.margin_labor import schedule as schedules
+
+    restaurant_id = _module(db, user, flags.ML_LABOR)
+    return _shift_change(db, restaurant_id, user, lambda: schedules.delete_shift(db, restaurant_id, schedule_id, shift_id))
+
+
+class PublishIn(BaseModel):
+    confirm: bool = False
+
+
+@router.post("/labor/schedules/{schedule_id}/publish")
+def labor_publish(schedule_id: str, body: PublishIn, user: User = Depends(manager), db: Session = Depends(get_db)) -> dict:
+    """Publish a schedule. Warnings (late notice, open shifts, a broken rule) come back first and need `confirm`.
+    Publishing notifies nobody: a person tells the team."""
+    from app.margin_labor import schedule as schedules
+    from app.margin_labor.models import Schedule
+
+    restaurant_id = _module(db, user, flags.ML_LABOR)
+    try:
+        out = schedules.publish(db, restaurant_id, schedule_id, user.email, body.confirm)
+    except LookupError as err:
+        raise HTTPException(404, str(err)) from err
+    db.commit()
+    return {**out, "schedule": _schedule_body(db, restaurant_id, db.get(Schedule, schedule_id), user)}
+
+
+@router.get("/labor/schedules/{schedule_id}/export.csv")
+def labor_export(schedule_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> Response:
+    """The schedule as a CSV file: who works when. It holds no wage and no cost."""
+    from app.margin_labor import schedule as schedules
+
+    restaurant_id = _module(db, user, flags.ML_LABOR)
+    try:
+        text = schedules.export_csv(db, restaurant_id, schedule_id)
+    except LookupError as err:
+        raise HTTPException(404, str(err)) from err
+    return Response(content=text, media_type="text/csv", headers={"Content-Disposition": 'attachment; filename="schedule.csv"'})
+
+
+class RulesIn(BaseModel):
+    weekly_overtime_hours: float | None = Field(default=None, gt=0, le=168)
+    daily_overtime_hours: float | None = Field(default=None, gt=0, le=24)
+    min_rest_hours: float | None = Field(default=None, ge=0, le=48)
+    min_shift_hours: float | None = Field(default=None, gt=0, le=16)
+    max_shift_hours: float | None = Field(default=None, gt=0, le=16)
+    max_hours_per_day: float | None = Field(default=None, gt=0, le=24)
+    max_consecutive_days: int | None = Field(default=None, ge=1, le=14)
+    break_after_hours: float | None = Field(default=None, gt=0, le=16)
+    break_minutes: int | None = Field(default=None, ge=0, le=120)
+    min_paid_hours: float | None = Field(default=None, ge=0, le=16)
+    advance_notice_days: int | None = Field(default=None, ge=0, le=60)
+    allow_on_call: bool | None = None
+    minor_max_hours_per_day: float | None = Field(default=None, gt=0, le=24)
+    minor_latest_end: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
+def _rules_out(row) -> dict:
+    from app.margin_labor import scheduling
+
+    values = {name: (getattr(row, name) if row is not None else None) for name in scheduling.RULE_NAMES}
+    minor = (row.minor_rules or {}) if row is not None else {}
+    return {**values, "minor_max_hours_per_day": minor.get("max_hours_per_day"), "minor_latest_end": minor.get("latest_end"),
+            "confirmed_by": row.confirmed_by if row is not None else None, "confirmed_at": row.confirmed_at if row is not None else None}
+
+
+@router.get("/labor/rules")
+def labor_rules(user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """The restaurant's labor rules. Empty until the owner confirms them; FullHouse gives no legal advice."""
+    from app.margin_labor.models import LaborRules
+
+    restaurant_id = _module(db, user, flags.ML_LABOR)
+    return _rules_out(db.query(LaborRules).filter(LaborRules.restaurant_id == restaurant_id).first())
+
+
+@router.put("/labor/rules")
+def labor_rules_save(body: RulesIn, user: User = Depends(manager), db: Session = Depends(get_db)) -> dict:
+    """The owner confirms the rules for their location. A rule left empty is not enforced, and drafts say so."""
+    from app.auth.models import OWNER
+    from app.margin_labor import scheduling
+    from app.margin_labor.models import LaborRules
+
+    restaurant_id = _module(db, user, flags.ML_LABOR)
+    if user.role != OWNER:
+        raise HTTPException(403, "Only the owner confirms labor rules.")
+    if body.min_shift_hours is not None and body.max_shift_hours is not None and body.min_shift_hours > body.max_shift_hours:
+        raise HTTPException(422, "The shortest shift is longer than the longest.")
+    row = db.query(LaborRules).filter(LaborRules.restaurant_id == restaurant_id).first()
+    if row is None:
+        row = LaborRules(restaurant_id=restaurant_id)
+        db.add(row)
+    for name in scheduling.RULE_NAMES:
+        setattr(row, name, getattr(body, name))
+    row.minor_rules = {k: v for k, v in (("max_hours_per_day", body.minor_max_hours_per_day), ("latest_end", body.minor_latest_end)) if v is not None}
+    row.confirmed_by, row.confirmed_at = user.email, datetime.now(timezone.utc)
+    db.commit()
+    return _rules_out(row)
+
+
+class AvailabilityIn(BaseModel):
+    weekday: int = Field(ge=0, le=6)
+    start_time: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    end_time: str = Field(pattern=r"^(([01]\d|2[0-3]):[0-5]\d|24:00)$")
+
+
+class TeamMemberIn(BaseModel):
+    role_keys: list[str] = Field(default_factory=list, max_length=12)
+    max_weekly_hours: float | None = Field(default=None, gt=0, le=168)
+    desired_weekly_hours: float | None = Field(default=None, ge=0, le=168)
+    min_weekly_hours: float | None = Field(default=None, ge=0, le=168)
+    is_minor: bool = False
+    active: bool = True
+    #: Sent only to change it; left out, the rate stays as it is. Null removes it.
+    hourly_rate: Decimal | None = Field(default=None, ge=0, le=1000, max_digits=12, decimal_places=4)
+    set_rate: bool = False
+    availability: list[AvailabilityIn] | None = None
+
+
+def _team(db: Session, restaurant_id: str) -> list[dict]:
+    from app.margin_labor import labor
+    from app.margin_labor.models import EmployeeAvailability, EmployeeProfile, EmployeeWage
+    from app.restaurant.models import Staff
+
+    profiles = {p.staff_id: p for p in db.query(EmployeeProfile).filter(EmployeeProfile.restaurant_id == restaurant_id)}
+    wages = {w.staff_id: w.hourly_rate for w in db.query(EmployeeWage).filter(EmployeeWage.restaurant_id == restaurant_id)}
+    windows: dict[str, list] = {}
+    for a in db.query(EmployeeAvailability).filter(EmployeeAvailability.restaurant_id == restaurant_id).order_by(EmployeeAvailability.weekday, EmployeeAvailability.start_time):
+        windows.setdefault(a.staff_id, []).append({"weekday": a.weekday, "start_time": a.start_time, "end_time": a.end_time})
+    out = []
+    for staff in db.query(Staff).filter(Staff.restaurant_id == restaurant_id).order_by(Staff.name):
+        p = profiles.get(staff.id)
+        out.append({"staff_id": staff.id, "name": staff.name, "role_keys": list(p.role_keys) if p is not None and p.role_keys else [labor.slug(staff.role)],
+                    "max_weekly_hours": p.max_weekly_hours if p else None, "desired_weekly_hours": p.desired_weekly_hours if p else None,
+                    "min_weekly_hours": p.min_weekly_hours if p else None, "is_minor": bool(p.is_minor) if p else False, "active": p.active if p else True,
+                    "hourly_rate": None if staff.id not in wages else str(wages[staff.id]), "availability": windows.get(staff.id, [])})
+    return out
+
+
+@router.get("/labor/team")
+def labor_team(user: User = Depends(manager), db: Session = Depends(get_db)) -> list[dict]:
+    """The staff list as scheduling sees it, with hourly rates. Owners and managers only: this is the one place a rate is returned."""
+    return _team(db, _module(db, user, flags.ML_LABOR))
+
+
+@router.put("/labor/team/{staff_id}")
+def labor_team_save(staff_id: str, body: TeamMemberIn, user: User = Depends(manager), db: Session = Depends(get_db)) -> list[dict]:
+    """What scheduling knows about one person: their roles, hours, availability and, for costing only, their rate."""
+    from app.margin_labor.models import EmployeeAvailability, EmployeeProfile, EmployeeWage
+    from app.platform import events
+    from app.restaurant.models import Staff
+
+    restaurant_id = _module(db, user, flags.ML_LABOR)
+    staff = db.get(Staff, staff_id)
+    if staff is None or staff.restaurant_id != restaurant_id:
+        raise HTTPException(404, "No such person.")
+    profile = db.query(EmployeeProfile).filter(EmployeeProfile.restaurant_id == restaurant_id, EmployeeProfile.staff_id == staff_id).first()
+    if profile is None:
+        profile = EmployeeProfile(restaurant_id=restaurant_id, staff_id=staff_id)
+        db.add(profile)
+    profile.role_keys, profile.max_weekly_hours, profile.desired_weekly_hours = body.role_keys, body.max_weekly_hours, body.desired_weekly_hours
+    profile.min_weekly_hours, profile.is_minor, profile.active = body.min_weekly_hours, body.is_minor, body.active
+    if body.availability is not None:
+        for window in body.availability:
+            if window.end_time <= window.start_time:
+                raise HTTPException(422, "An availability window ends after it starts.")
+        db.query(EmployeeAvailability).filter(EmployeeAvailability.restaurant_id == restaurant_id, EmployeeAvailability.staff_id == staff_id).delete(synchronize_session=False)
+        for window in body.availability:
+            db.add(EmployeeAvailability(restaurant_id=restaurant_id, staff_id=staff_id, weekday=window.weekday, start_time=window.start_time, end_time=window.end_time))
+    if body.set_rate:
+        wage = db.query(EmployeeWage).filter(EmployeeWage.restaurant_id == restaurant_id, EmployeeWage.staff_id == staff_id).first()
+        if body.hourly_rate is None:
+            if wage is not None:
+                db.delete(wage)
+        elif wage is None:
+            db.add(EmployeeWage(restaurant_id=restaurant_id, staff_id=staff_id, hourly_rate=body.hourly_rate))
+        else:
+            wage.hourly_rate = body.hourly_rate
+        # The change is on record, with who made it. The rate itself is not: it never enters a log.
+        events.emit(db, restaurant_id, "wage.changed", "staff", staff_id, {"changed_by": user.email})
+    db.commit()
+    return _team(db, restaurant_id)

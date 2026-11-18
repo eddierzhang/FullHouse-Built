@@ -185,3 +185,25 @@ def seed_service(db: Session, restaurant_id: str, today: date, tz: str, days: in
                                       clock_out=datetime.combine(day, end, tzinfo=local).astimezone(timezone.utc), business_date=day, source="csv",
                                       external_id=f"SV-{day.isoformat()}-{role}-{service}{head}"))
     db.flush()
+
+
+#: name -> (role on the staff list, hourly rate or None). One cook has no rate on file: the role's median costs her shifts.
+TEAM = {"Ana Rivera": ("Server", "15.00"), "Ben Tran": ("Server", "15.00"), "Cal Ortiz": ("Server", "16.00"), "Dee Shah": ("Server", "15.00"), "Eve Park": ("Server", "17.00"),
+        "Fay Lund": ("Server", "15.00"), "Gil Moreno": ("Line Cook", "20.00"), "Hal Brandt": ("Line Cook", "22.00"), "Ivy Chen": ("Line Cook", None)}
+
+
+def seed_team(db: Session, restaurant_id: str) -> dict:
+    """Nine people on the staff list, with the rates scheduling costs a week by. Returns the staff rows by name."""
+    from app.margin_labor.models import EmployeeWage
+    from app.restaurant.models import Staff
+
+    out = {}
+    for name, (role, rate) in TEAM.items():
+        out[name] = Staff(restaurant_id=restaurant_id, name=name, role=role)
+        db.add(out[name])
+    db.flush()
+    for name, (_role, rate) in TEAM.items():
+        if rate is not None:
+            db.add(EmployeeWage(restaurant_id=restaurant_id, staff_id=out[name].id, hourly_rate=Decimal(rate)))
+    db.flush()
+    return out

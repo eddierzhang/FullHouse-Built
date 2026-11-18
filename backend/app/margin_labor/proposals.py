@@ -26,6 +26,25 @@ def _explain_channel_reprice(payload: dict) -> Explanation:
     return Explanation(issue, change, know.strip())
 
 
+def apply_schedule_draft(db: Session, payload: dict) -> str:
+    """Approving a schedule draft publishes it, as the Publish button does. Nobody is notified: a person tells the team."""
+    from app.audit.context import get_actor
+    from app.margin_labor import schedule
+    from app.restaurant.inventory import site_scope
+
+    out = schedule.publish(db, site_scope(db), payload["schedule_id"], get_actor().id or "a manager", confirm=True)
+    extra = f" {len(out['warnings'])} thing{'s' if len(out['warnings']) != 1 else ''} to check were shown on the Labor page." if out["warnings"] else ""
+    return f"Published the schedule for the week of {payload.get('week_of')}.{extra} Nobody was notified: tell the team, or export it."
+
+
+def _explain_schedule_draft(payload: dict) -> Explanation:
+    return Explanation(f"A draft schedule for the week of {payload.get('week_of')} is ready: {payload.get('hours_total')} hours, built from the people needed each half hour.",
+                       "Approving publishes it. FullHouse notifies nobody and writes to no scheduler or payroll system.",
+                       "Review and edit it on the Labor page first: lock the shifts you want kept, and regenerate around them. Then tell the team yourself.")
+
+
 def register() -> None:
     appliers.APPLIERS.setdefault("channel_reprice", apply_channel_reprice)
     explain.EXTRA.setdefault("channel_reprice", _explain_channel_reprice)
+    appliers.APPLIERS.setdefault("schedule_draft", apply_schedule_draft)
+    explain.EXTRA.setdefault("schedule_draft", _explain_schedule_draft)

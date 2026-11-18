@@ -42,6 +42,9 @@ EXCLUDED_TABLES = frozenset({
     "change_log", "agent_events", "inventory_adjustments",
     # Accounts and their secrets have their own record: the security log.
     "users", "auth_sessions", "invites", "password_resets", "security_events", "mfa_challenges",
+    # Hourly rates are restricted (Margin & Labor ground rules): a change is recorded as an event that names the
+    # person and who changed it, never the rate.
+    "employee_wages",
     # Customers' names, contact details and words are for owners and admins,
     # and this history is open to the whole team. Each row says who logged
     # or resolved it instead (app/customers/models.py).
