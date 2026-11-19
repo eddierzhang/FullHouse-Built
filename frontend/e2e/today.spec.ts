@@ -27,7 +27,7 @@ function slowDay(today: string, busy: boolean): string {
 test.beforeEach(async ({ page }) => signIn(page, OWNER))
 
 test('before any orders are in, the page says so and makes no suggestion', async ({ page }) => {
-  const first = await (await page.request.get(`${ML}/labor/today`)).json()
+  const first = await (await page.request.get(`${ML}/labor/standards`)).json() // the date only: reading Today itself makes suggestions for the real clock
   await page.goto(`/#labor/today?at=${first.today}T11:45:00`)
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(/^Today, [A-Z][a-z]{2} [A-Z][a-z]{2} \d+$/)
   await expect(page.getByTestId('header-sentence')).toHaveText(/^Too early to say\. 0 covers so far, \d+ expected\.$/)
@@ -37,7 +37,7 @@ test('before any orders are in, the page says so and makes no suggestion', async
 
 test('flow 3: sales run below forecast during service, a cut suggestion appears, and the manager accepts it', async ({ page }) => {
   test.setTimeout(120_000)
-  const first = await (await page.request.get(`${ML}/labor/today`)).json()
+  const first = await (await page.request.get(`${ML}/labor/standards`)).json() // the date only: reading Today itself makes suggestions for the real clock
   const today: string = first.today
   const busy = [5, 6].includes(new Date(`${today}T12:00:00`).getDay())
   const imported = await (await page.request.post(`${ML}/data/import`, { data: { kind: 'orders', text: slowDay(today, busy) } })).json()
@@ -96,7 +96,7 @@ test('flow 3: sales run below forecast during service, a cut suggestion appears,
 
 test('staff see the pace and the people, with no suggestion, saving or labor cost', async ({ page }) => {
   await signIn(page, STAFF)
-  const first = await (await page.request.get(`${ML}/labor/today`)).json()
+  const first = await (await page.request.get(`${ML}/labor/standards`)).json() // the date only: reading Today itself makes suggestions for the real clock
   await page.goto(`/#labor/today?at=${first.today}T19:15:00`)
   await expect(page.getByTestId('header-sentence')).toHaveText(/^Running 50\.0% below forecast\./)
   await expect(page.getByRole('article', { name: 'Suggestion' })).toHaveCount(0)
@@ -111,7 +111,7 @@ test('staff see the pace and the people, with no suggestion, saving or labor cos
 
 test('on a phone Today is one column with no sideways scroll, and the week page links to it', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 800 })
-  const first = await (await page.request.get(`${ML}/labor/today`)).json()
+  const first = await (await page.request.get(`${ML}/labor/standards`)).json() // the date only: reading Today itself makes suggestions for the real clock
   await page.goto(`/#labor/today?at=${first.today}T19:15:00`)
   await expect(page.getByTestId('header-sentence')).toBeVisible()
   await expectNoSidewaysScroll(page)

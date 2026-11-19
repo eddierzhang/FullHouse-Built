@@ -129,7 +129,7 @@ export function CsvUpload({ app, kinds, what }: { app: AppContext; kinds: Import
                 if (csv && reply && !reply.needs_kind) void run(csv, reply.kind ?? undefined, e.target.checked)
               }}
             />
-            Update rows that are already here
+            Change rows that are already here
           </label>
         </div>
 
