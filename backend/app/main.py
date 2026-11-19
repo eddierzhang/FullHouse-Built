@@ -38,6 +38,7 @@ from app.platform.routes import router as platform_router
 from app.prices.routes import public_router as prices_public_router
 from app.prices.routes import router as prices_router
 from app.restaurant.routes import router as restaurant_router
+from app.restaurant.import_routes import router as imports_router
 from app.restaurant.profile_routes import router as profile_router
 from app.support.alerts import configure_logging, configure_sentry
 from app.support.routes import router as support_router
@@ -205,6 +206,7 @@ app.add_middleware(
 app.include_router(auth_router)
 signed_in = [Depends(current_user)]
 app.include_router(restaurant_router, dependencies=signed_in)
+app.include_router(imports_router, dependencies=signed_in)
 app.include_router(agents_router, dependencies=signed_in)
 app.include_router(changes_router, dependencies=signed_in)
 app.include_router(profile_router, dependencies=signed_in)

@@ -5289,3 +5289,12 @@ button.ml-bars-row { cursor: pointer; }
 .jump-links button { padding: 6px 12px; border: 1px solid var(--border-strong); border-radius: 999px; font: inherit; font-size: 13px; font-weight: 600; color: var(--text); background: var(--surface); cursor: pointer; }
 .jump-links button:hover { border-color: var(--brand); }
 .pi-hub-head + .pi-section { padding-top: 0; border-top: 0; }
+
+/* Upload a CSV: one folded card a section. */
+.csv-upload { margin-bottom: 20px; }
+.csv-upload > summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; padding: 12px 20px; cursor: pointer; list-style: none; }
+.csv-upload > summary::-webkit-details-marker { display: none; }
+.csv-upload > summary::before { content: '+'; display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; background: var(--brand-soft); color: #94390f; font-weight: 700; }
+.csv-upload[open] > summary::before { content: '−'; }
+.csv-upload[open] > summary { border-bottom: 1px solid var(--border); }
+.pi-page .csv-upload { margin-bottom: 0; font-size: 14px; line-height: 1.45; }

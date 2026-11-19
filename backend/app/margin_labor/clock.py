@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.margin_labor.business import business_date, zone
 from app.margin_labor.models import SupplierSchedule
 from app.platform import flags, jobs
@@ -57,7 +58,9 @@ def _extra(db: Session, restaurant, now: datetime, local: datetime) -> int:
     if flags.enabled(db, restaurant.id, flags.ML_LABOR) and (local.hour, local.minute) == NIGHTLY:
         day = business_date(now, restaurant.timezone).isoformat()
         queued += _queue(db, restaurant.id, "forecast_labor", f"forecast_labor:{day}", {"business_date": day})
-    if flags.enabled(db, restaurant.id, flags.ML_LABOR) and local.minute % 15 == 0 and _open(restaurant, local):
+    # Not where the Today page can be read as of a given moment (ALLOW_TIME_TRAVEL: tests and local previews): a
+    # suggestion made for the real clock would be the open one that a given moment then finds in its way.
+    if flags.enabled(db, restaurant.id, flags.ML_LABOR) and local.minute % 15 == 0 and _open(restaurant, local) and not settings.allow_time_travel:
         # The intraday reforecast, every 15 minutes during opening hours: one job per business date and interval.
         day = business_date(now, restaurant.timezone).isoformat()
         queued += _queue(db, restaurant.id, "intraday_reforecast", f"intraday:{day}:{local.hour:02d}{local.minute:02d}", {"business_date": day})

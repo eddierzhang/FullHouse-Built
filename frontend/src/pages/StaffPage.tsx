@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { CsvUpload } from '../components/CsvUpload'
 import { PageFrame, PageTitle } from '../components/PageFrame'
 import {
   type Shift,
@@ -222,6 +223,7 @@ export function StaffPage({ app, user }: { app: AppContext; user: User }) {
           )}
         </div>
       </div>
+      <CsvUpload app={app} kinds={['staff', 'punches']} what="The team with roles and rates, or clock-ins from payroll" />
 
       <div className="stack">
         {isManager && drafts > 0 && (

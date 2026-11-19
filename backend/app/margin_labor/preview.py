@@ -227,6 +227,23 @@ def fill_demo(db: Session, solve_seconds: int = 6, checkpoint=None) -> str | Non
             step()
     step()
 
+    # Item sales by day for the demo's whole six weeks. The demo keeps four weeks ending on the UTC date, which on the
+    # restaurant's own clock is a day short of four weeks every evening; the modules count whole weeks.
+    from app.sales.models import SalesItem
+
+    have = {(row.date, row.pos_item_id) for row in db.query(SalesItem.date, SalesItem.pos_item_id).filter(SalesItem.restaurant_id == rid)}
+    sold: dict = {}
+    for day, dish, qty, net in (db.query(SalesOrder.business_date, SalesOrderLine.pos_item_name, SalesOrderLine.qty, SalesOrderLine.net)
+                                .join(SalesOrderLine, SalesOrderLine.order_id == SalesOrder.id).filter(SalesOrder.restaurant_id == rid, SalesOrder.business_date < today)):
+        cell = sold.setdefault((day, dish), [Decimal(0), Decimal(0)])
+        cell[0] += qty
+        cell[1] += net
+    for (day, dish), (qty, net) in sorted(sold.items()):
+        code = pos.get(dish) or _pos_id(dish)
+        if (day, code) not in have:
+            db.add(SalesItem(restaurant_id=rid, date=day, pos_item_id=code, pos_item_name=dish, qty=float(qty), net=float(net), source="square"))
+    step()
+
     # People: one rota for the clock-ins behind the standards, the shifts on the staff page and this week's schedule.
     from app.margin_labor.models import EmployeeProfile
 

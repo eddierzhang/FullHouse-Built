@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState } from 'react'
+import { CsvUpload } from '../components/CsvUpload'
 import { PageFrame, PageTitle } from '../components/PageFrame'
 import { ApiError, type MenuPerformance, createMenuItem, deleteMenuItem, listMenuPerformance, updateMenuItem } from '../api/client'
 import type { AppContext } from '../app/context'
@@ -378,6 +379,7 @@ export function MenuPage({ app }: { app: AppContext }) {
           </button>
         )}
       </div>
+      <CsvUpload app={app} kinds={['dishes', 'orders']} what="Dishes with their prices, or sales orders from the point of sale" />
 
       <Loaded load={load} what="the menu" placeholderHeight={320}>
         {board}
