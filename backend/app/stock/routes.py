@@ -411,6 +411,6 @@ def unmap_pos_item(pos_item_name: str, user: User = Depends(manager), db: Sessio
 def run_now(user: User = Depends(manager), db: Session = Depends(get_db)) -> dict:
     """Take sales off the shelf now, rather than waiting for the next sync."""
     restaurant_id = _scope(db, user)
-    result = engine.run(db, restaurant_id, date.today())
+    result = engine.run(db, restaurant_id, engine.local_today(db, restaurant_id))
     db.commit()
     return {"moved": result["moved"], "sales": result["sales"], "told": result["told"]}

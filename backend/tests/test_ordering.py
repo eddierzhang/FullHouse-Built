@@ -6,6 +6,7 @@ or the policy sends for a supplier whose owner switched autopilot on; the agent 
 """
 
 import random
+from zoneinfo import ZoneInfo
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
@@ -21,8 +22,10 @@ from test_restaurant_details import _second_restaurant
 from test_restaurant_setup import _set_up
 
 API = "/api/v1/ordering"
-TODAY = date.today()
+# The restaurant's own day (test_restaurant_setup puts it in Los Angeles), not the machine's: on a UTC machine the
+# two differ every evening, and order days and cutoffs are read on the restaurant's clock.
 NOW = datetime.now(timezone.utc)
+TODAY = NOW.astimezone(ZoneInfo("America/Los_Angeles")).date()
 
 
 def _line(**over) -> policy.DraftLine:

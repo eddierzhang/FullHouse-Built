@@ -135,7 +135,8 @@ def run_workflow(db: Session, payload: dict) -> None:
     elif kind == "stock" and flags.enabled(db, restaurant_id, flags.V3_STOCK):
         from app.stock import engine as stock
 
-        stock.run(db, restaurant_id, today)
+        # Stock runs on the restaurant's own day: on a UTC server that is not the machine's date every evening.
+        stock.run(db, restaurant_id, date.fromisoformat(payload["today"]) if payload.get("today") else stock.local_today(db, restaurant_id))
     elif kind == "calendar_scan" and flags.enabled(db, restaurant_id, flags.V2_CALENDAR):
         try:
             from app.calendar import engine as calendar
