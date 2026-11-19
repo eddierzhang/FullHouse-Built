@@ -1,4 +1,5 @@
 import { type ChangeEvent, type FormEvent, Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { CsvUpload } from '../components/CsvUpload'
 import { SectionTabs } from '../components/SectionTabs'
 import {
   ApiError,
@@ -136,6 +137,7 @@ export function InventoryPage({ app, user }: { app: AppContext; user: User }) {
         </button>
       </div>
       <SectionTabs app={app} section="inventory" />
+      <CsvUpload app={app} kinds={['inventory']} what="Stock items with what is on hand" />
 
       <div className="stack">
         {suppliersLoad.status === 'error' && (

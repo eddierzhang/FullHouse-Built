@@ -201,3 +201,32 @@ def test_the_whole_sample_seed_runs_with_checkpoints_and_ends_marked_ready(db):
     rid = preview.seed_sample(db, solve_seconds=3)
     assert rid and preview.ready(db)
     assert db.query(Schedule).filter_by(restaurant_id=rid, status="draft").count() == 1 and not flags.enabled(db, rid, flags.ML_CHANNELS)
+
+
+def test_the_fill_survives_a_collision_with_a_background_job(db, monkeypatch):
+    """A background job recomputing usage at the same moment makes one step fail once; the fill retries it and the
+    steps after it, the draft schedule among them, still run."""
+    from sqlalchemy.exc import IntegrityError
+
+    from app.config import settings
+    from app.demo import reset_demo_data
+    from app.margin_labor import preview, usage
+    from app.margin_labor.models import Schedule, UsageVariance
+
+    monkeypatch.setattr(settings, "demo_mode", True)
+    monkeypatch.setattr("time.sleep", lambda _s: None)
+    reset_demo_data(db)
+    db.commit()
+    real, calls = usage.run, []
+
+    def collide(session, restaurant_id, *args, **kwargs):
+        calls.append(1)
+        if len(calls) == 1:
+            raise IntegrityError("INSERT INTO usage_variance", {}, Exception("UNIQUE constraint failed"))
+        return real(session, restaurant_id, *args, **kwargs)
+
+    monkeypatch.setattr(usage, "run", collide)
+    rid = preview.fill_demo(db, solve_seconds=3, checkpoint=db.commit)
+    assert len(calls) == 2
+    assert db.query(UsageVariance).filter_by(restaurant_id=rid).count() > 0
+    assert db.query(Schedule).filter_by(restaurant_id=rid, status="draft").count() == 1

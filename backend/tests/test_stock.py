@@ -46,7 +46,7 @@ def _sale(db, rid, day, qty, name="Margherita Pizza", pos="MARG"):
 
 def test_acceptance_seven_days_of_sales_deplete_stock_through_recipes_and_a_replay_changes_nothing(client, db):
     rid, flour, cheese, _ = _kitchen(client, db)
-    start = date.today()
+    start = engine.local_today(db, rid)
     engine.deplete(db, rid, start)  # tracking begins today
     sold = [12, 9, 15, 20, 31, 34, 22]
     moved = 0
@@ -69,7 +69,7 @@ def test_acceptance_seven_days_of_sales_deplete_stock_through_recipes_and_a_repl
 
 def test_sales_from_before_tracking_began_are_left_alone_and_a_revised_day_moves_only_the_difference(client, db):
     rid, flour, _, _ = _kitchen(client, db)
-    today = date.today()
+    today = engine.local_today(db, rid)
     _sale(db, rid, today - timedelta(days=1), 50)  # already in the opening figures
     assert engine.deplete(db, rid, today)["moved"] == 0
     assert flour.quantity_on_hand == 100
@@ -88,7 +88,7 @@ def test_sales_from_before_tracking_began_are_left_alone_and_a_revised_day_moves
 
 def test_yield_takes_more_off_the_shelf_and_a_dish_with_no_recipe_is_reported_not_guessed(client, db):
     rid, flour, cheese, _ = _kitchen(client, db)
-    today = date.today()
+    today = engine.local_today(db, rid)
     engine.deplete(db, rid, today)
     cheese.yield_pct = 75  # a quarter is trimmed away
     db.commit()
@@ -156,7 +156,7 @@ def test_waste_is_recorded_once_with_its_reason_and_cannot_take_more_than_is_the
 
 def test_the_variance_report_separates_sales_waste_and_what_a_count_found_missing(client, db):
     rid, flour, cheese, _ = _kitchen(client, db)
-    today = date.today()
+    today = engine.local_today(db, rid)
     engine.deplete(db, rid, today)
     _sale(db, rid, today, 20)
     engine.deplete(db, rid, today)
@@ -205,7 +205,7 @@ def test_new_sales_queue_the_stock_job_which_depletes_rolls_up_and_tells_once(cl
     from app.platform import events
 
     rid, flour, cheese, _ = _kitchen(client, db)
-    today = date.today()
+    today = engine.local_today(db, rid)
     engine.deplete(db, rid, today)
     cheese.quantity_on_hand = 0.1  # not enough for one plate
     db.commit()
@@ -265,7 +265,7 @@ def test_the_demo_stock_history_adds_up_and_last_weeks_count_found_some_missing(
 
 def test_a_sale_in_both_the_app_and_the_pos_comes_off_the_shelf_once(client, db):
     rid, flour, cheese, pizza = _kitchen(client, db)
-    today = date.today()
+    today = engine.local_today(db, rid)
     engine.deplete(db, rid, today)  # tracking begins; no POS sales yet
     db.commit()
     order = {"channel": "dine_in", "items": [{"menu_item_id": pizza.id, "qty": 4}]}
@@ -323,7 +323,7 @@ def test_a_restaurants_own_conversion_lets_an_invoice_in_pounds_book_an_item_cou
 
 def test_a_pos_item_that_is_not_a_dish_can_use_an_ingredient_stand_for_a_dish_or_be_ignored(client, db):
     rid, flour, cheese, pizza = _kitchen(client, db)
-    today = date.today()
+    today = engine.local_today(db, rid)
     engine.deplete(db, rid, today)
     _sale(db, rid, today, 6, name="Extra Cheese", pos="MOD-CHEESE")
     _sale(db, rid, today, 3, name="Marg Pie", pos="MARGPIE")
@@ -359,7 +359,7 @@ def test_a_pos_item_that_is_not_a_dish_can_use_an_ingredient_stand_for_a_dish_or
 
 def test_changing_a_recipe_does_not_reach_back_and_re_deduct_settled_days(client, db):
     rid, flour, cheese, pizza = _kitchen(client, db)
-    start = date.today() - timedelta(days=10)
+    start = engine.local_today(db, rid) - timedelta(days=10)
     engine.deplete(db, rid, start)
     for offset in range(10):
         _sale(db, rid, start + timedelta(days=offset), 10)
@@ -380,7 +380,7 @@ def test_changing_a_recipe_does_not_reach_back_and_re_deduct_settled_days(client
 
 def test_a_sale_dated_before_a_count_and_synced_after_it_is_not_taken_off_twice(client, db):
     rid, flour, cheese, _ = _kitchen(client, db)
-    today = date.today()
+    today = engine.local_today(db, rid)
     engine.deplete(db, rid, today - timedelta(days=2))
     # The shelf is counted today; yesterday's sales export only arrives afterwards.
     engine.count_now(db, rid, [{"inventory_item_id": cheese.id, "counted_qty": 25}], client_key="count-after-0001")
@@ -428,7 +428,7 @@ def test_waste_on_an_item_already_below_zero_takes_nothing_and_an_undone_entry_l
 
 def test_a_pos_item_id_with_a_hash_in_it_still_has_its_later_sales_taken_off(client, db):
     rid, flour, *_ = _kitchen(client, db)
-    today = date.today()
+    today = engine.local_today(db, rid)
     engine.deplete(db, rid, today)
     _sale(db, rid, today, 4, pos="Combo #2")
     engine.deplete(db, rid, today)

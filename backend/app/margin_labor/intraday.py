@@ -217,7 +217,8 @@ def _suggest(db: Session, day: Day, role_key: str) -> LaborAdjustment | None:
     parts = name.split()
     reason["person"] = f"{parts[0]} {parts[-1][0]}." if len(parts) > 1 else name
     row = LaborAdjustment(restaurant_id=rid, business_date=day.day, kind=kind, role_key=role_key, shift_id=shift.id, suggested_time=schedules.to_moment(day.service, day.day, minute),
-                          savings_estimate=savings, reason=reason, expires_at=day.now + timedelta(minutes=SUGGESTION_MINUTES))
+                          savings_estimate=savings, reason=reason, expires_at=day.now + timedelta(minutes=SUGGESTION_MINUTES),
+                          created_at=day.now)  # the moment it was made for, which is the moment a later look compares against
     db.add(row)
     db.flush()
     from app.notify import service as notify

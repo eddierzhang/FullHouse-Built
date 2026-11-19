@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { CsvUpload } from '../components/CsvUpload'
 import { SectionTabs } from '../components/SectionTabs'
 import {
   ApiError,
@@ -422,6 +423,7 @@ export function SuppliersPage({ app }: { app: AppContext }) {
         )}
       </div>
       <SectionTabs app={app} section="suppliers" />
+      <CsvUpload app={app} kinds={['suppliers', 'invoices']} what="Suppliers, or a supplier’s invoice lines" />
 
       <Loaded load={load} what="suppliers" placeholderHeight={320}>
         {board}

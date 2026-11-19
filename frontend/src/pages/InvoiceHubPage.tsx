@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { CsvUpload } from '../components/CsvUpload'
 import type { AppContext } from '../app/context'
 import type { Route } from '../lib/useHashRoute'
 import { DigestPage } from './DigestPage'
@@ -40,6 +41,7 @@ export function InvoiceHubPage({ app, section }: { app: AppContext; section: Rou
           </nav>
         </header>
         <DigestPage app={app} />
+        <CsvUpload app={app} kinds={['invoices', 'suppliers']} what="Invoice lines: supplier, number, date, item, quantity and price" />
         <InvoicesPage app={app} />
         <QuestionsPage app={app} />
         {app.flags.v2_documents && <DocumentsPage app={app} />}
